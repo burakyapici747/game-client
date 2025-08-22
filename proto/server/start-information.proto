@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package server;
+
+enum StartDirection{
+  UP = 0;
+  DOWN = 1;
+  LEFT = 2;
+  RIGHT = 3;
+}
+
+message StartInformation {
+  double x = 1;
+  double y = 2;
+  StartDirection start_direction = 3;
+  uint32 segmentCount = 4;
+}

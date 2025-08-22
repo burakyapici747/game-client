@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package server;
+
+message ClientState {
+  double x = 1;
+  double y = 2;
+  uint32 lastProcessedSequenceId = 3;
+}

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package server;
+
+import "server/game-state.proto";
+import "client/client-data.proto";
+import "server/pong.proto";
+import "server/start-information.proto";
+
+message ServerEnvelope {
+  client.ActionType actionType = 1;
+  oneof payload {
+    server.GameState gameState = 2;
+    server.PongData pongData = 3;
+    server.StartInformation startInformation = 4;
+  }
+}
