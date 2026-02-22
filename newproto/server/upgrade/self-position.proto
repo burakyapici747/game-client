@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package server;
+
+message SelfPosition {
+  uint32 entity_id = 1;
+  sint32 x = 2;
+  sint32 y = 3;
+}

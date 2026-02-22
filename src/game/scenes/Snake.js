@@ -125,6 +125,74 @@ export class Snake {
         this._initPathWarmup(this.head.x, this.head.y);
     }
 
+    _resolveSegmentSpawnPosition(spawnData) {
+        const x = Number(spawnData?.x);
+        const y = Number(spawnData?.y);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+            return { x, y };
+        }
+
+        const tail = this.segments[this.segments.length - 1];
+        if (tail?.active) {
+            return { x: tail.x, y: tail.y };
+        }
+
+        return { x: this.head.x, y: this.head.y };
+    }
+
+    addSegmentsFromServer(addedSegments) {
+        if (!Array.isArray(addedSegments) || addedSegments.length === 0) return;
+
+        addedSegments.forEach((spawnData) => {
+            const spawnPos = this._resolveSegmentSpawnPosition(spawnData);
+            const segmentIndex = this.segments.length;
+            const segment = this._createSegmentSprite(segmentIndex, spawnPos.x, spawnPos.y);
+            const segmentScale = Number(spawnData?.scale);
+            if (Number.isFinite(segmentScale) && segmentScale > 0) {
+                segment.setScale(segmentScale);
+            }
+            this.segments.push(segment);
+        });
+
+        this.sct = this.segments.length;
+        this._refreshSegmentDepths();
+        this._initPathWarmup(this.head.x, this.head.y);
+    }
+
+    removeSegmentsFromServer(removedSegmentCount) {
+        const normalizedRemoveCount = Math.floor(Number(removedSegmentCount));
+        if (!Number.isFinite(normalizedRemoveCount) || normalizedRemoveCount <= 0) return;
+
+        const removeCount = Math.min(normalizedRemoveCount, this.segments.length);
+        for (let i = 0; i < removeCount; i++) {
+            const segment = this.segments.pop();
+            segment?.destroy();
+        }
+
+        this.sct = this.segments.length;
+        this._refreshSegmentDepths();
+        this._initPathWarmup(this.head.x, this.head.y);
+    }
+
+    applySegmentMutationFromServer(mutation) {
+        const mutationType = mutation?.mutationType ?? mutation?.mutation_type;
+        const normalizedType = typeof mutationType === 'string'
+            ? mutationType
+            : Number(mutationType);
+
+        if (normalizedType === 'SEGMENT_ADD' || normalizedType === 0) {
+            const addedSegments = mutation?.addedSegments ?? mutation?.added_segments;
+            this.addSegmentsFromServer(addedSegments);
+            return;
+        }
+
+        if (normalizedType === 'SEGMENT_REMOVE' || normalizedType === 1) {
+            const removedSegmentCount =
+                mutation?.removedSegmentCount ?? mutation?.removed_segment_count;
+            this.removeSegmentsFromServer(removedSegmentCount);
+        }
+    }
+
     create(x, y) {
         this.head = this.scene.add.sprite(x, y, 'snake_head48')
             .setOrigin(0.5);

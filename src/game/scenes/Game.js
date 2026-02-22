@@ -8,6 +8,7 @@ export class Game extends Phaser.Scene {
         this.snakes = new Map();
         // YENİ: Yiyecekleri takip etmek için yeni bir Map ekledik.
         this.foods = new Map();
+        this.pendingSegmentMutations = new Map();
         this.myId = null;
         this.networkManager = null;
         this.gameStarted = false;
@@ -25,6 +26,7 @@ export class Game extends Phaser.Scene {
         this.events.on('start_game', this.onStartGame, this);
         this.events.on('self_position', this.onSelfPosition, this);
         this.events.on('entity_collection', this.onEntityCollection, this);
+        this.events.on('segment_mutation_collection', this.onSegmentMutationCollection, this);
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
 
@@ -80,13 +82,16 @@ export class Game extends Phaser.Scene {
             if (entityId === null) return;
             const initialX = Number(entity.x);
             const initialY = Number(entity.y);
+            const entitySegmentCount = this.getEntitySegmentCount(entity);
 
             if (this.myId !== null && entityId === this.myId) {
-                this.ensurePlayerSnake(
+                const playerSnake = this.ensurePlayerSnake(
                     entityId,
                     Number.isFinite(initialX) ? initialX : 0,
-                    Number.isFinite(initialY) ? initialY : 0
+                    Number.isFinite(initialY) ? initialY : 0,
+                    entitySegmentCount
                 );
+                this.flushPendingSegmentMutations(entityId, playerSnake);
                 return;
             }
 
@@ -97,12 +102,35 @@ export class Game extends Phaser.Scene {
                     this,
                     false,
                     Number.isFinite(initialX) ? initialX : 0,
-                    Number.isFinite(initialY) ? initialY : 0
+                    Number.isFinite(initialY) ? initialY : 0,
+                    entitySegmentCount
                 );
                 this.snakes.set(entityId, snake);
             }
 
+            if (entitySegmentCount !== undefined) {
+                snake.syncSegmentCountFromServer(entitySegmentCount);
+            }
             snake.updateFromServerState(entity);
+            this.flushPendingSegmentMutations(entityId, snake);
+        });
+    }
+
+    onSegmentMutationCollection(segmentMutationCollection) {
+        const mutations = segmentMutationCollection?.mutations ?? [];
+        if (mutations.length === 0) return;
+
+        mutations.forEach((mutation) => {
+            const entityId = this.toId(mutation?.entityId ?? mutation?.entity_id);
+            if (entityId === null) return;
+
+            const snake = this.snakes.get(entityId);
+            if (!snake) {
+                this.queuePendingSegmentMutation(entityId, mutation);
+                return;
+            }
+
+            snake.applySegmentMutationFromServer(mutation);
         });
     }
 
@@ -129,12 +157,14 @@ export class Game extends Phaser.Scene {
             Number.isFinite(x) ? x : 0,
             Number.isFinite(y) ? y : 0
         );
+        this.flushPendingSegmentMutations(entityId, snake);
         snake.updateSelfPositionFromServer(selfPosition);
     }
 
     onRemoveEntity(removeEntity) {
         const entityId = this.toId(removeEntity?.entityId ?? removeEntity?.clientId);
         if (entityId === null) return;
+        this.pendingSegmentMutations.delete(entityId);
 
         const snake = this.snakes.get(entityId);
         if (!snake) return;
@@ -166,6 +196,36 @@ export class Game extends Phaser.Scene {
         this.snakes.set(entityId, playerSnake);
         this.cameras.main.startFollow(playerSnake.getHead(), true, 0.1, 0.1);
         return playerSnake;
+    }
+
+    getEntitySegmentCount(entity) {
+        const segments = entity?.segments;
+        if (Array.isArray(segments) && segments.length > 0) {
+            return segments.length;
+        }
+
+        const rawCount = Number(entity?.segmentCount ?? entity?.segment_count);
+        if (Number.isFinite(rawCount) && rawCount > 0) {
+            return rawCount;
+        }
+
+        return undefined;
+    }
+
+    queuePendingSegmentMutation(entityId, mutation) {
+        const pending = this.pendingSegmentMutations.get(entityId) ?? [];
+        pending.push(mutation);
+        this.pendingSegmentMutations.set(entityId, pending);
+    }
+
+    flushPendingSegmentMutations(entityId, snake) {
+        const pending = this.pendingSegmentMutations.get(entityId);
+        if (!pending || pending.length === 0 || !snake) return;
+
+        pending.forEach((mutation) => {
+            snake.applySegmentMutationFromServer(mutation);
+        });
+        this.pendingSegmentMutations.delete(entityId);
     }
 
     toId(rawId) {
