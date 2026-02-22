@@ -125,26 +125,83 @@ export class Snake {
         this._initPathWarmup(this.head.x, this.head.y);
     }
 
-    _resolveSegmentSpawnPosition(spawnData) {
-        const x = Number(spawnData?.x);
-        const y = Number(spawnData?.y);
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-            return { x, y };
-        }
-
+    _resolveSegmentSpawnPositionBehindTail() {
         const tail = this.segments[this.segments.length - 1];
-        if (tail?.active) {
-            return { x: tail.x, y: tail.y };
+        const prevTail = this.segments[this.segments.length - 2];
+
+        const anchorX = tail?.active ? tail.x : this.head.x;
+        const anchorY = tail?.active ? tail.y : this.head.y;
+
+        let dirX = 0;
+        let dirY = 0;
+
+        if (tail?.active && prevTail?.active) {
+            dirX = tail.x - prevTail.x;
+            dirY = tail.y - prevTail.y;
+        } else if (tail?.active) {
+            dirX = tail.x - this.head.x;
+            dirY = tail.y - this.head.y;
         }
 
-        return { x: this.head.x, y: this.head.y };
+        let length = Math.hypot(dirX, dirY);
+        if (length < 0.0001) {
+            dirX = -Math.cos(this.head.rotation);
+            dirY = -Math.sin(this.head.rotation);
+            length = Math.hypot(dirX, dirY);
+        }
+
+        if (length < 0.0001) {
+            return { x: anchorX, y: anchorY };
+        }
+
+        const spacing = this.getSegmentSpacing();
+        return {
+            x: anchorX + (dirX / length) * spacing,
+            y: anchorY + (dirY / length) * spacing
+        };
+    }
+
+    _ensurePathCapacityForCurrentLength() {
+        if (this.path.length < 2) {
+            this._initPathWarmup(this.head.x, this.head.y);
+            return;
+        }
+
+        const spacing = this.getSegmentSpacing();
+        const requiredLength = (this.segments.length + 2) * spacing + 600;
+
+        while (this.totalPathLen < requiredLength) {
+            const tail = this.path[this.path.length - 1];
+            const beforeTail = this.path[this.path.length - 2];
+            if (!tail || !beforeTail) break;
+
+            let dirX = tail.x - beforeTail.x;
+            let dirY = tail.y - beforeTail.y;
+            let length = Math.hypot(dirX, dirY);
+
+            if (length < 0.0001) {
+                dirX = -Math.cos(this.head.rotation);
+                dirY = -Math.sin(this.head.rotation);
+                length = Math.hypot(dirX, dirY);
+            }
+
+            if (length < 0.0001) break;
+
+            const next = new Phaser.Math.Vector2(
+                tail.x + (dirX / length) * spacing,
+                tail.y + (dirY / length) * spacing
+            );
+            this.path.push(next);
+            this.pathSegLens.push(spacing);
+            this.totalPathLen += spacing;
+        }
     }
 
     addSegmentsFromServer(addedSegments) {
         if (!Array.isArray(addedSegments) || addedSegments.length === 0) return;
 
         addedSegments.forEach((spawnData) => {
-            const spawnPos = this._resolveSegmentSpawnPosition(spawnData);
+            const spawnPos = this._resolveSegmentSpawnPositionBehindTail();
             const segmentIndex = this.segments.length;
             const segment = this._createSegmentSprite(segmentIndex, spawnPos.x, spawnPos.y);
             const segmentScale = Number(spawnData?.scale);
@@ -156,7 +213,7 @@ export class Snake {
 
         this.sct = this.segments.length;
         this._refreshSegmentDepths();
-        this._initPathWarmup(this.head.x, this.head.y);
+        this._ensurePathCapacityForCurrentLength();
     }
 
     removeSegmentsFromServer(removedSegmentCount) {
