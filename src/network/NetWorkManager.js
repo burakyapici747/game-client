@@ -75,6 +75,17 @@ export class NetworkManager {
             this.scene.events.emit('segment_mutation_collection', segmentMutationCollection);
         }
 
+        const foodCollection = envelope.foodCollection ?? envelope.food_collection;
+        if (foodCollection) {
+            this.scene.events.emit('food_collection', foodCollection);
+        }
+
+        const foodMutationCollection =
+            envelope.foodMutationCollection ?? envelope.food_mutation_collection;
+        if (foodMutationCollection) {
+            this.scene.events.emit('food_mutation_collection', foodMutationCollection);
+        }
+
         const payloadType = envelope.payload;
         if (!payloadType) return;
 

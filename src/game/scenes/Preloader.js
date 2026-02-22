@@ -10,6 +10,7 @@ export class Preloader extends Phaser.Scene {
     makeSolid(this, 'px8', 8, 8, 0xffffff);
     makeSolid(this, 'px32', 32, 32, 0xffffff);
     makeSolid(this, 'px64', 64, 64, 0xffffff);
+    makeFoodOrb(this, 'food10', 10);
 
     makeCheckerScaled(this, 'grid32', 32, 0x2a2a2a, 0x242424, 4);
 
@@ -28,12 +29,27 @@ export class Preloader extends Phaser.Scene {
     makeEye10(this, 'eye10');
     makePupil4(this, 'pupil4');
 
-    ['px8','px32','px64','grid32','snake_body48','snake_head48','eye10','pupil4'].forEach(k => {
+    ['px8','px32','px64','food10','grid32','snake_body48','snake_head48','eye10','pupil4'].forEach(k => {
       this.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     });
 
     this.scene.start('Game');
   }
+}
+
+function makeFoodOrb(scene, key, size = 10) {
+  const radius = size / 2;
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+
+  g.fillStyle(0xffbe55, 1);
+  g.fillCircle(radius, radius, radius - 0.5);
+  g.fillStyle(0xffefb8, 0.9);
+  g.fillCircle(radius - 1.5, radius - 1.5, Math.max(1, radius * 0.35));
+  g.lineStyle(1, 0x8b5a00, 0.85);
+  g.strokeCircle(radius, radius, radius - 0.75);
+
+  g.generateTexture(key, size, size);
+  g.destroy();
 }
 
 function makeSolid(scene, key, w, h, color) {
@@ -132,4 +148,3 @@ function makePupil4(scene, key) {
   g.generateTexture(key, 8, 8);
   g.destroy();
 }
-

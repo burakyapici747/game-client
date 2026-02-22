@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package server;
+
+option java_outer_classname = "FoodMutationOuterClass";
+
+import "server/upgrade/food.proto";
+
+message FoodMutationCollection {
+  repeated FoodData added_foods = 1;
+  repeated uint32 removed_food_ids = 2;
+}

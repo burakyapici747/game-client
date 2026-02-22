@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package server;
+
+option java_outer_classname = "FoodOuterClass";
+
+message FoodData {
+  uint32 food_id = 1;
+  sint32 x = 2;
+  sint32 y = 3;
+}
+
+message FoodCollection {
+  repeated FoodData foods = 1;
+}

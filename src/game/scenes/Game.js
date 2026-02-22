@@ -6,8 +6,8 @@ export class Game extends Phaser.Scene {
     constructor() {
         super('Game');
         this.snakes = new Map();
-        // YENİ: Yiyecekleri takip etmek için yeni bir Map ekledik.
         this.foods = new Map();
+        this.foodBlitter = null;
         this.pendingSegmentMutations = new Map();
         this.myId = null;
         this.networkManager = null;
@@ -27,6 +27,8 @@ export class Game extends Phaser.Scene {
         this.events.on('self_position', this.onSelfPosition, this);
         this.events.on('entity_collection', this.onEntityCollection, this);
         this.events.on('segment_mutation_collection', this.onSegmentMutationCollection, this);
+        this.events.on('food_collection', this.onFoodCollection, this);
+        this.events.on('food_mutation_collection', this.onFoodMutationCollection, this);
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
 
@@ -134,6 +136,43 @@ export class Game extends Phaser.Scene {
         });
     }
 
+    onFoodCollection(foodCollection) {
+        const incomingFoods = Array.isArray(foodCollection?.foods) ? foodCollection.foods : [];
+        const incomingFoodIds = new Set();
+
+        for (const foodData of incomingFoods) {
+            const foodId = this.upsertFood(foodData);
+            if (foodId !== null) {
+                incomingFoodIds.add(foodId);
+            }
+        }
+
+        for (const [foodId, foodBob] of this.foods) {
+            if (incomingFoodIds.has(foodId)) continue;
+            foodBob.destroy();
+            this.foods.delete(foodId);
+        }
+    }
+
+    onFoodMutationCollection(foodMutationCollection) {
+        const addedFoods = Array.isArray(foodMutationCollection?.addedFoods)
+            ? foodMutationCollection.addedFoods
+            : (Array.isArray(foodMutationCollection?.added_foods) ? foodMutationCollection.added_foods : []);
+        const removedFoodIds = Array.isArray(foodMutationCollection?.removedFoodIds)
+            ? foodMutationCollection.removedFoodIds
+            : (Array.isArray(foodMutationCollection?.removed_food_ids) ? foodMutationCollection.removed_food_ids : []);
+
+        if (removedFoodIds.length === 0 && addedFoods.length === 0) return;
+
+        for (const rawFoodId of removedFoodIds) {
+            this.removeFood(rawFoodId);
+        }
+
+        for (const foodData of addedFoods) {
+            this.upsertFood(foodData);
+        }
+    }
+
     onSelfPosition(selfPosition) {
         const entityId = this.toId(selfPosition?.entityId ?? selfPosition?.clientId);
         if (entityId === null) return;
@@ -234,6 +273,62 @@ export class Game extends Phaser.Scene {
         return Number.isFinite(value) ? value : null;
     }
 
+    toFoodId(rawFoodId) {
+        const normalizedId = this.toId(rawFoodId);
+        if (normalizedId === null || normalizedId < 0 || !Number.isInteger(normalizedId)) return null;
+        return normalizedId;
+    }
+
+    upsertFood(foodData) {
+        const foodId = this.toFoodId(foodData?.foodId ?? foodData?.food_id);
+        if (foodId === null) return null;
+
+        const x = Number(foodData?.x);
+        const y = Number(foodData?.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+        const targetX = Math.round(x);
+        const targetY = Math.round(y);
+
+        const existingFood = this.foods.get(foodId);
+        if (existingFood) {
+            if (existingFood.x !== targetX || existingFood.y !== targetY) {
+                existingFood.setPosition(targetX, targetY);
+            }
+            return foodId;
+        }
+
+        const foodBlitter = this.ensureFoodBlitter();
+        const foodBob = foodBlitter.create(targetX, targetY);
+        this.foods.set(foodId, foodBob);
+        return foodId;
+    }
+
+    removeFood(rawFoodId) {
+        const foodId = this.toFoodId(rawFoodId);
+        if (foodId === null) return;
+
+        const foodBob = this.foods.get(foodId);
+        if (!foodBob) return;
+
+        foodBob.destroy();
+        this.foods.delete(foodId);
+    }
+
+    clearFoods() {
+        this.foodBlitter?.clear();
+        this.foods.clear();
+    }
+
+    ensureFoodBlitter() {
+        if (this.foodBlitter) {
+            return this.foodBlitter;
+        }
+
+        this.foodBlitter = this.add.blitter(0, 0, 'food10').setDepth(0);
+        return this.foodBlitter;
+    }
+
     onGameOver(gameOverInfo) {
         console.log(`Oyun Bitti! Skor: ${gameOverInfo.score}, Öldüren: ${gameOverInfo.killedBy}`);
         this.gameStarted = false;
@@ -247,6 +342,7 @@ export class Game extends Phaser.Scene {
     onDisconnected() {
         console.log("Bağlantı koptu!");
         this.gameStarted = false;
+        this.clearFoods();
          this.add.text(this.cameras.main.centerX, this.cameras.main.centerY, 
             `Sunucu bağlantısı koptu!`, 
             { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000' }
