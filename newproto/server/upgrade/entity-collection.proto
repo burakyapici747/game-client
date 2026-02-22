@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package server;
+
+import "server/upgrade/entity-full.proto";
+
+message EntityCollection {
+  repeated EntityFull entities = 1;
+}
+

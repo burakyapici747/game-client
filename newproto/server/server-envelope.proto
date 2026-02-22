@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package server;
+
+import "server/start-information.proto";
+import "server/pong.proto";
+import "server/new-entity.proto";
+import "server/remove-entity.proto";
+import "server/update-entity.proto";
+import "server/upgrade/entity-collection.proto";
+import "server/self-position.proto";
+
+message ServerEnvelope {
+  oneof payload {
+    StartInformation start_information = 1;
+    EntityCollection entity_collection = 2;
+    RemoveEntity remove_entity = 3;
+    Pong pong = 4;
+  }
+  SelfPosition self_position = 10;
+}

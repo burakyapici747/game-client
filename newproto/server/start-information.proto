@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package server;
+
+message StartInformation {
+  uint32 clientId = 1;
+  uint32 x = 2;
+  uint32 y = 3;
+  uint32 segment_count = 4;
+  uint32 start_direction = 5;
+}

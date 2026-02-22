@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package client;
+
+import "client/client-input.proto";
+import "client/ping.proto";
+
+message ClientEnvelope {
+  oneof payload {
+    ClientInput clientInput = 1;
+    Ping ping = 2;
+  }
+}

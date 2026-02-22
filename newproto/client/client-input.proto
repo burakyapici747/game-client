@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package client;
+
+message ClientInput {
+  uint32 actionValue = 1;
+}
