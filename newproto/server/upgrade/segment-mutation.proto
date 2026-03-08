@@ -16,12 +16,6 @@ message SegmentMutation {
 
   uint32 entity_id = 1;
   MutationType mutation_type = 2;
-  repeated SegmentSpawnData added_segments = 3;
+  uint32 added_segment_count = 3;
   uint32 removed_segment_count = 4;
-}
-
-message SegmentSpawnData {
-  sint32 x = 1;
-  sint32 y = 2;
-  float scale = 3;
 }

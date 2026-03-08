@@ -2,13 +2,11 @@ syntax = "proto3";
 
 package server;
 
-import "server/segment.proto";
-
 message NewEntity {
   uint32 client_id = 1;
   string name = 2;
-  sint32 x = 3;
-  sint32 y = 4;
-  sint32 angle = 5;
-  repeated SegmentData segments = 6;
+  uint32 x = 3;
+  uint32 y = 4;
+  uint32 angle = 5;
+  uint32 segment_count = 6;
 }

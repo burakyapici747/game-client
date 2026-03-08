@@ -5,6 +5,11 @@ package server;
 import "server/upgrade/entity-full.proto";
 
 message EntityCollection {
-  repeated EntityFull entities = 1;
-}
+  repeated uint32 entity_ids = 1 [packed=true];
+  repeated uint32 xs = 2 [packed=true];
+  repeated uint32 ys = 3 [packed=true];
+  repeated uint32 angles = 4 [packed=true];
 
+  repeated uint32 fully_data_entity_ids = 5 [packed=true];
+  repeated uint32 fully_data_segment_counts = 6 [packed=true];
+}

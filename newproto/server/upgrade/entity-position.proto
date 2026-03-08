@@ -4,7 +4,7 @@ package server;
 
 message EntityPosition {
   uint32 channel_id = 1;
-  sint32 x = 2;
-  sint32 y = 3;
-  sint32 angle = 4;
+  uint32 x = 2;
+  uint32 y = 3;
+  uint32 angle = 4;
 }

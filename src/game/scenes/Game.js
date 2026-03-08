@@ -22,7 +22,7 @@ export class Game extends Phaser.Scene {
         console.log("Game Scene: create()");
 
         this.networkManager = new NetworkManager(this);
-        
+
         this.events.on('start_game', this.onStartGame, this);
         this.events.on('self_position', this.onSelfPosition, this);
         this.events.on('entity_collection', this.onEntityCollection, this);
@@ -69,8 +69,8 @@ export class Game extends Phaser.Scene {
     }
 
     onEntityCollection(entityCollection) {
-        const entities = entityCollection?.entities ?? [];
-        if (entities.length === 0) return;
+        const entityIds = entityCollection?.entityIds ?? [];
+        if (entityIds.length === 0) return;
 
         if (!this.gameStarted) {
             this.gameStarted = true;
@@ -79,12 +79,28 @@ export class Game extends Phaser.Scene {
             }
         }
 
-        entities.forEach((entity) => {
-            const entityId = this.toId(entity.entityId ?? entity.clientId);
-            if (entityId === null) return;
-            const initialX = Number(entity.x);
-            const initialY = Number(entity.y);
-            const entitySegmentCount = this.getEntitySegmentCount(entity);
+        const xs = entityCollection?.xs ?? [];
+        const ys = entityCollection?.ys ?? [];
+        const angles = entityCollection?.angles ?? [];
+
+        const fullyDataIds = entityCollection?.fullyDataEntityIds ?? [];
+        const fullyDataCounts = entityCollection?.fullyDataSegmentCounts ?? [];
+
+        const fullyDataMap = new Map();
+        for (let i = 0; i < fullyDataIds.length; i++) {
+            fullyDataMap.set(fullyDataIds[i], fullyDataCounts[i]);
+        }
+
+        for (let i = 0; i < entityIds.length; i++) {
+            const rawId = entityIds[i];
+            const entityId = this.toId(rawId);
+            if (entityId === null) continue;
+
+            const initialX = Number(xs[i]);
+            const initialY = Number(ys[i]);
+            const angle = Number(angles[i]);
+
+            const entitySegmentCount = fullyDataMap.has(rawId) ? fullyDataMap.get(rawId) : undefined;
 
             if (this.myId !== null && entityId === this.myId) {
                 const playerSnake = this.ensurePlayerSnake(
@@ -94,7 +110,7 @@ export class Game extends Phaser.Scene {
                     entitySegmentCount
                 );
                 this.flushPendingSegmentMutations(entityId, playerSnake);
-                return;
+                continue;
             }
 
             let snake = this.snakes.get(entityId);
@@ -113,9 +129,10 @@ export class Game extends Phaser.Scene {
             if (entitySegmentCount !== undefined) {
                 snake.syncSegmentCountFromServer(entitySegmentCount);
             }
-            snake.updateFromServerState(entity);
+
+            snake.updateFromServerState({ x: initialX, y: initialY, angle: angle });
             this.flushPendingSegmentMutations(entityId, snake);
-        });
+        }
     }
 
     onSegmentMutationCollection(segmentMutationCollection) {
@@ -237,19 +254,7 @@ export class Game extends Phaser.Scene {
         return playerSnake;
     }
 
-    getEntitySegmentCount(entity) {
-        const segments = entity?.segments;
-        if (Array.isArray(segments) && segments.length > 0) {
-            return segments.length;
-        }
 
-        const rawCount = Number(entity?.segmentCount ?? entity?.segment_count);
-        if (Number.isFinite(rawCount) && rawCount > 0) {
-            return rawCount;
-        }
-
-        return undefined;
-    }
 
     queuePendingSegmentMutation(entityId, mutation) {
         const pending = this.pendingSegmentMutations.get(entityId) ?? [];
@@ -333,8 +338,8 @@ export class Game extends Phaser.Scene {
         console.log(`Oyun Bitti! Skor: ${gameOverInfo.score}, Öldüren: ${gameOverInfo.killedBy}`);
         this.gameStarted = false;
         // Burada bir "Oyun Bitti" ekranı gösterebilir veya ana menüye dönebilirsiniz.
-        this.add.text(this.cameras.main.centerX, this.cameras.main.centerY, 
-            `Oyun Bitti!\nSkor: ${gameOverInfo.score}`, 
+        this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
+            `Oyun Bitti!\nSkor: ${gameOverInfo.score}`,
             { fontSize: '32px', color: '#ff0000', backgroundColor: '#000' }
         ).setOrigin(0.5, 0.5).setScrollFactor(0);
     }
@@ -343,8 +348,8 @@ export class Game extends Phaser.Scene {
         console.log("Bağlantı koptu!");
         this.gameStarted = false;
         this.clearFoods();
-         this.add.text(this.cameras.main.centerX, this.cameras.main.centerY, 
-            `Sunucu bağlantısı koptu!`, 
+        this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
+            `Sunucu bağlantısı koptu!`,
             { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000' }
         ).setOrigin(0.5, 0.5).setScrollFactor(0);
     }
@@ -352,7 +357,7 @@ export class Game extends Phaser.Scene {
 
     update(time, delta) {
         if (!this.gameStarted) return;
-        
+
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
 
         if (mySnake) {

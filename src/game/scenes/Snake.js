@@ -197,19 +197,17 @@ export class Snake {
         }
     }
 
-    addSegmentsFromServer(addedSegments) {
-        if (!Array.isArray(addedSegments) || addedSegments.length === 0) return;
+    addSegmentsFromServer(addedSegmentCount) {
+        const normalizedAddCount = Math.floor(Number(addedSegmentCount));
+        if (!Number.isFinite(normalizedAddCount) || normalizedAddCount <= 0) return;
 
-        addedSegments.forEach((spawnData) => {
+        for (let i = 0; i < normalizedAddCount; i++) {
             const spawnPos = this._resolveSegmentSpawnPositionBehindTail();
             const segmentIndex = this.segments.length;
             const segment = this._createSegmentSprite(segmentIndex, spawnPos.x, spawnPos.y);
-            const segmentScale = Number(spawnData?.scale);
-            if (Number.isFinite(segmentScale) && segmentScale > 0) {
-                segment.setScale(segmentScale);
-            }
+            segment.setScale(this.scale); // Using current snake scale since individual segment scales are no longer sent
             this.segments.push(segment);
-        });
+        }
 
         this.sct = this.segments.length;
         this._refreshSegmentDepths();
@@ -238,8 +236,8 @@ export class Snake {
             : Number(mutationType);
 
         if (normalizedType === 'SEGMENT_ADD' || normalizedType === 0) {
-            const addedSegments = mutation?.addedSegments ?? mutation?.added_segments;
-            this.addSegmentsFromServer(addedSegments);
+            const addedSegmentCount = mutation?.addedSegmentCount ?? mutation?.added_segment_count;
+            this.addSegmentsFromServer(addedSegmentCount);
             return;
         }
 

@@ -10,7 +10,7 @@ export class NetworkManager {
         this.scene = scene;
         this.socket = null;
         this.connected = false;
-        this.wsUrl = options.wsUrl ?? import.meta.env.VITE_WS_URL ?? 'ws://192.168.1.162:8080/ws';
+        this.wsUrl = options.wsUrl ?? import.meta.env.VITE_WS_URL ?? 'ws://192.168.1.116:8080/ws';
         this.isCurrentlyBoosting = false;
 
         this.lastSentAngleValue = -1;
