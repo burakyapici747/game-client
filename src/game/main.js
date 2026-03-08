@@ -13,8 +13,8 @@ const config = {
   height: V_HEIGHT,
   parent: 'game-container',
   backgroundColor: '#202020',
-  pixelArt: true,
-  render: { antialias: false, roundPixels: true, mipmapFilter: 'NEAREST' },
+  pixelArt: false,
+  render: { antialias: true, roundPixels: false, mipmapFilter: 'NEAREST' },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
   scene: [Boot, Preloader, MainMenu, MainGame]

@@ -250,7 +250,7 @@ export class Game extends Phaser.Scene {
 
         const playerSnake = new Snake(this, true, x, y, segmentCount);
         this.snakes.set(entityId, playerSnake);
-        this.cameras.main.startFollow(playerSnake.getHead(), true, 0.1, 0.1);
+        this.cameras.main.startFollow(playerSnake.getHead(), true, 0.05, 0.05);
         return playerSnake;
     }
 

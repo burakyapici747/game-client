@@ -312,7 +312,7 @@ export class Snake {
 
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
-        
+
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
         this._updateEyes(worldPoint.x, worldPoint.y);
     }
@@ -338,21 +338,54 @@ export class Snake {
 
         const dx = this.selfServerTarget.x - this.head.x;
         const dy = this.selfServerTarget.y - this.head.y;
-        const distance = Math.hypot(dx, dy);
+        const absDistance = Math.hypot(dx, dy);
 
-        if (distance > this.config.RECONCILIATION_SNAP_DISTANCE) {
+        // Sunucu 10 FPS çalışırken ping ile birlikte mesafe 200-300 pikseli aşabilir.
+        // O yüzden sadece ÇOK saçma bir farkta (örn. ölüm, yeniden doğma vb.) 800 veriyoruz.
+        if (absDistance > 800) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
             this.head.body?.updateFromGameObject();
-        } else if (distance > this.config.RECONCILIATION_DEADZONE) {
-            const posFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
-            const desiredStep = distance * posFactor;
-            const maxStep = this.config.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
-            const step = Math.min(desiredStep, maxStep);
-            const nx = this.head.x + (dx / distance) * step;
-            const ny = this.head.y + (dy / distance) * step;
+            return;
+        }
 
-            this.head.setPosition(nx, ny);
-            this.head.body?.updateFromGameObject();
+        // Vector from Client to Server
+        const cos = Math.cos(this.head.rotation);
+        const sin = Math.sin(this.head.rotation);
+
+        const longitudinal = dx * cos + dy * sin;
+        const lateral = dx * -sin + dy * cos;
+
+        let corrX = 0;
+        let corrY = 0;
+        let hasCorrection = false;
+
+        if (Math.abs(lateral) > this.config.RECONCILIATION_DEADZONE) {
+            corrX += lateral * -sin;
+            corrY += lateral * cos;
+            hasCorrection = true;
+        }
+
+        const maxExpectedLag = (this.speed || 300) * 0.9;
+        if (longitudinal > 0 || longitudinal < -maxExpectedLag) {
+            corrX += longitudinal * cos;
+            corrY += longitudinal * sin;
+            hasCorrection = true;
+        }
+
+        if (hasCorrection) {
+            const corrDist = Math.hypot(corrX, corrY);
+            if (corrDist > 0.1) {
+                const posFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
+                const desiredStep = corrDist * posFactor * 0.55;
+                const maxStep = this.config.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
+                const step = Math.min(desiredStep, maxStep);
+
+                const nx = this.head.x + (corrX / corrDist) * step;
+                const ny = this.head.y + (corrY / corrDist) * step;
+
+                this.head.setPosition(nx, ny);
+                this.head.body?.updateFromGameObject();
+            }
         }
     }
 
@@ -437,7 +470,7 @@ export class Snake {
 
     _pointAndAngleAtDistance(distanceFromHead) {
         if (!this.head.active) {
-             return { x: 0, y: 0, angle: 0 };
+            return { x: 0, y: 0, angle: 0 };
         }
         if (distanceFromHead <= 0 || this.path.length === 0) {
             const a = this.path[0] ?? new Phaser.Math.Vector2(this.head.x, this.head.y);
