@@ -111,6 +111,14 @@ export class Game extends Phaser.Scene {
         const startY = Number(startInfo?.y);
         const startSegmentCount = Number(startInfo?.segmentCount ?? startInfo?.segment_count);
         const startScale = Number(startInfo?.scale ?? 1.0);
+        const worldRadius = Number(startInfo?.worldRadius ?? startInfo?.world_radius);
+
+        if (Number.isFinite(worldRadius)) {
+            const worldSize = worldRadius * 2;
+            this.cameras.main.setBounds(0, 0, worldSize, worldSize);
+            console.log(`Dünya sınırı ayarlandı: ${worldSize}x${worldSize}`);
+        }
+
         this.ensurePlayerSnake(
             clientId,
             Number.isFinite(startX) ? startX : 0,
@@ -353,6 +361,12 @@ export class Game extends Phaser.Scene {
     // Phaser Blitter: binlerce food objesini tek draw call ile çizen performans yapısı.
     // Her food Bob'u oluşturulurken rastgele bir renk frame'i atanır.
     // Koordinatlar doğrudan dünya piksel koordinatlarıdır (invScale yok).
+    
+    seededRandom(seed) {
+        const x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+    }
+
 
     upsertFood(foodData) {
         const foodId = this.toFoodId(foodData?.foodId ?? foodData?.food_id);
@@ -380,11 +394,40 @@ export class Game extends Phaser.Scene {
         // Normal food: 16px glow dot, Large food: 24px glow dot
         const targetBlitter = isLarge ? this.ensureFoodBlitterLarge() : this.ensureFoodBlitter();
 
-        // Rastgele renk frame'i seç (0-15)
-        const colorFrame = Math.floor(Math.random() * FOOD_COLOR_COUNT);
-        const foodBob = targetBlitter.create(targetX, targetY, colorFrame);
+        const bobs = [];
+        // Deterministik kümeleme: her yiyecek ID'sine göre 2-4 arası nokta oluştur
+        // (Sunucu tarafında food sayısı 20.000'e çıktığı için max boyutu hafif optimize ediyoruz)
+        const clusterSize = 2 + Math.floor(this.seededRandom(foodId) * 3);
 
-        this.foods.set(foodId, foodBob);
+        const baseColor = Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
+        
+        // 1. Ana yem parçasını tam merkeze koy.
+        bobs.push(targetBlitter.create(targetX, targetY, baseColor));
+
+        // 2. Diğer parçaları etrafına, daha düzenli ve organik bir dağılımla (spiral/yıldız) yay.
+        for (let i = 1; i < clusterSize; i++) {
+            // Açıyı i'ye göre asimetrik ama dengeli dağıtıp ufak bir rastgelelik ekleyelim
+            const baseAngle = (i / clusterSize) * Math.PI * 2;
+            const angleOffset = (this.seededRandom(foodId + i * 100) - 0.5) * Math.PI * 0.5;
+            const finalAngle = baseAngle + angleOffset;
+            
+            // Merkeze olan uzaklığı düzenli bir şekilde artırarak rastgele yığılmaları (kümelenme) engelle
+            const distance = 12 + (i * 6) + (this.seededRandom(foodId + i * 200) * 8);
+
+            const offsetX = Math.cos(finalAngle) * distance;
+            const offsetY = Math.sin(finalAngle) * distance;
+            
+            // Daha organik bir görüntü için %80 oranında ana renkle aynı yap, %20 ihtimalle farklı bir renk
+            let colorFrame = baseColor;
+            if (this.seededRandom(foodId + i * 300) > 0.8) {
+                colorFrame = Math.floor(this.seededRandom(foodId + i * 400) * FOOD_COLOR_COUNT);
+            }
+
+            const bob = targetBlitter.create(targetX + offsetX, targetY + offsetY, colorFrame);
+            bobs.push(bob);
+        }
+
+        this.foods.set(foodId, bobs);
         return foodId;
     }
 
@@ -392,16 +435,26 @@ export class Game extends Phaser.Scene {
         const foodId = this.toFoodId(rawFoodId);
         if (foodId === null) return;
 
-        const foodBob = this.foods.get(foodId);
-        if (!foodBob) return;
+        const bobs = this.foods.get(foodId);
+        if (!bobs) return;
 
-        foodBob.destroy();
+        if (Array.isArray(bobs)) {
+            bobs.forEach(bob => bob.destroy());
+        } else {
+            bobs.destroy();
+        }
         this.foods.delete(foodId);
     }
 
     clearFoods() {
-        this.foodBlitter?.destroy();
-        this.foodBlitterLarge?.destroy();
+        if (this.foodBlitter) {
+            this.foodBlitter.clear();
+            this.foodBlitter.destroy();
+        }
+        if (this.foodBlitterLarge) {
+            this.foodBlitterLarge.clear();
+            this.foodBlitterLarge.destroy();
+        }
         this.foodBlitter = null;
         this.foodBlitterLarge = null;
         this.foods.clear();

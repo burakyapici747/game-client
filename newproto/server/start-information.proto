@@ -9,4 +9,5 @@ message StartInformation {
   uint32 segment_count = 4;
   uint32 start_direction = 5;
   float scale = 6;
+  float world_radius = 7;
 }
