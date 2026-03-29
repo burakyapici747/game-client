@@ -10,7 +10,7 @@ export class NetworkManager {
         this.scene = scene;
         this.socket = null;
         this.connected = false;
-        this.wsUrl = options.wsUrl ?? import.meta.env.VITE_WS_URL ?? 'ws://192.168.1.116:8080/ws';
+        this.wsUrl = 'ws://192.168.3.117:8080/ws';//192.168.1.116
         this.isCurrentlyBoosting = false;
 
         this.lastSentAngleValue = -1;
@@ -65,6 +65,11 @@ export class NetworkManager {
     }
 
     handleMessage(envelope) {
+        // Herhangi bir veri geldiginde loader'i gizlemek icin bir flag gonderelim
+        const hasData = envelope.selfPosition || envelope.foodCollection || 
+                        envelope.startInformation || envelope.start_information ||
+                        envelope.entityCollection || envelope.entity_collection;
+
         if (envelope.selfPosition) {
             this.scene.events.emit('self_position', envelope.selfPosition);
         }
@@ -86,19 +91,34 @@ export class NetworkManager {
             this.scene.events.emit('food_mutation_collection', foodMutationCollection);
         }
 
+        // Start Info kontrolu (payload tipine bakılmaksızın)
+        const startInfo = envelope.startInformation || envelope.start_information;
+        if (startInfo) {
+            console.log("Start Information Yakalandı:", startInfo);
+            this.scene.events.emit('start_game', startInfo);
+        }
+
         const payloadType = envelope.payload;
-        if (!payloadType) return;
+        if (!payloadType) {
+            // Eğer payload ismi gelmiyorsa bile startInfo veya entityCollection varsa devam et
+            if (envelope.entityCollection || envelope.entity_collection) {
+                 this.scene.events.emit('entity_collection', envelope.entityCollection || envelope.entity_collection);
+            }
+            return;
+        }
 
         switch (payloadType) {
             case 'startInformation':
-                console.log("Start Information Alındı:", envelope.startInformation);
-                this.scene.events.emit('start_game', envelope.startInformation);
+            case 'start_information':
+                // Zaten yukarıda handle ettik ama switch yapısını bozmayalım
                 break;
             case 'entityCollection':
-                this.scene.events.emit('entity_collection', envelope.entityCollection);
+            case 'entity_collection':
+                this.scene.events.emit('entity_collection', envelope.entityCollection || envelope.entity_collection);
                 break;
             case 'removeEntity':
-                this.scene.events.emit('remove_entity', envelope.removeEntity);
+            case 'remove_entity':
+                this.scene.events.emit('remove_entity', envelope.removeEntity || envelope.remove_entity);
                 break;
             case 'pong':
                 if (envelope.pong?.clientTimestamp !== undefined) {

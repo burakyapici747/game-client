@@ -22,6 +22,7 @@ export class Snake {
         this.scene = scene;
         this.config = SnakeConfig;
         this.isPlayerControlled = isPlayerControlled;
+        this.alive = true;
         this.sct = this._normalizeSegmentCount(initialSegmentCount);
         this.scale = 0.5;
         this.speed = 0;
@@ -277,18 +278,22 @@ export class Snake {
     }
 
     destroy() {
-        this.head.destroy();
-        this.segments.forEach(seg => seg.destroy());
-        this.trail.destroy();
-        this.eyeL.destroy();
-        this.eyeR.destroy();
-        this.pupilL.destroy();
-        this.pupilR.destroy();
+        this.alive = false;
+        if (this.isPlayerControlled && this.head?.body) {
+            this.head.body.velocity.set(0, 0);
+        }
+        this.head?.destroy();
+        this.segments.forEach(seg => seg?.destroy());
+        this.trail?.destroy();
+        this.eyeL?.destroy();
+        this.eyeR?.destroy();
+        this.pupilL?.destroy();
+        this.pupilR?.destroy();
         this.segments = [];
     }
 
     updateFromInput(targetAngle, isBoosting, delta) {
-        if (!this.isPlayerControlled || !this.head.body) return;
+        if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
         this.setBoost(isBoosting);
         this.scale = this.calculateScale();
         const baseSpeed = this.calculateBaseSpeed();
@@ -304,6 +309,7 @@ export class Snake {
     }
 
     postUpdate(delta = 16.67) {
+        if (!this.alive || !this.head?.active) return;
         if (this.isPlayerControlled) {
             this._reconcilePlayerWithServer(delta);
         } else {

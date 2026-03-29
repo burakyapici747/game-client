@@ -2,12 +2,15 @@ import Phaser from 'phaser';
 import { Snake } from './Snake';
 import { NetworkManager } from './../../network/NetWorkManager';
 
+const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
+
 export class Game extends Phaser.Scene {
     constructor() {
         super('Game');
         this.snakes = new Map();
         this.foods = new Map();
-        this.foodBlitter = null;
+        this.foodBlitter = null;       // Normal food (scale=1), 16px glow dot
+        this.foodBlitterLarge = null;   // Large food (scale>1), 24px glow dot
         this.pendingSegmentMutations = new Map();
         this.myId = null;
         this.networkManager = null;
@@ -19,13 +22,13 @@ export class Game extends Phaser.Scene {
     }
 
     create() {
-        console.log("Game Scene: create()");
-
         this.networkManager = new NetworkManager(this);
 
         this.events.on('start_game', this.onStartGame, this);
         this.events.on('self_position', this.onSelfPosition, this);
         this.events.on('entity_collection', this.onEntityCollection, this);
+
+
         this.events.on('segment_mutation_collection', this.onSegmentMutationCollection, this);
         this.events.on('food_collection', this.onFoodCollection, this);
         this.events.on('food_mutation_collection', this.onFoodMutationCollection, this);
@@ -36,15 +39,61 @@ export class Game extends Phaser.Scene {
 
         this.cameras.main.setZoom(1).roundPixels = true;
 
-        this.fpsText = this.add.text(4, 4, 'Sunucuya Bağlanılıyor...', {
+        this.fpsText = this.add.text(4, 4, 'FPS: 0', {
             fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
             backgroundColor: '#00000088', padding: { left: 4, right: 4, top: 2, bottom: 2 }
         }).setScrollFactor(0).setDepth(1000);
+
+        this.createLoadingUI();
+    }
+
+    createLoadingUI() {
+        const cx = this.cameras.main.width / 2;
+        const cy = this.cameras.main.height / 2;
+
+        this.loadingContainer = this.add.container(0, 0).setScrollFactor(0).setDepth(9999);
+
+        // Arkaplan
+        const bg = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.85);
+        this.loadingContainer.add(bg);
+
+        // Yazi
+        const text = this.add.text(cx, cy - 30, 'Waiting For Server...', {
+            fontSize: '24px',
+            fontFamily: 'Inter, sans-serif',
+            color: '#FFFFFF',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.loadingContainer.add(text);
+
+        // Yukleniyor animasyonu
+        const spinner = this.add.graphics();
+        spinner.x = cx;
+        spinner.y = cy + 30;
+        this.loadingContainer.add(spinner);
+
+        let angle = 0;
+        this.tweens.add({
+            targets: { value: 360 },
+            value: 360,
+            duration: 1000,
+            repeat: -1,
+            onUpdate: (tween) => {
+                angle = Phaser.Math.DegToRad(tween.getValue());
+                spinner.clear();
+                spinner.lineStyle(4, 0x00ff00, 1);
+                spinner.beginPath();
+                spinner.arc(0, 0, 20, angle, angle + Math.PI * 1.5, false);
+                spinner.strokePath();
+            }
+        });
     }
 
     onStartGame(startInfo) {
-        console.log("Oyun başlıyor...", startInfo);
-        const clientId = this.toId(startInfo?.clientId);
+        console.log("onStartGame Alındı:", startInfo);
+        this.hideLoader();
+        
+        const clientId = this.toId(startInfo?.clientId ?? startInfo?.client_id);
         if (clientId === null) {
             console.warn('Geçersiz clientId alındı:', startInfo);
             return;
@@ -68,10 +117,21 @@ export class Game extends Phaser.Scene {
         );
     }
 
+    hideLoader() {
+        if (!this.loadingContainer) {
+            return;
+        }
+
+        this.loadingContainer.setAlpha(0);
+        this.loadingContainer.destroy();
+        this.loadingContainer = null;
+    }
+
     onEntityCollection(entityCollection) {
         const entityIds = entityCollection?.entityIds ?? [];
         if (entityIds.length === 0) return;
 
+        this.hideLoader();
         if (!this.gameStarted) {
             this.gameStarted = true;
             if (!this.grid) {
@@ -236,7 +296,7 @@ export class Game extends Phaser.Scene {
 
     ensurePlayerSnake(entityId, x, y, segmentCount) {
         const existingSnake = this.snakes.get(entityId);
-        if (existingSnake?.isPlayerControlled) {
+        if (existingSnake?.isPlayerControlled && existingSnake.alive) {
             if (segmentCount !== undefined) {
                 existingSnake.syncSegmentCountFromServer(segmentCount);
             }
@@ -284,6 +344,11 @@ export class Game extends Phaser.Scene {
         return normalizedId;
     }
 
+    // ── Food Rendering ──────────────────────────────────────────
+    // Phaser Blitter: binlerce food objesini tek draw call ile çizen performans yapısı.
+    // Her food Bob'u oluşturulurken rastgele bir renk frame'i atanır.
+    // Koordinatlar doğrudan dünya piksel koordinatlarıdır (invScale yok).
+
     upsertFood(foodData) {
         const foodId = this.toFoodId(foodData?.foodId ?? foodData?.food_id);
         if (foodId === null) return null;
@@ -298,13 +363,22 @@ export class Game extends Phaser.Scene {
         const existingFood = this.foods.get(foodId);
         if (existingFood) {
             if (existingFood.x !== targetX || existingFood.y !== targetY) {
-                existingFood.setPosition(targetX, targetY);
+                existingFood.x = targetX;
+                existingFood.y = targetY;
             }
             return foodId;
         }
 
-        const foodBlitter = this.ensureFoodBlitter();
-        const foodBob = foodBlitter.create(targetX, targetY);
+        const scaleValue = Number(foodData?.scale ?? 1);
+        const isLarge = scaleValue > 1;
+
+        // Normal food: 16px glow dot, Large food: 24px glow dot
+        const targetBlitter = isLarge ? this.ensureFoodBlitterLarge() : this.ensureFoodBlitter();
+
+        // Rastgele renk frame'i seç (0-15)
+        const colorFrame = Math.floor(Math.random() * FOOD_COLOR_COUNT);
+        const foodBob = targetBlitter.create(targetX, targetY, colorFrame);
+
         this.foods.set(foodId, foodBob);
         return foodId;
     }
@@ -321,23 +395,29 @@ export class Game extends Phaser.Scene {
     }
 
     clearFoods() {
-        this.foodBlitter?.clear();
+        this.foodBlitter?.destroy();
+        this.foodBlitterLarge?.destroy();
+        this.foodBlitter = null;
+        this.foodBlitterLarge = null;
         this.foods.clear();
     }
 
     ensureFoodBlitter() {
-        if (this.foodBlitter) {
-            return this.foodBlitter;
-        }
-
-        this.foodBlitter = this.add.blitter(0, 0, 'food10').setDepth(0);
+        if (this.foodBlitter) return this.foodBlitter;
+        this.foodBlitter = this.add.blitter(0, 0, 'food_dot').setDepth(0);
         return this.foodBlitter;
     }
+
+    ensureFoodBlitterLarge() {
+        if (this.foodBlitterLarge) return this.foodBlitterLarge;
+        this.foodBlitterLarge = this.add.blitter(0, 0, 'food_dot_large').setDepth(0);
+        return this.foodBlitterLarge;
+    }
+
 
     onGameOver(gameOverInfo) {
         console.log(`Oyun Bitti! Skor: ${gameOverInfo.score}, Öldüren: ${gameOverInfo.killedBy}`);
         this.gameStarted = false;
-        // Burada bir "Oyun Bitti" ekranı gösterebilir veya ana menüye dönebilirsiniz.
         this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
             `Oyun Bitti!\nSkor: ${gameOverInfo.score}`,
             { fontSize: '32px', color: '#ff0000', backgroundColor: '#000' }
@@ -360,22 +440,24 @@ export class Game extends Phaser.Scene {
 
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
 
-        if (mySnake) {
+        if (mySnake && mySnake.alive) {
             this.pointer = this.input.activePointer;
             const isBoosting = this.pointer.isDown;
             const head = mySnake.getHead();
 
-            const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
-            const targetAngle = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y));
+            if (head?.active) {
+                const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
+                const targetAngle = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y));
 
-            this.networkManager.updateAndSendInput(targetAngle, isBoosting, delta);
+                this.networkManager.updateAndSendInput(targetAngle, isBoosting, delta);
 
-            // İstemci tarafı tahminleme (Client-Side Prediction)
-            mySnake.updateFromInput(targetAngle, isBoosting, delta);
+                // İstemci tarafı tahminleme (Client-Side Prediction)
+                mySnake.updateFromInput(targetAngle, isBoosting, delta);
+            }
         }
 
         this.snakes.forEach(snake => {
-            if (snake.getHead() && snake.getHead().visible) {
+            if (snake.alive && snake.getHead()?.active) {
                 snake.postUpdate(delta);
             }
         });
@@ -384,6 +466,10 @@ export class Game extends Phaser.Scene {
             this.grid.tilePositionX = this.cameras.main.scrollX;
             this.grid.tilePositionY = this.cameras.main.scrollY;
         }
+
+        // Food'lar artık statik renk frame'leri kullanıyor — animasyon döngüsü gerekmiyor.
+        // Her Bob oluşturulurken sabit bir renk frame'i atanıyor.
+
         const fps = this.game.loop.actualFps;
         this.fpsText.setText(`FPS: ${Math.round(fps)} | Yılanlar: ${this.snakes.size} | Yiyecekler: ${this.foods.size}`);
     }
