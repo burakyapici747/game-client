@@ -54,7 +54,6 @@ export class Snake {
         this.create(x, y);
     }
 
-    calculateScale() { return Math.min(6, 1 + (this.sct - 2) / 106); }
     calculateBaseSpeed() {
         const PHYS = this.config.PHYS_CONST;
         const baseSpeedNoScale = (this.config.BASE_SPEED_FACTOR * PHYS) / 40;
@@ -67,7 +66,7 @@ export class Snake {
     getSegmentSpacing() {
         const base = this.config.SEGMENT_SPACING_BASE;
         const lenF = Phaser.Math.Clamp((this.sct - 30) / 200, 0, 1);
-        const scF = Phaser.Math.Clamp((this.calculateScale() - 1) / 5, 0, 1);
+        const scF = Phaser.Math.Clamp((this.scale - 1) / 5, 0, 1);
         const extra = 0.35 * (0.7 * lenF + 0.3 * scF);
         return base * (1 + extra);
     }
@@ -295,7 +294,7 @@ export class Snake {
     updateFromInput(targetAngle, isBoosting, delta) {
         if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
         this.setBoost(isBoosting);
-        this.scale = this.calculateScale();
+        this.setBoost(isBoosting);
         const baseSpeed = this.calculateBaseSpeed();
         const boostSpeed = this.calculateBoostSpeed();
         this.speed = this.isBoosting ? boostSpeed : baseSpeed;
@@ -507,6 +506,7 @@ export class Snake {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
         const rawAngle = Number(entityData?.angle);
+        const scaleVal = Number(entityData?.scale);
 
         if (Number.isFinite(x)) {
             this.networkTarget.x = x;
@@ -516,6 +516,9 @@ export class Snake {
         }
         if (Number.isFinite(rawAngle)) {
             this.networkTarget.angle = this._decodeServerAngle(rawAngle);
+        }
+        if (Number.isFinite(scaleVal) && scaleVal > 0) {
+            this.scale = scaleVal;
         }
 
         this.hasServerState = true;

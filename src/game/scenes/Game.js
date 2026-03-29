@@ -109,11 +109,13 @@ export class Game extends Phaser.Scene {
         const startX = Number(startInfo?.x);
         const startY = Number(startInfo?.y);
         const startSegmentCount = Number(startInfo?.segmentCount ?? startInfo?.segment_count);
+        const startScale = Number(startInfo?.scale ?? 1.0);
         this.ensurePlayerSnake(
             clientId,
             Number.isFinite(startX) ? startX : 0,
             Number.isFinite(startY) ? startY : 0,
-            Number.isFinite(startSegmentCount) ? startSegmentCount : undefined
+            Number.isFinite(startSegmentCount) ? startSegmentCount : undefined,
+            Number.isFinite(startScale) ? startScale : undefined
         );
     }
 
@@ -142,6 +144,7 @@ export class Game extends Phaser.Scene {
         const xs = entityCollection?.xs ?? [];
         const ys = entityCollection?.ys ?? [];
         const angles = entityCollection?.angles ?? [];
+        const scales = entityCollection?.scales ?? [];
 
         const fullyDataIds = entityCollection?.fullyDataEntityIds ?? [];
         const fullyDataCounts = entityCollection?.fullyDataSegmentCounts ?? [];
@@ -159,6 +162,7 @@ export class Game extends Phaser.Scene {
             const initialX = Number(xs[i]);
             const initialY = Number(ys[i]);
             const angle = Number(angles[i]);
+            const scale = (scales && scales.length > i) ? Number(scales[i]) : 1.0;
 
             const entitySegmentCount = fullyDataMap.has(rawId) ? fullyDataMap.get(rawId) : undefined;
 
@@ -190,7 +194,7 @@ export class Game extends Phaser.Scene {
                 snake.syncSegmentCountFromServer(entitySegmentCount);
             }
 
-            snake.updateFromServerState({ x: initialX, y: initialY, angle: angle });
+            snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
             this.flushPendingSegmentMutations(entityId, snake);
         }
     }
@@ -294,11 +298,14 @@ export class Game extends Phaser.Scene {
         }
     }
 
-    ensurePlayerSnake(entityId, x, y, segmentCount) {
+    ensurePlayerSnake(entityId, x, y, segmentCount, scale) {
         const existingSnake = this.snakes.get(entityId);
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
             if (segmentCount !== undefined) {
                 existingSnake.syncSegmentCountFromServer(segmentCount);
+            }
+            if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
+                existingSnake.scale = scale;
             }
             return existingSnake;
         }
@@ -309,6 +316,7 @@ export class Game extends Phaser.Scene {
         }
 
         const playerSnake = new Snake(this, true, x, y, segmentCount);
+        if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
         this.cameras.main.startFollow(playerSnake.getHead(), true, 0.05, 0.05);
         return playerSnake;
@@ -471,7 +479,11 @@ export class Game extends Phaser.Scene {
         // Her Bob oluşturulurken sabit bir renk frame'i atanıyor.
 
         const fps = this.game.loop.actualFps;
-        this.fpsText.setText(`FPS: ${Math.round(fps)} | Yılanlar: ${this.snakes.size} | Yiyecekler: ${this.foods.size}`);
+        let coordsText = "";
+        if (mySnake && mySnake.getHead()) {
+           coordsText = ` | Koord: ${Math.round(mySnake.getHead().x)}, ${Math.round(mySnake.getHead().y)}`;
+        }
+        this.fpsText.setText(`FPS: ${Math.round(fps)} | Yılanlar: ${this.snakes.size} | Yiyecekler: ${this.foods.size}${coordsText}`);
     }
 
     createTiledBackground() {
