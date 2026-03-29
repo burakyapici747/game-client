@@ -34,6 +34,7 @@ export class Game extends Phaser.Scene {
         this.events.on('food_mutation_collection', this.onFoodMutationCollection, this);
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
+        this.events.on('death_notification', this.onDeathNotification, this);
 
         this.networkManager.connect();
 
@@ -291,11 +292,6 @@ export class Game extends Phaser.Scene {
 
         snake.destroy();
         this.snakes.delete(entityId);
-
-        if (entityId === this.myId) {
-            this.gameStarted = false;
-            this.myId = null;
-        }
     }
 
     ensurePlayerSnake(entityId, x, y, segmentCount, scale) {
@@ -318,7 +314,8 @@ export class Game extends Phaser.Scene {
         const playerSnake = new Snake(this, true, x, y, segmentCount);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
-        this.cameras.main.startFollow(playerSnake.getHead(), true, 0.05, 0.05);
+        this.cameras.main.startFollow(playerSnake.getHead(), true, 1.0, 1.0);
+        this.cameras.main.setRoundPixels(true);
         return playerSnake;
     }
 
@@ -423,13 +420,45 @@ export class Game extends Phaser.Scene {
     }
 
 
+    onDeathNotification(data) {
+        const score = data?.score ?? 0;
+        this.onGameOver({ score: score, killedBy: 'Çarpışma' });
+    }
+
     onGameOver(gameOverInfo) {
-        console.log(`Oyun Bitti! Skor: ${gameOverInfo.score}, Öldüren: ${gameOverInfo.killedBy}`);
+        if (!this.gameStarted) return;
+        console.log(`Oyun Bitti! Skor: ${gameOverInfo.score}`);
         this.gameStarted = false;
-        this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
-            `Oyun Bitti!\nSkor: ${gameOverInfo.score}`,
-            { fontSize: '32px', color: '#ff0000', backgroundColor: '#000' }
-        ).setOrigin(0.5, 0.5).setScrollFactor(0);
+        
+        const cx = this.cameras.main.width / 2;
+        const cy = this.cameras.main.height / 2;
+
+        // Karartma efekti
+        this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
+            .setOrigin(0.5).setScrollFactor(0).setDepth(10000);
+
+        // Modern Game Over Paneli
+        const panel = this.add.graphics().setScrollFactor(0).setDepth(10001);
+        panel.fillStyle(0x1a1a1a, 0.95);
+        panel.fillRoundedRect(cx - 200, cy - 150, 400, 300, 20);
+        panel.lineStyle(2, 0x00ff00, 1);
+        panel.strokeRoundedRect(cx - 200, cy - 150, 400, 300, 20);
+
+        this.add.text(cx, cy - 100, 'GAME OVER', {
+            fontSize: '48px', fontFamily: 'Outfit, sans-serif', color: '#ff3333', fontStyle: 'bold'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
+
+        this.add.text(cx, cy - 10, `Final Score`, {
+            fontSize: '18px', fontFamily: 'Inter, sans-serif', color: '#aaaaaa'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
+
+        this.add.text(cx, cy + 30, `${gameOverInfo.score}`, {
+            fontSize: '64px', fontFamily: 'Outfit, sans-serif', color: '#00ff00', fontStyle: 'bold'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
+
+        this.add.text(cx, cy + 110, 'Press F5 to Play Again', {
+            fontSize: '16px', fontFamily: 'Inter, sans-serif', color: '#ffffff'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
     }
 
     onDisconnected() {
@@ -461,6 +490,12 @@ export class Game extends Phaser.Scene {
 
                 // İstemci tarafı tahminleme (Client-Side Prediction)
                 mySnake.updateFromInput(targetAngle, isBoosting, delta);
+
+                // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
+                const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);
+                const currentZoom = this.cameras.main.zoom;
+                const zoomLerp = 0.05;
+                this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
             }
         }
 

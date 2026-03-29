@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package server;
+
+message DeathNotification {
+  uint32 score = 1;
+  uint32 killed_by_entity_id = 2;
+}

@@ -97,6 +97,12 @@ export class Snake {
         if (this.head) {
             this.head.setDepth(this.sct + 1);
             this.head.setTint(this.segmentPrimaryColor);
+            
+            // Fix eye depth disappearing
+            this.eyeL?.setDepth(this.head.depth + 1);
+            this.eyeR?.setDepth(this.head.depth + 1);
+            this.pupilL?.setDepth(this.head.depth + 2);
+            this.pupilR?.setDepth(this.head.depth + 2);
         }
         for (let i = 0; i < this.segments.length; i++) {
             this.segments[i].setDepth(this.sct - i);
@@ -205,7 +211,7 @@ export class Snake {
             const spawnPos = this._resolveSegmentSpawnPositionBehindTail();
             const segmentIndex = this.segments.length;
             const segment = this._createSegmentSprite(segmentIndex, spawnPos.x, spawnPos.y);
-            segment.setScale(this.scale); // Using current snake scale since individual segment scales are no longer sent
+            segment.setScale(this.scale); // Scale new segments immediately
             this.segments.push(segment);
         }
 
@@ -402,21 +408,28 @@ export class Snake {
         }
         dir.normalize();
         this._lookVec.copy(dir);
+        
         const rot = this.head.rotation;
         const cos = Math.cos(rot), sin = Math.sin(rot);
         const l = this._eyeLocalL;
         const r = this._eyeLocalR;
-        const lx = this.head.x + (l.x * cos - l.y * sin);
-        const ly = this.head.y + (l.x * sin + l.y * cos);
-        const rx = this.head.x + (r.x * cos - r.y * sin);
-        const ry = this.head.y + (r.x * sin + r.y * cos);
-        this.eyeL.setPosition(Math.round(lx), Math.round(ly));
-        this.eyeR.setPosition(Math.round(rx), Math.round(ry));
-        const maxR = this._pupilMax;
+        
+        // Scale offset by snake scale
+        const curScale = this.scale;
+        const lx = this.head.x + (l.x * curScale * cos - l.y * curScale * sin);
+        const ly = this.head.y + (l.x * curScale * sin + l.y * curScale * cos);
+        const rx = this.head.x + (r.x * curScale * cos - r.y * curScale * sin);
+        const ry = this.head.y + (r.x * curScale * sin + r.y * curScale * cos);
+        
+        this.eyeL.setPosition(Math.round(lx), Math.round(ly)).setScale(curScale);
+        this.eyeR.setPosition(Math.round(rx), Math.round(ry)).setScale(curScale);
+        
+        const maxR = this._pupilMax * curScale;
         const px = Phaser.Math.Clamp(dir.x * maxR, -maxR, maxR);
         const py = Phaser.Math.Clamp(dir.y * maxR, -maxR, maxR);
-        this.pupilL.setPosition(Math.round(lx + px), Math.round(ly + py));
-        this.pupilR.setPosition(Math.round(rx + px), Math.round(ry + py));
+        
+        this.pupilL.setPosition(Math.round(lx + px), Math.round(ly + py)).setScale(curScale);
+        this.pupilR.setPosition(Math.round(rx + px), Math.round(ry + py)).setScale(curScale);
     }
 
     _initPathWarmup(x, y) {
@@ -519,20 +532,33 @@ export class Snake {
         }
         if (Number.isFinite(scaleVal) && scaleVal > 0) {
             this.scale = scaleVal;
+            this._updateSegmentScaling();
         }
 
         this.hasServerState = true;
     }
 
+    _updateSegmentScaling() {
+        if (this.head) this.head.setScale(this.scale);
+        this.segments.forEach(seg => {
+            if (seg && seg.active) seg.setScale(this.scale);
+        });
+    }
+
     updateSelfPositionFromServer(entityData) {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
+        const scaleVal = Number(entityData?.scale);
 
         if (Number.isFinite(x)) {
             this.selfServerTarget.x = x;
         }
         if (Number.isFinite(y)) {
             this.selfServerTarget.y = y;
+        }
+        if (Number.isFinite(scaleVal) && scaleVal > 0) {
+            this.scale = scaleVal;
+            this._updateSegmentScaling();
         }
 
         this.hasSelfServerState = true;

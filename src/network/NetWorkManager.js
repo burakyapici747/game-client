@@ -129,6 +129,10 @@ export class NetworkManager {
                     }
                 }
                 break;
+            case 'death_notification':
+            case 'deathNotification':
+                this.scene.events.emit('death_notification', envelope.deathNotification || envelope.death_notification);
+                break;
             default:
                 console.warn('Bilinmeyen sunucu mesajı türü:', payloadType);
         }
