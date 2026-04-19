@@ -1556,6 +1556,7 @@ export const server = $root.server = (() => {
          * @property {server.IEntityCollection|null} [entityCollection] ServerEnvelope entityCollection
          * @property {server.IRemoveEntity|null} [removeEntity] ServerEnvelope removeEntity
          * @property {server.IPong|null} [pong] ServerEnvelope pong
+         * @property {server.IDeathNotification|null} [deathNotification] ServerEnvelope deathNotification
          * @property {server.ISelfPosition|null} [selfPosition] ServerEnvelope selfPosition
          * @property {server.ISegmentMutationCollection|null} [segmentMutationCollection] ServerEnvelope segmentMutationCollection
          * @property {server.IFoodCollection|null} [foodCollection] ServerEnvelope foodCollection
@@ -1610,6 +1611,14 @@ export const server = $root.server = (() => {
         ServerEnvelope.prototype.pong = null;
 
         /**
+         * ServerEnvelope deathNotification.
+         * @member {server.IDeathNotification|null|undefined} deathNotification
+         * @memberof server.ServerEnvelope
+         * @instance
+         */
+        ServerEnvelope.prototype.deathNotification = null;
+
+        /**
          * ServerEnvelope selfPosition.
          * @member {server.ISelfPosition|null|undefined} selfPosition
          * @memberof server.ServerEnvelope
@@ -1646,12 +1655,12 @@ export const server = $root.server = (() => {
 
         /**
          * ServerEnvelope payload.
-         * @member {"startInformation"|"entityCollection"|"removeEntity"|"pong"|undefined} payload
+         * @member {"startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification"|undefined} payload
          * @memberof server.ServerEnvelope
          * @instance
          */
         Object.defineProperty(ServerEnvelope.prototype, "payload", {
-            get: $util.oneOfGetter($oneOfFields = ["startInformation", "entityCollection", "removeEntity", "pong"]),
+            get: $util.oneOfGetter($oneOfFields = ["startInformation", "entityCollection", "removeEntity", "pong", "deathNotification"]),
             set: $util.oneOfSetter($oneOfFields)
         });
 
@@ -1687,6 +1696,8 @@ export const server = $root.server = (() => {
                 $root.server.RemoveEntity.encode(message.removeEntity, writer.uint32(/* id 3, wireType 2 =*/26).fork()).ldelim();
             if (message.pong != null && Object.hasOwnProperty.call(message, "pong"))
                 $root.server.Pong.encode(message.pong, writer.uint32(/* id 4, wireType 2 =*/34).fork()).ldelim();
+            if (message.deathNotification != null && Object.hasOwnProperty.call(message, "deathNotification"))
+                $root.server.DeathNotification.encode(message.deathNotification, writer.uint32(/* id 5, wireType 2 =*/42).fork()).ldelim();
             if (message.selfPosition != null && Object.hasOwnProperty.call(message, "selfPosition"))
                 $root.server.SelfPosition.encode(message.selfPosition, writer.uint32(/* id 10, wireType 2 =*/82).fork()).ldelim();
             if (message.segmentMutationCollection != null && Object.hasOwnProperty.call(message, "segmentMutationCollection"))
@@ -1745,6 +1756,10 @@ export const server = $root.server = (() => {
                     }
                 case 4: {
                         message.pong = $root.server.Pong.decode(reader, reader.uint32());
+                        break;
+                    }
+                case 5: {
+                        message.deathNotification = $root.server.DeathNotification.decode(reader, reader.uint32());
                         break;
                     }
                 case 10: {
@@ -1837,6 +1852,16 @@ export const server = $root.server = (() => {
                         return "pong." + error;
                 }
             }
+            if (message.deathNotification != null && message.hasOwnProperty("deathNotification")) {
+                if (properties.payload === 1)
+                    return "payload: multiple values";
+                properties.payload = 1;
+                {
+                    let error = $root.server.DeathNotification.verify(message.deathNotification);
+                    if (error)
+                        return "deathNotification." + error;
+                }
+            }
             if (message.selfPosition != null && message.hasOwnProperty("selfPosition")) {
                 let error = $root.server.SelfPosition.verify(message.selfPosition);
                 if (error)
@@ -1891,6 +1916,11 @@ export const server = $root.server = (() => {
                 if (typeof object.pong !== "object")
                     throw TypeError(".server.ServerEnvelope.pong: object expected");
                 message.pong = $root.server.Pong.fromObject(object.pong);
+            }
+            if (object.deathNotification != null) {
+                if (typeof object.deathNotification !== "object")
+                    throw TypeError(".server.ServerEnvelope.deathNotification: object expected");
+                message.deathNotification = $root.server.DeathNotification.fromObject(object.deathNotification);
             }
             if (object.selfPosition != null) {
                 if (typeof object.selfPosition !== "object")
@@ -1954,6 +1984,11 @@ export const server = $root.server = (() => {
                 if (options.oneofs)
                     object.payload = "pong";
             }
+            if (message.deathNotification != null && message.hasOwnProperty("deathNotification")) {
+                object.deathNotification = $root.server.DeathNotification.toObject(message.deathNotification, options);
+                if (options.oneofs)
+                    object.payload = "deathNotification";
+            }
             if (message.selfPosition != null && message.hasOwnProperty("selfPosition"))
                 object.selfPosition = $root.server.SelfPosition.toObject(message.selfPosition, options);
             if (message.segmentMutationCollection != null && message.hasOwnProperty("segmentMutationCollection"))
@@ -2005,6 +2040,8 @@ export const server = $root.server = (() => {
          * @property {number|null} [y] StartInformation y
          * @property {number|null} [segmentCount] StartInformation segmentCount
          * @property {number|null} [startDirection] StartInformation startDirection
+         * @property {number|null} [scale] StartInformation scale
+         * @property {number|null} [worldRadius] StartInformation worldRadius
          */
 
         /**
@@ -2063,6 +2100,22 @@ export const server = $root.server = (() => {
         StartInformation.prototype.startDirection = 0;
 
         /**
+         * StartInformation scale.
+         * @member {number} scale
+         * @memberof server.StartInformation
+         * @instance
+         */
+        StartInformation.prototype.scale = 0;
+
+        /**
+         * StartInformation worldRadius.
+         * @member {number} worldRadius
+         * @memberof server.StartInformation
+         * @instance
+         */
+        StartInformation.prototype.worldRadius = 0;
+
+        /**
          * Creates a new StartInformation instance using the specified properties.
          * @function create
          * @memberof server.StartInformation
@@ -2096,6 +2149,10 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.segmentCount);
             if (message.startDirection != null && Object.hasOwnProperty.call(message, "startDirection"))
                 writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.startDirection);
+            if (message.scale != null && Object.hasOwnProperty.call(message, "scale"))
+                writer.uint32(/* id 6, wireType 5 =*/53).float(message.scale);
+            if (message.worldRadius != null && Object.hasOwnProperty.call(message, "worldRadius"))
+                writer.uint32(/* id 7, wireType 5 =*/61).float(message.worldRadius);
             return writer;
         };
 
@@ -2152,6 +2209,14 @@ export const server = $root.server = (() => {
                         message.startDirection = reader.uint32();
                         break;
                     }
+                case 6: {
+                        message.scale = reader.float();
+                        break;
+                    }
+                case 7: {
+                        message.worldRadius = reader.float();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -2202,6 +2267,12 @@ export const server = $root.server = (() => {
             if (message.startDirection != null && message.hasOwnProperty("startDirection"))
                 if (!$util.isInteger(message.startDirection))
                     return "startDirection: integer expected";
+            if (message.scale != null && message.hasOwnProperty("scale"))
+                if (typeof message.scale !== "number")
+                    return "scale: number expected";
+            if (message.worldRadius != null && message.hasOwnProperty("worldRadius"))
+                if (typeof message.worldRadius !== "number")
+                    return "worldRadius: number expected";
             return null;
         };
 
@@ -2227,6 +2298,10 @@ export const server = $root.server = (() => {
                 message.segmentCount = object.segmentCount >>> 0;
             if (object.startDirection != null)
                 message.startDirection = object.startDirection >>> 0;
+            if (object.scale != null)
+                message.scale = Number(object.scale);
+            if (object.worldRadius != null)
+                message.worldRadius = Number(object.worldRadius);
             return message;
         };
 
@@ -2249,6 +2324,8 @@ export const server = $root.server = (() => {
                 object.y = 0;
                 object.segmentCount = 0;
                 object.startDirection = 0;
+                object.scale = 0;
+                object.worldRadius = 0;
             }
             if (message.clientId != null && message.hasOwnProperty("clientId"))
                 object.clientId = message.clientId;
@@ -2260,6 +2337,10 @@ export const server = $root.server = (() => {
                 object.segmentCount = message.segmentCount;
             if (message.startDirection != null && message.hasOwnProperty("startDirection"))
                 object.startDirection = message.startDirection;
+            if (message.scale != null && message.hasOwnProperty("scale"))
+                object.scale = options.json && !isFinite(message.scale) ? String(message.scale) : message.scale;
+            if (message.worldRadius != null && message.hasOwnProperty("worldRadius"))
+                object.worldRadius = options.json && !isFinite(message.worldRadius) ? String(message.worldRadius) : message.worldRadius;
             return object;
         };
 
@@ -2602,6 +2683,7 @@ export const server = $root.server = (() => {
          * @property {Array.<number>|null} [angles] EntityCollection angles
          * @property {Array.<number>|null} [fullyDataEntityIds] EntityCollection fullyDataEntityIds
          * @property {Array.<number>|null} [fullyDataSegmentCounts] EntityCollection fullyDataSegmentCounts
+         * @property {Array.<number>|null} [scales] EntityCollection scales
          */
 
         /**
@@ -2619,6 +2701,7 @@ export const server = $root.server = (() => {
             this.angles = [];
             this.fullyDataEntityIds = [];
             this.fullyDataSegmentCounts = [];
+            this.scales = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -2672,6 +2755,14 @@ export const server = $root.server = (() => {
          * @instance
          */
         EntityCollection.prototype.fullyDataSegmentCounts = $util.emptyArray;
+
+        /**
+         * EntityCollection scales.
+         * @member {Array.<number>} scales
+         * @memberof server.EntityCollection
+         * @instance
+         */
+        EntityCollection.prototype.scales = $util.emptyArray;
 
         /**
          * Creates a new EntityCollection instance using the specified properties.
@@ -2731,6 +2822,12 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 6, wireType 2 =*/50).fork();
                 for (let i = 0; i < message.fullyDataSegmentCounts.length; ++i)
                     writer.uint32(message.fullyDataSegmentCounts[i]);
+                writer.ldelim();
+            }
+            if (message.scales != null && message.scales.length) {
+                writer.uint32(/* id 7, wireType 2 =*/58).fork();
+                for (let i = 0; i < message.scales.length; ++i)
+                    writer.float(message.scales[i]);
                 writer.ldelim();
             }
             return writer;
@@ -2835,6 +2932,17 @@ export const server = $root.server = (() => {
                             message.fullyDataSegmentCounts.push(reader.uint32());
                         break;
                     }
+                case 7: {
+                        if (!(message.scales && message.scales.length))
+                            message.scales = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.scales.push(reader.float());
+                        } else
+                            message.scales.push(reader.float());
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -2912,6 +3020,13 @@ export const server = $root.server = (() => {
                     if (!$util.isInteger(message.fullyDataSegmentCounts[i]))
                         return "fullyDataSegmentCounts: integer[] expected";
             }
+            if (message.scales != null && message.hasOwnProperty("scales")) {
+                if (!Array.isArray(message.scales))
+                    return "scales: array expected";
+                for (let i = 0; i < message.scales.length; ++i)
+                    if (typeof message.scales[i] !== "number")
+                        return "scales: number[] expected";
+            }
             return null;
         };
 
@@ -2969,6 +3084,13 @@ export const server = $root.server = (() => {
                 for (let i = 0; i < object.fullyDataSegmentCounts.length; ++i)
                     message.fullyDataSegmentCounts[i] = object.fullyDataSegmentCounts[i] >>> 0;
             }
+            if (object.scales) {
+                if (!Array.isArray(object.scales))
+                    throw TypeError(".server.EntityCollection.scales: array expected");
+                message.scales = [];
+                for (let i = 0; i < object.scales.length; ++i)
+                    message.scales[i] = Number(object.scales[i]);
+            }
             return message;
         };
 
@@ -2992,6 +3114,7 @@ export const server = $root.server = (() => {
                 object.angles = [];
                 object.fullyDataEntityIds = [];
                 object.fullyDataSegmentCounts = [];
+                object.scales = [];
             }
             if (message.entityIds && message.entityIds.length) {
                 object.entityIds = [];
@@ -3022,6 +3145,11 @@ export const server = $root.server = (() => {
                 object.fullyDataSegmentCounts = [];
                 for (let j = 0; j < message.fullyDataSegmentCounts.length; ++j)
                     object.fullyDataSegmentCounts[j] = message.fullyDataSegmentCounts[j];
+            }
+            if (message.scales && message.scales.length) {
+                object.scales = [];
+                for (let j = 0; j < message.scales.length; ++j)
+                    object.scales[j] = options.json && !isFinite(message.scales[j]) ? String(message.scales[j]) : message.scales[j];
             }
             return object;
         };
@@ -3362,6 +3490,7 @@ export const server = $root.server = (() => {
          * @property {number|null} [entityId] SelfPosition entityId
          * @property {number|null} [x] SelfPosition x
          * @property {number|null} [y] SelfPosition y
+         * @property {number|null} [scale] SelfPosition scale
          */
 
         /**
@@ -3404,6 +3533,14 @@ export const server = $root.server = (() => {
         SelfPosition.prototype.y = 0;
 
         /**
+         * SelfPosition scale.
+         * @member {number} scale
+         * @memberof server.SelfPosition
+         * @instance
+         */
+        SelfPosition.prototype.scale = 0;
+
+        /**
          * Creates a new SelfPosition instance using the specified properties.
          * @function create
          * @memberof server.SelfPosition
@@ -3433,6 +3570,8 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.x);
             if (message.y != null && Object.hasOwnProperty.call(message, "y"))
                 writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
+            if (message.scale != null && Object.hasOwnProperty.call(message, "scale"))
+                writer.uint32(/* id 4, wireType 5 =*/37).float(message.scale);
             return writer;
         };
 
@@ -3481,6 +3620,10 @@ export const server = $root.server = (() => {
                         message.y = reader.uint32();
                         break;
                     }
+                case 4: {
+                        message.scale = reader.float();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -3525,6 +3668,9 @@ export const server = $root.server = (() => {
             if (message.y != null && message.hasOwnProperty("y"))
                 if (!$util.isInteger(message.y))
                     return "y: integer expected";
+            if (message.scale != null && message.hasOwnProperty("scale"))
+                if (typeof message.scale !== "number")
+                    return "scale: number expected";
             return null;
         };
 
@@ -3546,6 +3692,8 @@ export const server = $root.server = (() => {
                 message.x = object.x >>> 0;
             if (object.y != null)
                 message.y = object.y >>> 0;
+            if (object.scale != null)
+                message.scale = Number(object.scale);
             return message;
         };
 
@@ -3566,6 +3714,7 @@ export const server = $root.server = (() => {
                 object.entityId = 0;
                 object.x = 0;
                 object.y = 0;
+                object.scale = 0;
             }
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 object.entityId = message.entityId;
@@ -3573,6 +3722,8 @@ export const server = $root.server = (() => {
                 object.x = message.x;
             if (message.y != null && message.hasOwnProperty("y"))
                 object.y = message.y;
+            if (message.scale != null && message.hasOwnProperty("scale"))
+                object.scale = options.json && !isFinite(message.scale) ? String(message.scale) : message.scale;
             return object;
         };
 
@@ -4148,7 +4299,6 @@ export const server = $root.server = (() => {
          * @property {number|null} [foodId] FoodData foodId
          * @property {number|null} [x] FoodData x
          * @property {number|null} [y] FoodData y
-         * @property {number|null} [scale] FoodData scale
          */
 
         /**
@@ -4191,14 +4341,6 @@ export const server = $root.server = (() => {
         FoodData.prototype.y = 0;
 
         /**
-         * FoodData scale.
-         * @member {number} scale
-         * @memberof server.FoodData
-         * @instance
-         */
-        FoodData.prototype.scale = 0;
-
-        /**
          * Creates a new FoodData instance using the specified properties.
          * @function create
          * @memberof server.FoodData
@@ -4228,8 +4370,6 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.x);
             if (message.y != null && Object.hasOwnProperty.call(message, "y"))
                 writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
-            if (message.scale != null && Object.hasOwnProperty.call(message, "scale"))
-                writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.scale);
             return writer;
         };
 
@@ -4278,10 +4418,6 @@ export const server = $root.server = (() => {
                         message.y = reader.uint32();
                         break;
                     }
-                case 4: {
-                        message.scale = reader.uint32();
-                        break;
-                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -4326,9 +4462,6 @@ export const server = $root.server = (() => {
             if (message.y != null && message.hasOwnProperty("y"))
                 if (!$util.isInteger(message.y))
                     return "y: integer expected";
-            if (message.scale != null && message.hasOwnProperty("scale"))
-                if (!$util.isInteger(message.scale))
-                    return "scale: integer expected";
             return null;
         };
 
@@ -4350,8 +4483,6 @@ export const server = $root.server = (() => {
                 message.x = object.x >>> 0;
             if (object.y != null)
                 message.y = object.y >>> 0;
-            if (object.scale != null)
-                message.scale = object.scale >>> 0;
             return message;
         };
 
@@ -4372,7 +4503,6 @@ export const server = $root.server = (() => {
                 object.foodId = 0;
                 object.x = 0;
                 object.y = 0;
-                object.scale = 0;
             }
             if (message.foodId != null && message.hasOwnProperty("foodId"))
                 object.foodId = message.foodId;
@@ -4380,8 +4510,6 @@ export const server = $root.server = (() => {
                 object.x = message.x;
             if (message.y != null && message.hasOwnProperty("y"))
                 object.y = message.y;
-            if (message.scale != null && message.hasOwnProperty("scale"))
-                object.scale = message.scale;
             return object;
         };
 
@@ -4912,6 +5040,235 @@ export const server = $root.server = (() => {
         };
 
         return FoodMutationCollection;
+    })();
+
+    server.DeathNotification = (function() {
+
+        /**
+         * Properties of a DeathNotification.
+         * @memberof server
+         * @interface IDeathNotification
+         * @property {number|null} [score] DeathNotification score
+         * @property {number|null} [killedByEntityId] DeathNotification killedByEntityId
+         */
+
+        /**
+         * Constructs a new DeathNotification.
+         * @memberof server
+         * @classdesc Represents a DeathNotification.
+         * @implements IDeathNotification
+         * @constructor
+         * @param {server.IDeathNotification=} [properties] Properties to set
+         */
+        function DeathNotification(properties) {
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * DeathNotification score.
+         * @member {number} score
+         * @memberof server.DeathNotification
+         * @instance
+         */
+        DeathNotification.prototype.score = 0;
+
+        /**
+         * DeathNotification killedByEntityId.
+         * @member {number} killedByEntityId
+         * @memberof server.DeathNotification
+         * @instance
+         */
+        DeathNotification.prototype.killedByEntityId = 0;
+
+        /**
+         * Creates a new DeathNotification instance using the specified properties.
+         * @function create
+         * @memberof server.DeathNotification
+         * @static
+         * @param {server.IDeathNotification=} [properties] Properties to set
+         * @returns {server.DeathNotification} DeathNotification instance
+         */
+        DeathNotification.create = function create(properties) {
+            return new DeathNotification(properties);
+        };
+
+        /**
+         * Encodes the specified DeathNotification message. Does not implicitly {@link server.DeathNotification.verify|verify} messages.
+         * @function encode
+         * @memberof server.DeathNotification
+         * @static
+         * @param {server.IDeathNotification} message DeathNotification message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        DeathNotification.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.score != null && Object.hasOwnProperty.call(message, "score"))
+                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.score);
+            if (message.killedByEntityId != null && Object.hasOwnProperty.call(message, "killedByEntityId"))
+                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.killedByEntityId);
+            return writer;
+        };
+
+        /**
+         * Encodes the specified DeathNotification message, length delimited. Does not implicitly {@link server.DeathNotification.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.DeathNotification
+         * @static
+         * @param {server.IDeathNotification} message DeathNotification message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        DeathNotification.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a DeathNotification message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.DeathNotification
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.DeathNotification} DeathNotification
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        DeathNotification.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.DeathNotification();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.score = reader.uint32();
+                        break;
+                    }
+                case 2: {
+                        message.killedByEntityId = reader.uint32();
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a DeathNotification message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.DeathNotification
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.DeathNotification} DeathNotification
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        DeathNotification.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a DeathNotification message.
+         * @function verify
+         * @memberof server.DeathNotification
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        DeathNotification.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.score != null && message.hasOwnProperty("score"))
+                if (!$util.isInteger(message.score))
+                    return "score: integer expected";
+            if (message.killedByEntityId != null && message.hasOwnProperty("killedByEntityId"))
+                if (!$util.isInteger(message.killedByEntityId))
+                    return "killedByEntityId: integer expected";
+            return null;
+        };
+
+        /**
+         * Creates a DeathNotification message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.DeathNotification
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.DeathNotification} DeathNotification
+         */
+        DeathNotification.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.DeathNotification)
+                return object;
+            let message = new $root.server.DeathNotification();
+            if (object.score != null)
+                message.score = object.score >>> 0;
+            if (object.killedByEntityId != null)
+                message.killedByEntityId = object.killedByEntityId >>> 0;
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a DeathNotification message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.DeathNotification
+         * @static
+         * @param {server.DeathNotification} message DeathNotification
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        DeathNotification.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.defaults) {
+                object.score = 0;
+                object.killedByEntityId = 0;
+            }
+            if (message.score != null && message.hasOwnProperty("score"))
+                object.score = message.score;
+            if (message.killedByEntityId != null && message.hasOwnProperty("killedByEntityId"))
+                object.killedByEntityId = message.killedByEntityId;
+            return object;
+        };
+
+        /**
+         * Converts this DeathNotification to JSON.
+         * @function toJSON
+         * @memberof server.DeathNotification
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        DeathNotification.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for DeathNotification
+         * @function getTypeUrl
+         * @memberof server.DeathNotification
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        DeathNotification.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.DeathNotification";
+        };
+
+        return DeathNotification;
     })();
 
     return server;
