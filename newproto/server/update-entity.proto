@@ -2,10 +2,12 @@ syntax = "proto3";
 
 package server;
 
+// Dosya: update-entity.proto. Neden: double (8 byte) yerine uint32 (4 byte) kullanilarak
+// payload boyutu yarisina indirildi. Bu proto legacy olup aktif kullanilmiyor.
 message UpdateEntity {
   uint32 entity_id = 1;
-  double x = 2;
-  double y = 3;
-  double angle = 4;
+  uint32 x = 2;
+  uint32 y = 3;
+  uint32 angle = 4;
   uint32 segment_count = 5;
 }

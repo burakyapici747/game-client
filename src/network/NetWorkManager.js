@@ -10,12 +10,14 @@ export class NetworkManager {
         this.scene = scene;
         this.socket = null;
         this.connected = false;
-        this.wsUrl = 'ws://192.168.3.117:8080/ws';//192.168.1.116
+        this.wsUrl = 'ws://34.79.227.122:8080/ws';
         this.isCurrentlyBoosting = false;
 
         this.lastSentAngleValue = -1;
         this.angleSendTimer = 0;
-        this.angleSendIntervalMoving = 1000 / 60;
+        // Dosya: NetWorkManager.js. Neden: 60fps gonderim gereksiz bandwidth tuketiyor.
+        // 30Hz gonderim yeterli hassasiyet sagliyor, paket sayisi yarisina dusuyor.
+        this.angleSendIntervalMoving = 1000 / 30;
         this.angleSendIntervalStill = 250;
     }
 
