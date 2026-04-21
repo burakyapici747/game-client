@@ -450,7 +450,7 @@ export class Game extends Phaser.Scene {
         if (targetSnake && targetSnake.alive) {
             const head = targetSnake.getHead();
             bobArray.forEach(bob => {
-                if (bob && bob.active) {
+                if (bob) {
                     this.tweens.add({
                         targets: bob,
                         x: head.x,
