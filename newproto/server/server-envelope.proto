@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package server;
+
+import "server/start-information.proto";
+import "server/pong.proto";
+import "server/new-entity.proto";
+import "server/remove-entity.proto";
+import "server/update-entity.proto";
+import "server/upgrade/entity-collection.proto";
+import "server/upgrade/self-position.proto";
+import "server/upgrade/segment-mutation.proto";
+import "server/upgrade/food.proto";
+import "server/upgrade/food-mutation.proto";
+import "server/upgrade/death-notification.proto";
+
+message ServerEnvelope {
+  oneof payload {
+    StartInformation start_information = 1;
+    EntityCollection entity_collection = 2;
+    RemoveEntity remove_entity = 3;
+    Pong pong = 4;
+    DeathNotification death_notification = 5;
+  }
+  SelfPosition self_position = 10;
+  SegmentMutationCollection segment_mutation_collection = 11;
+  FoodCollection food_collection = 12;
+  FoodMutationCollection food_mutation_collection = 13;
+}

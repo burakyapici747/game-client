@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package server;
+
+option java_outer_classname = "SegmentMutationOuterClass";
+
+message SegmentMutationCollection {
+  repeated SegmentMutation mutations = 1;
+}
+
+message SegmentMutation {
+  enum MutationType {
+    SEGMENT_ADD = 0;
+    SEGMENT_REMOVE = 1;
+  }
+
+  uint32 entity_id = 1;
+  MutationType mutation_type = 2;
+  uint32 added_segment_count = 3;
+  uint32 removed_segment_count = 4;
+}

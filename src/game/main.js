@@ -2,38 +2,23 @@ import { Boot } from './scenes/Boot';
 import { Game as MainGame } from './scenes/Game';
 import { MainMenu } from './scenes/MainMenu';
 import { Preloader } from './scenes/Preloader';
-import { Game, Renderer } from 'phaser';
+import Phaser, { Game } from 'phaser';
+
+const V_WIDTH = 1280;
+const V_HEIGHT = 720;
 
 const config = {
-    type: Phaser.AUTO,
-    width: 1024,
-    height: 768,
-    parent: 'game-container',
-    backgroundColor: '#545454',
-    scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH
-    },
-    physics:{
-        default: 'arcade',
-        arcade: {
-            gravity: { y: 0 },
-            debug: false
-        }
-    },
-    scene: [
-        Boot,
-        Preloader,
-        MainMenu,
-        MainGame
-    ],
-    render: {roundPixels: true}
+  type: Phaser.AUTO,
+  width: V_WIDTH,
+  height: V_HEIGHT,
+  parent: 'game-container',
+  backgroundColor: '#202020',
+  pixelArt: false,
+  render: { antialias: true, roundPixels: false, mipmapFilter: 'NEAREST' },
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
+  scene: [Boot, Preloader, MainMenu, MainGame]
 };
 
-const StartGame = (parent) => {
-
-    return new Game({ ...config, parent });
-
-}
-
+const StartGame = (parent) => new Game({ ...config, parent });
 export default StartGame;

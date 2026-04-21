@@ -1,9 +1,0 @@
-syntax = "proto3";
-
-package server;
-
-message PongData {
-  int64 serverTimestamp = 1;
-  int64 clientTimestamp = 2;
-  string nonce = 3;
-}

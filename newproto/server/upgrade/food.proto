@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package server;
+
+option java_outer_classname = "FoodOuterClass";
+
+message FoodData {
+  uint32 food_id = 1;
+  uint32 x = 2;
+  uint32 y = 3;
+  // field 4 (scale) kaldırıldı — tüm yemler eşit değerde.
+  reserved 4;
+}
+
+message FoodCollection {
+  repeated FoodData foods = 1;
+}

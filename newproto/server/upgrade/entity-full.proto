@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package server;
+
+message EntityFull {
+  uint32 entity_id = 1;
+  uint32 x = 2;
+  uint32 y = 3;
+  uint32 angle = 4;
+  uint32 segment_count = 5;
+}

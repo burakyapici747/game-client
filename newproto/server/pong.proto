@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package server;
+
+message Pong {
+  uint64 client_timestamp = 1;
+  uint64 server_timestamp = 2;
+  uint32 nonce = 3;
+}
