@@ -117,8 +117,15 @@ export class Game extends Phaser.Scene {
 
         if (Number.isFinite(worldRadius)) {
             const worldSize = worldRadius * 2;
-            this.cameras.main.setBounds(0, 0, worldSize, worldSize);
+            this.cameras.main.setBounds(-worldRadius, -worldRadius, worldSize, worldSize);
             console.log(`Dünya sınırı ayarlandı: ${worldSize}x${worldSize}`);
+            
+            if (!this.boundaryCircle) {
+                this.boundaryCircle = this.add.graphics()
+                    .lineStyle(24, 0xff3333, 0.4)
+                    .strokeCircle(0, 0, worldRadius)
+                    .setDepth(-1);
+            }
         }
 
         this.ensurePlayerSnake(
@@ -160,10 +167,18 @@ export class Game extends Phaser.Scene {
 
         const fullyDataIds = entityCollection?.fullyDataEntityIds ?? [];
         const fullyDataCounts = entityCollection?.fullyDataSegmentCounts ?? [];
+        const fullyDataPathsArray = entityCollection?.fullyDataPaths ?? [];
 
         const fullyDataMap = new Map();
         for (let i = 0; i < fullyDataIds.length; i++) {
             fullyDataMap.set(fullyDataIds[i], fullyDataCounts[i]);
+        }
+        
+        const fullyDataPaths = new Map();
+        for (const path of fullyDataPathsArray) {
+            if (path && path.entityId != null) {
+                fullyDataPaths.set(path.entityId, path);
+            }
         }
 
         for (let i = 0; i < entityIds.length; i++) {
@@ -177,13 +192,17 @@ export class Game extends Phaser.Scene {
             const scale = (scales && scales.length > i) ? Number(scales[i]) : 1.0;
 
             const entitySegmentCount = fullyDataMap.has(rawId) ? fullyDataMap.get(rawId) : undefined;
+            const entityPath = fullyDataPaths.get(rawId);
 
             if (this.myId !== null && entityId === this.myId) {
                 const playerSnake = this.ensurePlayerSnake(
                     entityId,
                     Number.isFinite(initialX) ? initialX : 0,
                     Number.isFinite(initialY) ? initialY : 0,
-                    entitySegmentCount
+                    entitySegmentCount,
+                    undefined,
+                    0,
+                    entityPath
                 );
                 this.flushPendingSegmentMutations(entityId, playerSnake);
                 continue;
@@ -197,7 +216,9 @@ export class Game extends Phaser.Scene {
                     false,
                     Number.isFinite(initialX) ? initialX : 0,
                     Number.isFinite(initialY) ? initialY : 0,
-                    entitySegmentCount
+                    entitySegmentCount,
+                    0,
+                    entityPath
                 );
                 this.snakes.set(entityId, snake);
             }
@@ -305,7 +326,7 @@ export class Game extends Phaser.Scene {
         this.snakes.delete(entityId);
     }
 
-    ensurePlayerSnake(entityId, x, y, segmentCount, scale, startAngle = 0) {
+    ensurePlayerSnake(entityId, x, y, segmentCount, scale, startAngle = 0, pathData = null) {
         const existingSnake = this.snakes.get(entityId);
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
             if (segmentCount !== undefined) {
@@ -322,7 +343,7 @@ export class Game extends Phaser.Scene {
             this.snakes.delete(entityId);
         }
 
-        const playerSnake = new Snake(this, true, x, y, segmentCount, startAngle);
+        const playerSnake = new Snake(this, true, x, y, segmentCount, startAngle, pathData);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
         return playerSnake;
@@ -440,11 +461,26 @@ export class Game extends Phaser.Scene {
         if (!bobs) return;
         this.foods.delete(foodId);
 
-        let targetSnake = null;
-        if (this.myId !== null && this.snakes.has(this.myId)) {
-             targetSnake = this.snakes.get(this.myId);
+        let closestSnake = null;
+        let minDistance = Infinity;
+
+        const bobForDistance = Array.isArray(bobs) ? bobs[0] : bobs;
+        if (bobForDistance) {
+            this.snakes.forEach(snake => {
+                if (snake.alive) {
+                    const head = snake.getHead();
+                    if (head && head.active) {
+                        const dist = Phaser.Math.Distance.Between(bobForDistance.x, bobForDistance.y, head.x, head.y);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            closestSnake = snake;
+                        }
+                    }
+                }
+            });
         }
 
+        const targetSnake = closestSnake && minDistance < 300 ? closestSnake : null;
         const bobArray = Array.isArray(bobs) ? bobs : [bobs];
 
         if (targetSnake && targetSnake.alive) {
@@ -455,7 +491,7 @@ export class Game extends Phaser.Scene {
                         targets: bob,
                         x: head.x,
                         y: head.y,
-                        duration: 100,
+                        duration: 250,
                         ease: 'Power2',
                         onComplete: () => {
                             bob.destroy();

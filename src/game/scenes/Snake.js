@@ -18,7 +18,7 @@ const SnakeConfig = {
 };
 
 export class Snake {
-    constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT, startAngle = 0) {
+    constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT, startAngle = 0, pathData = null) {
         this.scene = scene;
         this.config = SnakeConfig;
         this.isPlayerControlled = isPlayerControlled;
@@ -51,6 +51,7 @@ export class Snake {
         this.eyeL = null; this.eyeR = null;
         this.pupilL = null; this.pupilR = null;
         this._lookVec = new Phaser.Math.Vector2(1, 0);
+        this.pathData = pathData;
         this.create(x, y, startAngle);
     }
 
@@ -267,7 +268,13 @@ export class Snake {
             this.segments.push(seg);
         }
         this._refreshSegmentDepths();
-        this._initPathWarmup(x, y);
+        
+        if (this.pathData) {
+            this._initPathFromData(this.pathData, x, y);
+        } else {
+            this._initPathWarmup(x, y);
+        }
+        
         this.trail = this.scene.add.particles(this.head.x, this.head.y, 'px32', {
             lifespan: 200, speed: { min: 15, max: 35 }, angle: { min: 160, max: 200 },
             quantity: 1, alpha: { start: 1, end: 0 }, scale: { start: 1.5, end: 0 },
@@ -446,6 +453,53 @@ export class Snake {
             this.path.push(next);
             this.pathSegLens.push(spacing);
             this.totalPathLen += spacing;
+        }
+    }
+
+    _initPathFromData(pathData, headX, headY) {
+        this.path = [new Phaser.Math.Vector2(headX, headY)];
+        this.pathSegLens = [];
+        this.totalPathLen = 0;
+        
+        const xs = pathData.xs ?? [];
+        const ys = pathData.ys ?? [];
+        
+        for (let i = 0; i < xs.length; i++) {
+            const px = xs[i];
+            const py = ys[i];
+            const next = new Phaser.Math.Vector2(px, py);
+            const last = this.path[this.path.length - 1];
+            
+            const dist = Phaser.Math.Distance.Between(last.x, last.y, px, py);
+            this.path.push(next);
+            this.pathSegLens.push(dist);
+            this.totalPathLen += dist;
+        }
+        
+        // Ensure minimum length
+        const spacing = this.getSegmentSpacing();
+        const needLen = (this.segments.length + 1) * spacing + 400;
+        
+        if (this.totalPathLen < needLen) {
+            const dir = new Phaser.Math.Vector2(-1, 0);
+            if (this.path.length >= 2) {
+                const tail = this.path[this.path.length - 1];
+                const prev = this.path[this.path.length - 2];
+                let dx = tail.x - prev.x;
+                let dy = tail.y - prev.y;
+                let len = Math.hypot(dx, dy);
+                if (len > 0.0001) {
+                    dir.set(dx / len, dy / len);
+                }
+            }
+            
+            for (let carried = this.totalPathLen; carried < needLen; carried += spacing) {
+                const last = this.path[this.path.length - 1];
+                const next = new Phaser.Math.Vector2(last.x + dir.x * spacing, last.y + dir.y * spacing);
+                this.path.push(next);
+                this.pathSegLens.push(spacing);
+                this.totalPathLen += spacing;
+            }
         }
     }
 

@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package server;
+
+message EntityPath {
+  uint32 entity_id = 1;
+  repeated uint32 xs = 2 [packed=true];
+  repeated uint32 ys = 3 [packed=true];
+}

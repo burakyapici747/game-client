@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package server;
 
-import "server/upgrade/entity-full.proto";
+import "server/upgrade/entity-path.proto";
 
 message EntityCollection {
   repeated uint32 entity_ids = 1 [packed=true];
@@ -13,4 +13,6 @@ message EntityCollection {
   repeated uint32 fully_data_entity_ids = 5 [packed=true];
   repeated uint32 fully_data_segment_counts = 6 [packed=true];
   repeated float scales = 7 [packed=true];
+  
+  repeated EntityPath fully_data_paths = 8;
 }
