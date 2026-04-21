@@ -18,7 +18,7 @@ const SnakeConfig = {
 };
 
 export class Snake {
-    constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT) {
+    constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT, startAngle = 0) {
         this.scene = scene;
         this.config = SnakeConfig;
         this.isPlayerControlled = isPlayerControlled;
@@ -28,7 +28,7 @@ export class Snake {
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
-        this.networkTarget = { x: x, y: y, angle: 0 };
+        this.networkTarget = { x: x, y: y, angle: startAngle };
         this.selfServerTarget = { x: x, y: y };
         this.hasServerState = false;
         this.hasSelfServerState = false;
@@ -51,7 +51,7 @@ export class Snake {
         this.eyeL = null; this.eyeR = null;
         this.pupilL = null; this.pupilR = null;
         this._lookVec = new Phaser.Math.Vector2(1, 0);
-        this.create(x, y);
+        this.create(x, y, startAngle);
     }
 
     calculateBaseSpeed() {
@@ -254,9 +254,10 @@ export class Snake {
         }
     }
 
-    create(x, y) {
+    create(x, y, startAngle = 0) {
         this.head = this.scene.add.sprite(x, y, 'snake_head48')
             .setOrigin(0.5);
+        this.head.rotation = startAngle;
         if (this.isPlayerControlled) {
             this.scene.physics.world.enable(this.head);
             this.head.body.setSize(40, 40).setOffset(-20, -20);

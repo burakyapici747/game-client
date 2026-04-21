@@ -38,7 +38,7 @@ export class Game extends Phaser.Scene {
 
         this.networkManager.connect();
 
-        this.cameras.main.setZoom(1).roundPixels = true;
+        this.cameras.main.setZoom(1);
 
         this.fpsText = this.add.text(4, 4, 'FPS: 0', {
             fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
@@ -112,6 +112,8 @@ export class Game extends Phaser.Scene {
         const startSegmentCount = Number(startInfo?.segmentCount ?? startInfo?.segment_count);
         const startScale = Number(startInfo?.scale ?? 1.0);
         const worldRadius = Number(startInfo?.worldRadius ?? startInfo?.world_radius);
+        const startDirectionVal = Number(startInfo?.startDirection ?? startInfo?.start_direction ?? 0);
+        const startAngle = Phaser.Math.DegToRad(startDirectionVal * 1.44);
 
         if (Number.isFinite(worldRadius)) {
             const worldSize = worldRadius * 2;
@@ -124,7 +126,8 @@ export class Game extends Phaser.Scene {
             Number.isFinite(startX) ? startX : 0,
             Number.isFinite(startY) ? startY : 0,
             Number.isFinite(startSegmentCount) ? startSegmentCount : undefined,
-            Number.isFinite(startScale) ? startScale : undefined
+            Number.isFinite(startScale) ? startScale : undefined,
+            startAngle
         );
     }
 
@@ -302,7 +305,7 @@ export class Game extends Phaser.Scene {
         this.snakes.delete(entityId);
     }
 
-    ensurePlayerSnake(entityId, x, y, segmentCount, scale) {
+    ensurePlayerSnake(entityId, x, y, segmentCount, scale, startAngle = 0) {
         const existingSnake = this.snakes.get(entityId);
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
             if (segmentCount !== undefined) {
@@ -319,11 +322,9 @@ export class Game extends Phaser.Scene {
             this.snakes.delete(entityId);
         }
 
-        const playerSnake = new Snake(this, true, x, y, segmentCount);
+        const playerSnake = new Snake(this, true, x, y, segmentCount, startAngle);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
-        this.cameras.main.startFollow(playerSnake.getHead(), true, 1.0, 1.0);
-        this.cameras.main.setRoundPixels(true);
         return playerSnake;
     }
 
@@ -437,13 +438,34 @@ export class Game extends Phaser.Scene {
 
         const bobs = this.foods.get(foodId);
         if (!bobs) return;
-
-        if (Array.isArray(bobs)) {
-            bobs.forEach(bob => bob.destroy());
-        } else {
-            bobs.destroy();
-        }
         this.foods.delete(foodId);
+
+        let targetSnake = null;
+        if (this.myId !== null && this.snakes.has(this.myId)) {
+             targetSnake = this.snakes.get(this.myId);
+        }
+
+        const bobArray = Array.isArray(bobs) ? bobs : [bobs];
+
+        if (targetSnake && targetSnake.alive) {
+            const head = targetSnake.getHead();
+            bobArray.forEach(bob => {
+                if (bob && bob.active) {
+                    this.tweens.add({
+                        targets: bob,
+                        x: head.x,
+                        y: head.y,
+                        duration: 100,
+                        ease: 'Power2',
+                        onComplete: () => {
+                            bob.destroy();
+                        }
+                    });
+                }
+            });
+        } else {
+            bobArray.forEach(bob => bob.destroy());
+        }
     }
 
     clearFoods() {
@@ -543,6 +565,9 @@ export class Game extends Phaser.Scene {
 
                 // İstemci tarafı tahminleme (Client-Side Prediction)
                 mySnake.updateFromInput(targetAngle, isBoosting, delta);
+
+                // Kamerayı doğrudan yılana kilitle (snap)
+                this.cameras.main.centerOn(head.x, head.y);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);
