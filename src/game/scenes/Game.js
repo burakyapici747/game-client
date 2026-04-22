@@ -117,13 +117,13 @@ export class Game extends Phaser.Scene {
 
         if (Number.isFinite(worldRadius)) {
             const worldSize = worldRadius * 2;
-            this.cameras.main.setBounds(-worldRadius, -worldRadius, worldSize, worldSize);
+            this.cameras.main.setBounds(0, 0, worldSize, worldSize);
             console.log(`Dünya sınırı ayarlandı: ${worldSize}x${worldSize}`);
             
             if (!this.boundaryCircle) {
                 this.boundaryCircle = this.add.graphics()
                     .lineStyle(24, 0xff3333, 0.4)
-                    .strokeCircle(0, 0, worldRadius)
+                    .strokeCircle(worldRadius, worldRadius, worldRadius)
                     .setDepth(-1);
             }
         }

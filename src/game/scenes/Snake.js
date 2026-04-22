@@ -446,7 +446,11 @@ export class Snake {
         this.totalPathLen = 0;
         const spacing = this.getSegmentSpacing();
         const needLen = (this.segments.length + 1) * spacing + 400;
-        const dir = new Phaser.Math.Vector2(-1, 0);
+        
+        // Use the opposite of the head's rotation to build the initial path backwards
+        const angle = this.head ? this.head.rotation : 0;
+        const dir = new Phaser.Math.Vector2(-Math.cos(angle), -Math.sin(angle));
+        
         for (let carried = 0; carried < needLen; carried += spacing) {
             const last = this.path[this.path.length - 1];
             const next = new Phaser.Math.Vector2(last.x + dir.x * spacing, last.y + dir.y * spacing);
