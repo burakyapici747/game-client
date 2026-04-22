@@ -297,10 +297,7 @@ export class Game extends Phaser.Scene {
         if (entityId !== this.myId) return;
 
         if (!this.gameStarted) {
-            this.gameStarted = true;
-            if (!this.grid) {
-                this.createTiledBackground();
-            }
+            return;
         }
 
         const x = Number(selfPosition?.x);
