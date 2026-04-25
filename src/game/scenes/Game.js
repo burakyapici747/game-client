@@ -112,6 +112,7 @@ export class Game extends Phaser.Scene {
         const startSegmentCount = Number(startInfo?.segmentCount ?? startInfo?.segment_count);
         const startScale = Number(startInfo?.scale ?? 1.0);
         const worldRadius = Number(startInfo?.worldRadius ?? startInfo?.world_radius);
+        const startDirection = Number(startInfo?.startDirection ?? startInfo?.start_direction ?? 0);
 
         if (Number.isFinite(worldRadius)) {
             const worldSize = worldRadius * 2;
@@ -132,7 +133,8 @@ export class Game extends Phaser.Scene {
             Number.isFinite(startX) ? startX : 0,
             Number.isFinite(startY) ? startY : 0,
             Number.isFinite(startSegmentCount) ? startSegmentCount : undefined,
-            Number.isFinite(startScale) ? startScale : undefined
+            Number.isFinite(startScale) ? startScale : undefined,
+            startDirection
         );
     }
 
@@ -188,7 +190,9 @@ export class Game extends Phaser.Scene {
                     entityId,
                     Number.isFinite(initialX) ? initialX : 0,
                     Number.isFinite(initialY) ? initialY : 0,
-                    entitySegmentCount
+                    entitySegmentCount,
+                    undefined,
+                    angle
                 );
                 this.flushPendingSegmentMutations(entityId, playerSnake);
                 continue;
@@ -202,7 +206,8 @@ export class Game extends Phaser.Scene {
                     false,
                     Number.isFinite(initialX) ? initialX : 0,
                     Number.isFinite(initialY) ? initialY : 0,
-                    entitySegmentCount
+                    entitySegmentCount,
+                    angle
                 );
                 this.snakes.set(entityId, snake);
             }
@@ -310,7 +315,7 @@ export class Game extends Phaser.Scene {
         this.snakes.delete(entityId);
     }
 
-    ensurePlayerSnake(entityId, x, y, segmentCount, scale) {
+    ensurePlayerSnake(entityId, x, y, segmentCount, scale, angleRaw) {
         const existingSnake = this.snakes.get(entityId);
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
             if (segmentCount !== undefined) {
@@ -327,7 +332,7 @@ export class Game extends Phaser.Scene {
             this.snakes.delete(entityId);
         }
 
-        const playerSnake = new Snake(this, true, x, y, segmentCount);
+        const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
         this.cameras.main.startFollow(playerSnake.getHead(), true, 1.0, 1.0);

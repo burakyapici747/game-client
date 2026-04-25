@@ -2468,11 +2468,11 @@ export const server = $root.server = (() => {
             if (message.entityId != null && Object.hasOwnProperty.call(message, "entityId"))
                 writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.entityId);
             if (message.x != null && Object.hasOwnProperty.call(message, "x"))
-                writer.uint32(/* id 2, wireType 1 =*/17).double(message.x);
+                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.x);
             if (message.y != null && Object.hasOwnProperty.call(message, "y"))
-                writer.uint32(/* id 3, wireType 1 =*/25).double(message.y);
+                writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
             if (message.angle != null && Object.hasOwnProperty.call(message, "angle"))
-                writer.uint32(/* id 4, wireType 1 =*/33).double(message.angle);
+                writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.angle);
             if (message.segmentCount != null && Object.hasOwnProperty.call(message, "segmentCount"))
                 writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.segmentCount);
             return writer;
@@ -2516,15 +2516,15 @@ export const server = $root.server = (() => {
                         break;
                     }
                 case 2: {
-                        message.x = reader.double();
+                        message.x = reader.uint32();
                         break;
                     }
                 case 3: {
-                        message.y = reader.double();
+                        message.y = reader.uint32();
                         break;
                     }
                 case 4: {
-                        message.angle = reader.double();
+                        message.angle = reader.uint32();
                         break;
                     }
                 case 5: {
@@ -2570,14 +2570,14 @@ export const server = $root.server = (() => {
                 if (!$util.isInteger(message.entityId))
                     return "entityId: integer expected";
             if (message.x != null && message.hasOwnProperty("x"))
-                if (typeof message.x !== "number")
-                    return "x: number expected";
+                if (!$util.isInteger(message.x))
+                    return "x: integer expected";
             if (message.y != null && message.hasOwnProperty("y"))
-                if (typeof message.y !== "number")
-                    return "y: number expected";
+                if (!$util.isInteger(message.y))
+                    return "y: integer expected";
             if (message.angle != null && message.hasOwnProperty("angle"))
-                if (typeof message.angle !== "number")
-                    return "angle: number expected";
+                if (!$util.isInteger(message.angle))
+                    return "angle: integer expected";
             if (message.segmentCount != null && message.hasOwnProperty("segmentCount"))
                 if (!$util.isInteger(message.segmentCount))
                     return "segmentCount: integer expected";
@@ -2599,11 +2599,11 @@ export const server = $root.server = (() => {
             if (object.entityId != null)
                 message.entityId = object.entityId >>> 0;
             if (object.x != null)
-                message.x = Number(object.x);
+                message.x = object.x >>> 0;
             if (object.y != null)
-                message.y = Number(object.y);
+                message.y = object.y >>> 0;
             if (object.angle != null)
-                message.angle = Number(object.angle);
+                message.angle = object.angle >>> 0;
             if (object.segmentCount != null)
                 message.segmentCount = object.segmentCount >>> 0;
             return message;
@@ -2632,11 +2632,11 @@ export const server = $root.server = (() => {
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 object.entityId = message.entityId;
             if (message.x != null && message.hasOwnProperty("x"))
-                object.x = options.json && !isFinite(message.x) ? String(message.x) : message.x;
+                object.x = message.x;
             if (message.y != null && message.hasOwnProperty("y"))
-                object.y = options.json && !isFinite(message.y) ? String(message.y) : message.y;
+                object.y = message.y;
             if (message.angle != null && message.hasOwnProperty("angle"))
-                object.angle = options.json && !isFinite(message.angle) ? String(message.angle) : message.angle;
+                object.angle = message.angle;
             if (message.segmentCount != null && message.hasOwnProperty("segmentCount"))
                 object.segmentCount = message.segmentCount;
             return object;
@@ -2684,6 +2684,7 @@ export const server = $root.server = (() => {
          * @property {Array.<number>|null} [fullyDataEntityIds] EntityCollection fullyDataEntityIds
          * @property {Array.<number>|null} [fullyDataSegmentCounts] EntityCollection fullyDataSegmentCounts
          * @property {Array.<number>|null} [scales] EntityCollection scales
+         * @property {Array.<server.IEntityPath>|null} [fullyDataPaths] EntityCollection fullyDataPaths
          */
 
         /**
@@ -2702,6 +2703,7 @@ export const server = $root.server = (() => {
             this.fullyDataEntityIds = [];
             this.fullyDataSegmentCounts = [];
             this.scales = [];
+            this.fullyDataPaths = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -2763,6 +2765,14 @@ export const server = $root.server = (() => {
          * @instance
          */
         EntityCollection.prototype.scales = $util.emptyArray;
+
+        /**
+         * EntityCollection fullyDataPaths.
+         * @member {Array.<server.IEntityPath>} fullyDataPaths
+         * @memberof server.EntityCollection
+         * @instance
+         */
+        EntityCollection.prototype.fullyDataPaths = $util.emptyArray;
 
         /**
          * Creates a new EntityCollection instance using the specified properties.
@@ -2830,6 +2840,9 @@ export const server = $root.server = (() => {
                     writer.float(message.scales[i]);
                 writer.ldelim();
             }
+            if (message.fullyDataPaths != null && message.fullyDataPaths.length)
+                for (let i = 0; i < message.fullyDataPaths.length; ++i)
+                    $root.server.EntityPath.encode(message.fullyDataPaths[i], writer.uint32(/* id 8, wireType 2 =*/66).fork()).ldelim();
             return writer;
         };
 
@@ -2943,6 +2956,12 @@ export const server = $root.server = (() => {
                             message.scales.push(reader.float());
                         break;
                     }
+                case 8: {
+                        if (!(message.fullyDataPaths && message.fullyDataPaths.length))
+                            message.fullyDataPaths = [];
+                        message.fullyDataPaths.push($root.server.EntityPath.decode(reader, reader.uint32()));
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -3027,6 +3046,15 @@ export const server = $root.server = (() => {
                     if (typeof message.scales[i] !== "number")
                         return "scales: number[] expected";
             }
+            if (message.fullyDataPaths != null && message.hasOwnProperty("fullyDataPaths")) {
+                if (!Array.isArray(message.fullyDataPaths))
+                    return "fullyDataPaths: array expected";
+                for (let i = 0; i < message.fullyDataPaths.length; ++i) {
+                    let error = $root.server.EntityPath.verify(message.fullyDataPaths[i]);
+                    if (error)
+                        return "fullyDataPaths." + error;
+                }
+            }
             return null;
         };
 
@@ -3091,6 +3119,16 @@ export const server = $root.server = (() => {
                 for (let i = 0; i < object.scales.length; ++i)
                     message.scales[i] = Number(object.scales[i]);
             }
+            if (object.fullyDataPaths) {
+                if (!Array.isArray(object.fullyDataPaths))
+                    throw TypeError(".server.EntityCollection.fullyDataPaths: array expected");
+                message.fullyDataPaths = [];
+                for (let i = 0; i < object.fullyDataPaths.length; ++i) {
+                    if (typeof object.fullyDataPaths[i] !== "object")
+                        throw TypeError(".server.EntityCollection.fullyDataPaths: object expected");
+                    message.fullyDataPaths[i] = $root.server.EntityPath.fromObject(object.fullyDataPaths[i]);
+                }
+            }
             return message;
         };
 
@@ -3115,6 +3153,7 @@ export const server = $root.server = (() => {
                 object.fullyDataEntityIds = [];
                 object.fullyDataSegmentCounts = [];
                 object.scales = [];
+                object.fullyDataPaths = [];
             }
             if (message.entityIds && message.entityIds.length) {
                 object.entityIds = [];
@@ -3151,6 +3190,11 @@ export const server = $root.server = (() => {
                 for (let j = 0; j < message.scales.length; ++j)
                     object.scales[j] = options.json && !isFinite(message.scales[j]) ? String(message.scales[j]) : message.scales[j];
             }
+            if (message.fullyDataPaths && message.fullyDataPaths.length) {
+                object.fullyDataPaths = [];
+                for (let j = 0; j < message.fullyDataPaths.length; ++j)
+                    object.fullyDataPaths[j] = $root.server.EntityPath.toObject(message.fullyDataPaths[j], options);
+            }
             return object;
         };
 
@@ -3183,28 +3227,28 @@ export const server = $root.server = (() => {
         return EntityCollection;
     })();
 
-    server.EntityFull = (function() {
+    server.EntityPath = (function() {
 
         /**
-         * Properties of an EntityFull.
+         * Properties of an EntityPath.
          * @memberof server
-         * @interface IEntityFull
-         * @property {number|null} [entityId] EntityFull entityId
-         * @property {number|null} [x] EntityFull x
-         * @property {number|null} [y] EntityFull y
-         * @property {number|null} [angle] EntityFull angle
-         * @property {number|null} [segmentCount] EntityFull segmentCount
+         * @interface IEntityPath
+         * @property {number|null} [entityId] EntityPath entityId
+         * @property {Array.<number>|null} [xs] EntityPath xs
+         * @property {Array.<number>|null} [ys] EntityPath ys
          */
 
         /**
-         * Constructs a new EntityFull.
+         * Constructs a new EntityPath.
          * @memberof server
-         * @classdesc Represents an EntityFull.
-         * @implements IEntityFull
+         * @classdesc Represents an EntityPath.
+         * @implements IEntityPath
          * @constructor
-         * @param {server.IEntityFull=} [properties] Properties to set
+         * @param {server.IEntityPath=} [properties] Properties to set
          */
-        function EntityFull(properties) {
+        function EntityPath(properties) {
+            this.xs = [];
+            this.ys = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -3212,110 +3256,98 @@ export const server = $root.server = (() => {
         }
 
         /**
-         * EntityFull entityId.
+         * EntityPath entityId.
          * @member {number} entityId
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @instance
          */
-        EntityFull.prototype.entityId = 0;
+        EntityPath.prototype.entityId = 0;
 
         /**
-         * EntityFull x.
-         * @member {number} x
-         * @memberof server.EntityFull
+         * EntityPath xs.
+         * @member {Array.<number>} xs
+         * @memberof server.EntityPath
          * @instance
          */
-        EntityFull.prototype.x = 0;
+        EntityPath.prototype.xs = $util.emptyArray;
 
         /**
-         * EntityFull y.
-         * @member {number} y
-         * @memberof server.EntityFull
+         * EntityPath ys.
+         * @member {Array.<number>} ys
+         * @memberof server.EntityPath
          * @instance
          */
-        EntityFull.prototype.y = 0;
+        EntityPath.prototype.ys = $util.emptyArray;
 
         /**
-         * EntityFull angle.
-         * @member {number} angle
-         * @memberof server.EntityFull
-         * @instance
-         */
-        EntityFull.prototype.angle = 0;
-
-        /**
-         * EntityFull segmentCount.
-         * @member {number} segmentCount
-         * @memberof server.EntityFull
-         * @instance
-         */
-        EntityFull.prototype.segmentCount = 0;
-
-        /**
-         * Creates a new EntityFull instance using the specified properties.
+         * Creates a new EntityPath instance using the specified properties.
          * @function create
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
-         * @param {server.IEntityFull=} [properties] Properties to set
-         * @returns {server.EntityFull} EntityFull instance
+         * @param {server.IEntityPath=} [properties] Properties to set
+         * @returns {server.EntityPath} EntityPath instance
          */
-        EntityFull.create = function create(properties) {
-            return new EntityFull(properties);
+        EntityPath.create = function create(properties) {
+            return new EntityPath(properties);
         };
 
         /**
-         * Encodes the specified EntityFull message. Does not implicitly {@link server.EntityFull.verify|verify} messages.
+         * Encodes the specified EntityPath message. Does not implicitly {@link server.EntityPath.verify|verify} messages.
          * @function encode
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
-         * @param {server.IEntityFull} message EntityFull message or plain object to encode
+         * @param {server.IEntityPath} message EntityPath message or plain object to encode
          * @param {$protobuf.Writer} [writer] Writer to encode to
          * @returns {$protobuf.Writer} Writer
          */
-        EntityFull.encode = function encode(message, writer) {
+        EntityPath.encode = function encode(message, writer) {
             if (!writer)
                 writer = $Writer.create();
             if (message.entityId != null && Object.hasOwnProperty.call(message, "entityId"))
                 writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.entityId);
-            if (message.x != null && Object.hasOwnProperty.call(message, "x"))
-                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.x);
-            if (message.y != null && Object.hasOwnProperty.call(message, "y"))
-                writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
-            if (message.angle != null && Object.hasOwnProperty.call(message, "angle"))
-                writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.angle);
-            if (message.segmentCount != null && Object.hasOwnProperty.call(message, "segmentCount"))
-                writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.segmentCount);
+            if (message.xs != null && message.xs.length) {
+                writer.uint32(/* id 2, wireType 2 =*/18).fork();
+                for (let i = 0; i < message.xs.length; ++i)
+                    writer.uint32(message.xs[i]);
+                writer.ldelim();
+            }
+            if (message.ys != null && message.ys.length) {
+                writer.uint32(/* id 3, wireType 2 =*/26).fork();
+                for (let i = 0; i < message.ys.length; ++i)
+                    writer.uint32(message.ys[i]);
+                writer.ldelim();
+            }
             return writer;
         };
 
         /**
-         * Encodes the specified EntityFull message, length delimited. Does not implicitly {@link server.EntityFull.verify|verify} messages.
+         * Encodes the specified EntityPath message, length delimited. Does not implicitly {@link server.EntityPath.verify|verify} messages.
          * @function encodeDelimited
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
-         * @param {server.IEntityFull} message EntityFull message or plain object to encode
+         * @param {server.IEntityPath} message EntityPath message or plain object to encode
          * @param {$protobuf.Writer} [writer] Writer to encode to
          * @returns {$protobuf.Writer} Writer
          */
-        EntityFull.encodeDelimited = function encodeDelimited(message, writer) {
+        EntityPath.encodeDelimited = function encodeDelimited(message, writer) {
             return this.encode(message, writer).ldelim();
         };
 
         /**
-         * Decodes an EntityFull message from the specified reader or buffer.
+         * Decodes an EntityPath message from the specified reader or buffer.
          * @function decode
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
          * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
          * @param {number} [length] Message length if known beforehand
-         * @returns {server.EntityFull} EntityFull
+         * @returns {server.EntityPath} EntityPath
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        EntityFull.decode = function decode(reader, length, error) {
+        EntityPath.decode = function decode(reader, length, error) {
             if (!(reader instanceof $Reader))
                 reader = $Reader.create(reader);
-            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.EntityFull();
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.EntityPath();
             while (reader.pos < end) {
                 let tag = reader.uint32();
                 if (tag === error)
@@ -3326,19 +3358,25 @@ export const server = $root.server = (() => {
                         break;
                     }
                 case 2: {
-                        message.x = reader.uint32();
+                        if (!(message.xs && message.xs.length))
+                            message.xs = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.xs.push(reader.uint32());
+                        } else
+                            message.xs.push(reader.uint32());
                         break;
                     }
                 case 3: {
-                        message.y = reader.uint32();
-                        break;
-                    }
-                case 4: {
-                        message.angle = reader.uint32();
-                        break;
-                    }
-                case 5: {
-                        message.segmentCount = reader.uint32();
+                        if (!(message.ys && message.ys.length))
+                            message.ys = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.ys.push(reader.uint32());
+                        } else
+                            message.ys.push(reader.uint32());
                         break;
                     }
                 default:
@@ -3350,135 +3388,144 @@ export const server = $root.server = (() => {
         };
 
         /**
-         * Decodes an EntityFull message from the specified reader or buffer, length delimited.
+         * Decodes an EntityPath message from the specified reader or buffer, length delimited.
          * @function decodeDelimited
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
          * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
-         * @returns {server.EntityFull} EntityFull
+         * @returns {server.EntityPath} EntityPath
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        EntityFull.decodeDelimited = function decodeDelimited(reader) {
+        EntityPath.decodeDelimited = function decodeDelimited(reader) {
             if (!(reader instanceof $Reader))
                 reader = new $Reader(reader);
             return this.decode(reader, reader.uint32());
         };
 
         /**
-         * Verifies an EntityFull message.
+         * Verifies an EntityPath message.
          * @function verify
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
          * @param {Object.<string,*>} message Plain object to verify
          * @returns {string|null} `null` if valid, otherwise the reason why it is not
          */
-        EntityFull.verify = function verify(message) {
+        EntityPath.verify = function verify(message) {
             if (typeof message !== "object" || message === null)
                 return "object expected";
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 if (!$util.isInteger(message.entityId))
                     return "entityId: integer expected";
-            if (message.x != null && message.hasOwnProperty("x"))
-                if (!$util.isInteger(message.x))
-                    return "x: integer expected";
-            if (message.y != null && message.hasOwnProperty("y"))
-                if (!$util.isInteger(message.y))
-                    return "y: integer expected";
-            if (message.angle != null && message.hasOwnProperty("angle"))
-                if (!$util.isInteger(message.angle))
-                    return "angle: integer expected";
-            if (message.segmentCount != null && message.hasOwnProperty("segmentCount"))
-                if (!$util.isInteger(message.segmentCount))
-                    return "segmentCount: integer expected";
+            if (message.xs != null && message.hasOwnProperty("xs")) {
+                if (!Array.isArray(message.xs))
+                    return "xs: array expected";
+                for (let i = 0; i < message.xs.length; ++i)
+                    if (!$util.isInteger(message.xs[i]))
+                        return "xs: integer[] expected";
+            }
+            if (message.ys != null && message.hasOwnProperty("ys")) {
+                if (!Array.isArray(message.ys))
+                    return "ys: array expected";
+                for (let i = 0; i < message.ys.length; ++i)
+                    if (!$util.isInteger(message.ys[i]))
+                        return "ys: integer[] expected";
+            }
             return null;
         };
 
         /**
-         * Creates an EntityFull message from a plain object. Also converts values to their respective internal types.
+         * Creates an EntityPath message from a plain object. Also converts values to their respective internal types.
          * @function fromObject
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
          * @param {Object.<string,*>} object Plain object
-         * @returns {server.EntityFull} EntityFull
+         * @returns {server.EntityPath} EntityPath
          */
-        EntityFull.fromObject = function fromObject(object) {
-            if (object instanceof $root.server.EntityFull)
+        EntityPath.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.EntityPath)
                 return object;
-            let message = new $root.server.EntityFull();
+            let message = new $root.server.EntityPath();
             if (object.entityId != null)
                 message.entityId = object.entityId >>> 0;
-            if (object.x != null)
-                message.x = object.x >>> 0;
-            if (object.y != null)
-                message.y = object.y >>> 0;
-            if (object.angle != null)
-                message.angle = object.angle >>> 0;
-            if (object.segmentCount != null)
-                message.segmentCount = object.segmentCount >>> 0;
+            if (object.xs) {
+                if (!Array.isArray(object.xs))
+                    throw TypeError(".server.EntityPath.xs: array expected");
+                message.xs = [];
+                for (let i = 0; i < object.xs.length; ++i)
+                    message.xs[i] = object.xs[i] >>> 0;
+            }
+            if (object.ys) {
+                if (!Array.isArray(object.ys))
+                    throw TypeError(".server.EntityPath.ys: array expected");
+                message.ys = [];
+                for (let i = 0; i < object.ys.length; ++i)
+                    message.ys[i] = object.ys[i] >>> 0;
+            }
             return message;
         };
 
         /**
-         * Creates a plain object from an EntityFull message. Also converts values to other types if specified.
+         * Creates a plain object from an EntityPath message. Also converts values to other types if specified.
          * @function toObject
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
-         * @param {server.EntityFull} message EntityFull
+         * @param {server.EntityPath} message EntityPath
          * @param {$protobuf.IConversionOptions} [options] Conversion options
          * @returns {Object.<string,*>} Plain object
          */
-        EntityFull.toObject = function toObject(message, options) {
+        EntityPath.toObject = function toObject(message, options) {
             if (!options)
                 options = {};
             let object = {};
-            if (options.defaults) {
-                object.entityId = 0;
-                object.x = 0;
-                object.y = 0;
-                object.angle = 0;
-                object.segmentCount = 0;
+            if (options.arrays || options.defaults) {
+                object.xs = [];
+                object.ys = [];
             }
+            if (options.defaults)
+                object.entityId = 0;
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 object.entityId = message.entityId;
-            if (message.x != null && message.hasOwnProperty("x"))
-                object.x = message.x;
-            if (message.y != null && message.hasOwnProperty("y"))
-                object.y = message.y;
-            if (message.angle != null && message.hasOwnProperty("angle"))
-                object.angle = message.angle;
-            if (message.segmentCount != null && message.hasOwnProperty("segmentCount"))
-                object.segmentCount = message.segmentCount;
+            if (message.xs && message.xs.length) {
+                object.xs = [];
+                for (let j = 0; j < message.xs.length; ++j)
+                    object.xs[j] = message.xs[j];
+            }
+            if (message.ys && message.ys.length) {
+                object.ys = [];
+                for (let j = 0; j < message.ys.length; ++j)
+                    object.ys[j] = message.ys[j];
+            }
             return object;
         };
 
         /**
-         * Converts this EntityFull to JSON.
+         * Converts this EntityPath to JSON.
          * @function toJSON
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @instance
          * @returns {Object.<string,*>} JSON object
          */
-        EntityFull.prototype.toJSON = function toJSON() {
+        EntityPath.prototype.toJSON = function toJSON() {
             return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
         };
 
         /**
-         * Gets the default type url for EntityFull
+         * Gets the default type url for EntityPath
          * @function getTypeUrl
-         * @memberof server.EntityFull
+         * @memberof server.EntityPath
          * @static
          * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
          * @returns {string} The default type url
          */
-        EntityFull.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+        EntityPath.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
             if (typeUrlPrefix === undefined) {
                 typeUrlPrefix = "type.googleapis.com";
             }
-            return typeUrlPrefix + "/server.EntityFull";
+            return typeUrlPrefix + "/server.EntityPath";
         };
 
-        return EntityFull;
+        return EntityPath;
     })();
 
     server.SelfPosition = (function() {

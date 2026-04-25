@@ -1071,6 +1071,9 @@ export namespace server {
 
         /** EntityCollection scales */
         scales?: (number[]|null);
+
+        /** EntityCollection fullyDataPaths */
+        fullyDataPaths?: (server.IEntityPath[]|null);
     }
 
     /** Represents an EntityCollection. */
@@ -1102,6 +1105,9 @@ export namespace server {
 
         /** EntityCollection scales. */
         public scales: number[];
+
+        /** EntityCollection fullyDataPaths. */
+        public fullyDataPaths: server.IEntityPath[];
 
         /**
          * Creates a new EntityCollection instance using the specified properties.
@@ -1181,121 +1187,109 @@ export namespace server {
         public static getTypeUrl(typeUrlPrefix?: string): string;
     }
 
-    /** Properties of an EntityFull. */
-    interface IEntityFull {
+    /** Properties of an EntityPath. */
+    interface IEntityPath {
 
-        /** EntityFull entityId */
+        /** EntityPath entityId */
         entityId?: (number|null);
 
-        /** EntityFull x */
-        x?: (number|null);
+        /** EntityPath xs */
+        xs?: (number[]|null);
 
-        /** EntityFull y */
-        y?: (number|null);
-
-        /** EntityFull angle */
-        angle?: (number|null);
-
-        /** EntityFull segmentCount */
-        segmentCount?: (number|null);
+        /** EntityPath ys */
+        ys?: (number[]|null);
     }
 
-    /** Represents an EntityFull. */
-    class EntityFull implements IEntityFull {
+    /** Represents an EntityPath. */
+    class EntityPath implements IEntityPath {
 
         /**
-         * Constructs a new EntityFull.
+         * Constructs a new EntityPath.
          * @param [properties] Properties to set
          */
-        constructor(properties?: server.IEntityFull);
+        constructor(properties?: server.IEntityPath);
 
-        /** EntityFull entityId. */
+        /** EntityPath entityId. */
         public entityId: number;
 
-        /** EntityFull x. */
-        public x: number;
+        /** EntityPath xs. */
+        public xs: number[];
 
-        /** EntityFull y. */
-        public y: number;
-
-        /** EntityFull angle. */
-        public angle: number;
-
-        /** EntityFull segmentCount. */
-        public segmentCount: number;
+        /** EntityPath ys. */
+        public ys: number[];
 
         /**
-         * Creates a new EntityFull instance using the specified properties.
+         * Creates a new EntityPath instance using the specified properties.
          * @param [properties] Properties to set
-         * @returns EntityFull instance
+         * @returns EntityPath instance
          */
-        public static create(properties?: server.IEntityFull): server.EntityFull;
+        public static create(properties?: server.IEntityPath): server.EntityPath;
 
         /**
-         * Encodes the specified EntityFull message. Does not implicitly {@link server.EntityFull.verify|verify} messages.
-         * @param message EntityFull message or plain object to encode
+         * Encodes the specified EntityPath message. Does not implicitly {@link server.EntityPath.verify|verify} messages.
+         * @param message EntityPath message or plain object to encode
          * @param [writer] Writer to encode to
          * @returns Writer
          */
-        public static encode(message: server.IEntityFull, writer?: $protobuf.Writer): $protobuf.Writer;
+        public static encode(message: server.IEntityPath, writer?: $protobuf.Writer): $protobuf.Writer;
 
         /**
-         * Encodes the specified EntityFull message, length delimited. Does not implicitly {@link server.EntityFull.verify|verify} messages.
-         * @param message EntityFull message or plain object to encode
+         * Encodes the specified EntityPath message, length delimited. Does not implicitly {@link server.EntityPath.verify|verify} messages.
+         * @param message EntityPath message or plain object to encode
          * @param [writer] Writer to encode to
          * @returns Writer
          */
-        public static encodeDelimited(message: server.IEntityFull, writer?: $protobuf.Writer): $protobuf.Writer;
+        public static encodeDelimited(message: server.IEntityPath, writer?: $protobuf.Writer): $protobuf.Writer;
 
         /**
-         * Decodes an EntityFull message from the specified reader or buffer.
+         * Decodes an EntityPath message from the specified reader or buffer.
          * @param reader Reader or buffer to decode from
          * @param [length] Message length if known beforehand
-         * @returns EntityFull
+         * @returns EntityPath
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.EntityFull;
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.EntityPath;
 
         /**
-         * Decodes an EntityFull message from the specified reader or buffer, length delimited.
+         * Decodes an EntityPath message from the specified reader or buffer, length delimited.
          * @param reader Reader or buffer to decode from
-         * @returns EntityFull
+         * @returns EntityPath
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.EntityFull;
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.EntityPath;
 
         /**
-         * Verifies an EntityFull message.
+         * Verifies an EntityPath message.
          * @param message Plain object to verify
          * @returns `null` if valid, otherwise the reason why it is not
          */
         public static verify(message: { [k: string]: any }): (string|null);
 
         /**
-         * Creates an EntityFull message from a plain object. Also converts values to their respective internal types.
+         * Creates an EntityPath message from a plain object. Also converts values to their respective internal types.
          * @param object Plain object
-         * @returns EntityFull
+         * @returns EntityPath
          */
-        public static fromObject(object: { [k: string]: any }): server.EntityFull;
+        public static fromObject(object: { [k: string]: any }): server.EntityPath;
 
         /**
-         * Creates a plain object from an EntityFull message. Also converts values to other types if specified.
-         * @param message EntityFull
+         * Creates a plain object from an EntityPath message. Also converts values to other types if specified.
+         * @param message EntityPath
          * @param [options] Conversion options
          * @returns Plain object
          */
-        public static toObject(message: server.EntityFull, options?: $protobuf.IConversionOptions): { [k: string]: any };
+        public static toObject(message: server.EntityPath, options?: $protobuf.IConversionOptions): { [k: string]: any };
 
         /**
-         * Converts this EntityFull to JSON.
+         * Converts this EntityPath to JSON.
          * @returns JSON object
          */
         public toJSON(): { [k: string]: any };
 
         /**
-         * Gets the default type url for EntityFull
+         * Gets the default type url for EntityPath
          * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
          * @returns The default type url
          */
