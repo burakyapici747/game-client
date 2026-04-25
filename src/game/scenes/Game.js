@@ -15,6 +15,7 @@ export class Game extends Phaser.Scene {
         this.myId = null;
         this.networkManager = null;
         this.gameStarted = false;
+        this.initialDataFlags = { startInfo: false, entities: false };
 
         this.pointer = null;
         this.fpsText = null;
@@ -22,6 +23,8 @@ export class Game extends Phaser.Scene {
     }
 
     create() {
+        this.gameStarted = false;
+        this.initialDataFlags = { startInfo: false, entities: false };
         this.networkManager = new NetworkManager(this);
 
         this.events.on('start_game', this.onStartGame, this);
@@ -92,20 +95,14 @@ export class Game extends Phaser.Scene {
 
     onStartGame(startInfo) {
         console.log("onStartGame Alındı:", startInfo);
-        this.hideLoader();
-        
         const clientId = this.toId(startInfo?.clientId ?? startInfo?.client_id);
         if (clientId === null) {
             console.warn('Geçersiz clientId alındı:', startInfo);
             return;
         }
 
-        this.gameStarted = true;
         this.myId = clientId;
-
-        if (!this.grid) {
-            this.createTiledBackground();
-        }
+        this.initialDataFlags.startInfo = true;
 
         const startX = Number(startInfo?.x);
         const startY = Number(startInfo?.y);
@@ -136,6 +133,7 @@ export class Game extends Phaser.Scene {
             Number.isFinite(startScale) ? startScale : undefined,
             startDirection
         );
+        this.checkInitialDataComplete();
     }
 
     hideLoader() {
@@ -152,13 +150,8 @@ export class Game extends Phaser.Scene {
         const entityIds = entityCollection?.entityIds ?? [];
         if (entityIds.length === 0) return;
 
-        this.hideLoader();
-        if (!this.gameStarted) {
-            this.gameStarted = true;
-            if (!this.grid) {
-                this.createTiledBackground();
-            }
-        }
+        this.initialDataFlags.entities = true;
+        this.checkInitialDataComplete();
 
         const xs = entityCollection?.xs ?? [];
         const ys = entityCollection?.ys ?? [];
@@ -285,12 +278,8 @@ export class Game extends Phaser.Scene {
         }
         if (entityId !== this.myId) return;
 
-        if (!this.gameStarted) {
-            this.gameStarted = true;
-            if (!this.grid) {
-                this.createTiledBackground();
-            }
-        }
+        this.initialDataFlags.entities = true;
+        this.checkInitialDataComplete();
 
         const x = Number(selfPosition?.x);
         const y = Number(selfPosition?.y);
@@ -356,6 +345,16 @@ export class Game extends Phaser.Scene {
             snake.applySegmentMutationFromServer(mutation);
         });
         this.pendingSegmentMutations.delete(entityId);
+    }
+
+    checkInitialDataComplete() {
+        if (!this.gameStarted && this.initialDataFlags.startInfo && this.initialDataFlags.entities) {
+            this.gameStarted = true;
+            if (!this.grid) {
+                this.createTiledBackground();
+            }
+            this.hideLoader();
+        }
     }
 
     toId(rawId) {
