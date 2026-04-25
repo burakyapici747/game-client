@@ -117,6 +117,14 @@ export class Game extends Phaser.Scene {
             const worldSize = worldRadius * 2;
             this.cameras.main.setBounds(0, 0, worldSize, worldSize);
             console.log(`Dünya sınırı ayarlandı: ${worldSize}x${worldSize}`);
+
+            if (this.boundaryGraphics) {
+                this.boundaryGraphics.destroy();
+            }
+            this.boundaryGraphics = this.add.graphics();
+            this.boundaryGraphics.lineStyle(4, 0xff0000, 1);
+            this.boundaryGraphics.strokeCircle(worldRadius, worldRadius, worldRadius);
+            this.boundaryGraphics.setDepth(-1);
         }
 
         this.ensurePlayerSnake(
@@ -518,6 +526,10 @@ export class Game extends Phaser.Scene {
         console.log("Bağlantı koptu!");
         this.gameStarted = false;
         this.clearFoods();
+        if (this.boundaryGraphics) {
+            this.boundaryGraphics.destroy();
+            this.boundaryGraphics = null;
+        }
         this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
             `Sunucu bağlantısı koptu!`,
             { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000' }
