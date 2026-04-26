@@ -10,6 +10,8 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
 ## İlgili Sınıflar ve Fonksiyonlar
 1. **Oyun Döngüsü ve Sahne (`Game.js`)**
    - `onStartGame(startInfo)`: Sunucuya bağlanıldığında tetiklenir. `worldRadius` verisini kullanarak kameranın sınırlarını çizer ve kırmızı bir sınır çizgisi render eder. **Önemli:** `boundaryGraphics` `depth=500` ile ayarlanmalıdır; grid `depth=-1, scrollFactor=0` olduğundan boundary'nin `depth=-1` olması çizginin görünmemesine sebep olur. `strokeCircle(worldRadius, worldRadius, worldRadius - 3)` ile worldspace koordinatlarında çizilir.
+   - **Kamera Anchor Deseni (Reconciliation Titremesi Çözümü):** Kamera doğrudan `head`'i takip etmez; `this.cameraAnchor = { x, y }` adında bir POJO objesini takip eder. `cameraAnchor`, `update()` içinde `updateFromInput` (Arcade physics velocity) çalıştıktan hemen sonra, `postUpdate` (reconciliation) çalışmadan önce güncellenir. Bu sayede reconciliation `head.setPosition()` ile head'i hareket ettirse de kamera bu düzeltmeyi görmez ve titremez. Büyük snap (>800px) durumunda `cameraAnchor` da head ile senkronize edilir.
+
    - `onEntityCollection(entityCollection)`: Görüş alanındaki (AOI) diğer yılanların verilerini işler. Diğer oyuncuların yılanları oluşturulurken açı bilgisini parse eder.
    - `upsertFood(foodData)`: Yeni yemleri haritaya ekler. Performans için Phaser'ın `Blitter` (çok sayıda statik resmi tek seferde çizen sistem) altyapısını kullanır. Yemler kümeler halinde görselleştirilir.
    - `update(time, delta)`: Her frame'de yılanları hareket ettirir, kamerayı zoomlar (skora göre) ve fare tıklama durumunu sunucuya iletir.

@@ -360,8 +360,14 @@ export class Snake {
         if (absDistance > 800) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
             this.head.body?.updateFromGameObject();
+            // Büyük snap durumunda cameraAnchor'ı da güncelle — kamera geride kalmasın
+            if (this.scene.cameraAnchor) {
+                this.scene.cameraAnchor.x = this.selfServerTarget.x;
+                this.scene.cameraAnchor.y = this.selfServerTarget.y;
+            }
             return;
         }
+
 
         // Vector from Client to Server
         const cos = Math.cos(this.head.rotation);
