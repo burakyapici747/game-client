@@ -346,7 +346,7 @@ export class Game extends Phaser.Scene {
             this.cameraAnchor.y = head.y;
         }
         this.cameras.main.startFollow(this.cameraAnchor, true, 1.0, 1.0);
-        this.cameras.main.setRoundPixels(true);
+        // setRoundPixels(true) kaldiıldı: zoom lerp ile birlikte tüm sprite'larda 1px snap jitter yaratıyordu
         return playerSnake;
     }
 
@@ -591,10 +591,14 @@ export class Game extends Phaser.Scene {
                 }
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
+                // Zoom yalnızca anlamlı fark olduğunda güncellenir; sürekli micro-zoom değişimi
+                // setRoundPixels ile sprite jitter'a yol açar.
                 const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);
                 const currentZoom = this.cameras.main.zoom;
-                const zoomLerp = 0.05;
-                this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
+                const zoomDiff = targetZoom - currentZoom;
+                if (Math.abs(zoomDiff) > 0.0005) {
+                    this.cameras.main.setZoom(currentZoom + zoomDiff * 0.05);
+                }
             }
         }
 

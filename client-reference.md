@@ -11,6 +11,12 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
 1. **Oyun Döngüsü ve Sahne (`Game.js`)**
    - `onStartGame(startInfo)`: Sunucuya bağlanıldığında tetiklenir. `worldRadius` verisini kullanarak kameranın sınırlarını çizer ve kırmızı bir sınır çizgisi render eder. **Önemli:** `boundaryGraphics` `depth=500` ile ayarlanmalıdır; grid `depth=-1, scrollFactor=0` olduğundan boundary'nin `depth=-1` olması çizginin görünmemesine sebep olur. `strokeCircle(worldRadius, worldRadius, worldRadius - 3)` ile worldspace koordinatlarında çizilir.
    - **Kamera Anchor Deseni (Reconciliation Titremesi Çözümü):** Kamera doğrudan `head`'i takip etmez; `this.cameraAnchor = { x, y }` adında bir POJO objesini takip eder. `cameraAnchor`, `update()` içinde `updateFromInput` (Arcade physics velocity) çalıştıktan hemen sonra, `postUpdate` (reconciliation) çalışmadan önce güncellenir. Bu sayede reconciliation `head.setPosition()` ile head'i hareket ettirse de kamera bu düzeltmeyi görmez ve titremez. Büyük snap (>800px) durumunda `cameraAnchor` da head ile senkronize edilir.
+   - **Visual Jitter Kaynakları ve Çözümleri (Önemli):**
+     1. `setRoundPixels(true)` + sürekli zoom lerp → tüm sprite'larda 1px pixel-snap jitter → **Çözüm:** `setRoundPixels` kaldırıldı, zoom yalnızca `|zoomDiff| > 0.0005` olduğunda güncelleniyor.
+     2. Path history reconciliation SONRASI örneklenince segment'ler de reconciliation sıçramalarını absorbe ediyordu → **Çözüm:** `_sampleHeadToPath()` `postUpdate` içinde reconciliation'dan ÖNCE çalıştırılıyor.
+     3. `Math.round()` kullanımı segment ve göz pozisyonlarında → her frame pixel boundary snap → **Çözüm:** `Math.round` kaldırıldı, float pozisyonlar doğrudan kullanılıyor.
+     4. Reconciliation deadzone çok düşüktü (2.5px) → sürekli küçük düzeltmeler tetikleniyordu → **Çözüm:** Deadzone 12px, max speed 180px/s, position factor 0.10 olarak ayarlandı.
+
 
    - `onEntityCollection(entityCollection)`: Görüş alanındaki (AOI) diğer yılanların verilerini işler. Diğer oyuncuların yılanları oluşturulurken açı bilgisini parse eder.
    - `upsertFood(foodData)`: Yeni yemleri haritaya ekler. Performans için Phaser'ın `Blitter` (çok sayıda statik resmi tek seferde çizen sistem) altyapısını kullanır. Yemler kümeler halinde görselleştirilir.
