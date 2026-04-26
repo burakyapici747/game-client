@@ -16,7 +16,6 @@ export class Game extends Phaser.Scene {
         this.networkManager = null;
         this.gameStarted = false;
         this.initialDataFlags = { startInfo: false, entities: false };
-        this.cameraAnchor = null;  // Kamera bu anchor'u takip eder, head'i degil (reconciliation titremesini engeller)
 
         this.pointer = null;
         this.fpsText = null;
@@ -335,18 +334,8 @@ export class Game extends Phaser.Scene {
         const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
-
-        // Kamera head'i doğrudan değil, bir anchor objesini takip eder.
-        // Bu sayede reconciliation düzeltmeleri kamerayı titretmez.
-        const head = playerSnake.getHead();
-        if (!this.cameraAnchor) {
-            this.cameraAnchor = { x: head.x, y: head.y };
-        } else {
-            this.cameraAnchor.x = head.x;
-            this.cameraAnchor.y = head.y;
-        }
-        this.cameras.main.startFollow(this.cameraAnchor, true, 1.0, 1.0);
-        // setRoundPixels(true) kaldiıldı: zoom lerp ile birlikte tüm sprite'larda 1px snap jitter yaratıyordu
+        this.cameras.main.startFollow(playerSnake.getHead(), true, 1.0, 1.0);
+        this.cameras.main.setRoundPixels(true);
         return playerSnake;
     }
 
@@ -581,30 +570,17 @@ export class Game extends Phaser.Scene {
                 // İstemci tarafı tahminleme (Client-Side Prediction)
                 mySnake.updateFromInput(targetAngle, isBoosting, delta);
 
-                // Kamera anchor'ı reconciliation ÖNCE güncelle:
-                // Arcade physics velocity ile head zaten hareket etti (smooth),
-                // ama reconciliation henüz çalışmadı. Bu noktadaki pozisyon
-                // kameranın takip edeceği "titremesiz" pozisyondur.
-                if (this.cameraAnchor) {
-                    this.cameraAnchor.x = head.x;
-                    this.cameraAnchor.y = head.y;
-                }
-
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
-                // Zoom yalnızca anlamlı fark olduğunda güncellenir; sürekli micro-zoom değişimi
-                // setRoundPixels ile sprite jitter'a yol açar.
                 const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);
                 const currentZoom = this.cameras.main.zoom;
-                const zoomDiff = targetZoom - currentZoom;
-                if (Math.abs(zoomDiff) > 0.0005) {
-                    this.cameras.main.setZoom(currentZoom + zoomDiff * 0.05);
-                }
+                const zoomLerp = 0.05;
+                this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
             }
         }
 
         this.snakes.forEach(snake => {
             if (snake.alive && snake.getHead()?.active) {
-                snake.postUpdate(delta);  // reconciliation burada çalışır — cameraAnchor zaten güncellendi
+                snake.postUpdate(delta);
             }
         });
 

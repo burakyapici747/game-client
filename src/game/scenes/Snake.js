@@ -11,10 +11,10 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
-    RECONCILIATION_POSITION_FACTOR: 0.10,  // Düşürüldü: daha yumuşak düzeltme
-    RECONCILIATION_DEADZONE: 12.0,          // Artırıldı: küçük lateral kayma görünmez ve düzeltmeye değmez
+    RECONCILIATION_POSITION_FACTOR: 0.18,
+    RECONCILIATION_DEADZONE: 2.5,
     RECONCILIATION_SNAP_DISTANCE: 140,
-    RECONCILIATION_MAX_CORRECTION_SPEED: 180, // Düşürüldü: yavaş düzeltme görünmez olur
+    RECONCILIATION_MAX_CORRECTION_SPEED: 480,
 };
 
 export class Snake {
@@ -319,20 +319,13 @@ export class Snake {
 
     postUpdate(delta = 16.67) {
         if (!this.alive || !this.head?.active) return;
-
-        // Path örneklemesi reconciliation ÖNCE yapılır:
-        // Böylece path, physics velocity ile tahminlenen smooth pozisyonu kaydeder.
-        // Reconciliation head'i düzeltse de, segment'ler bu smooth path’u takip eder.
-        this._sampleHeadToPath();
-
         if (this.isPlayerControlled) {
             this._reconcilePlayerWithServer(delta);
         } else {
             this._interpolateRemoteSnake(delta);
-            // Remote snake: interpolasyon HEAD'i hareket ettirir, path ondan örneklenmeli
-            this._sampleHeadToPath();
         }
 
+        this._sampleHeadToPath();
         this._positionSegmentsByPath();
 
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
@@ -367,14 +360,8 @@ export class Snake {
         if (absDistance > 800) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
             this.head.body?.updateFromGameObject();
-            // Büyük snap durumunda cameraAnchor'ı da güncelle — kamera geride kalmasın
-            if (this.scene.cameraAnchor) {
-                this.scene.cameraAnchor.x = this.selfServerTarget.x;
-                this.scene.cameraAnchor.y = this.selfServerTarget.y;
-            }
             return;
         }
-
 
         // Vector from Client to Server
         const cos = Math.cos(this.head.rotation);
@@ -438,16 +425,15 @@ export class Snake {
         const rx = this.head.x + (r.x * curScale * cos - r.y * curScale * sin);
         const ry = this.head.y + (r.x * curScale * sin + r.y * curScale * cos);
         
-        // Math.round kaldırıldı: float pozisyonlar pixel snap jitter'a yol açıyordu
-        this.eyeL.setPosition(lx, ly).setScale(curScale);
-        this.eyeR.setPosition(rx, ry).setScale(curScale);
+        this.eyeL.setPosition(Math.round(lx), Math.round(ly)).setScale(curScale);
+        this.eyeR.setPosition(Math.round(rx), Math.round(ry)).setScale(curScale);
         
         const maxR = this._pupilMax * curScale;
         const px = Phaser.Math.Clamp(dir.x * maxR, -maxR, maxR);
         const py = Phaser.Math.Clamp(dir.y * maxR, -maxR, maxR);
         
-        this.pupilL.setPosition(lx + px, ly + py).setScale(curScale);
-        this.pupilR.setPosition(rx + px, ry + py).setScale(curScale);
+        this.pupilL.setPosition(Math.round(lx + px), Math.round(ly + py)).setScale(curScale);
+        this.pupilR.setPosition(Math.round(rx + px), Math.round(ry + py)).setScale(curScale);
     }
 
     _initPathWarmup(x, y) {
@@ -499,8 +485,7 @@ export class Snake {
             const p = this._pointAndAngleAtDistance(d);
             const seg = this.segments[i];
             if (seg && seg.active) {
-                // Math.round kaldırıldı: float pozisyonlar pixel boundary snap jitter'a yol açıyordu
-                seg.setPosition(p.x, p.y);
+                seg.setPosition(Math.round(p.x), Math.round(p.y));
                 seg.rotation = p.angle;
             }
         }
