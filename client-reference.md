@@ -9,8 +9,8 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
 
 ## İlgili Sınıflar ve Fonksiyonlar
 1. **Oyun Döngüsü ve Sahne (`Game.js`)**
-   - `onStartGame(startInfo)`: Sunucuya bağlanıldığında tetiklenir. `worldRadius` verisini kullanarak kameranın sınırlarını çizer (örn. `this.cameras.main.setBounds(0, 0, worldSize, worldSize)`) ve kırmızı bir sınır çizgisi render eder.
-   - `onEntityCollection(entityCollection)`: Görüş alanındaki (AOI) diğer yılanların verilerini işler.
+   - `onStartGame(startInfo)`: Sunucuya bağlanıldığında tetiklenir. `worldRadius` verisini kullanarak kameranın sınırlarını çizer ve kırmızı bir sınır çizgisi render eder. **Önemli:** `boundaryGraphics` `depth=500` ile ayarlanmalıdır; grid `depth=-1, scrollFactor=0` olduğundan boundary'nin `depth=-1` olması çizginin görünmemesine sebep olur. `strokeCircle(worldRadius, worldRadius, worldRadius - 3)` ile worldspace koordinatlarında çizilir.
+   - `onEntityCollection(entityCollection)`: Görüş alanındaki (AOI) diğer yılanların verilerini işler. Diğer oyuncuların yılanları oluşturulurken açı bilgisini parse eder.
    - `upsertFood(foodData)`: Yeni yemleri haritaya ekler. Performans için Phaser'ın `Blitter` (çok sayıda statik resmi tek seferde çizen sistem) altyapısını kullanır. Yemler kümeler halinde görselleştirilir.
    - `update(time, delta)`: Her frame'de yılanları hareket ettirir, kamerayı zoomlar (skora göre) ve fare tıklama durumunu sunucuya iletir.
 
@@ -24,3 +24,8 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
 ## UI ve Kullanıcı Deneyimi
 - **Game Over:** Oyuncu öldüğünde (Örn: Çarpışma, Harita sınırı dışına çıkma), `onGameOver` veya `onDeathNotification` eventleri tetiklenir ve ekrana modern tasarımlı bir Game Over modali çizilir.
 - **Loading:** Sunucu beklenirken ortada görünen animasyonlu bekleme arayüzü `createLoadingUI` fonksiyonunda tanımlıdır.
+- **Oyuna Giriş ve Veri Senkronizasyonu (Loader Gizleme):** Oyun ilk başladığında `StartInformation` ve sonrasında `EntityCollection` (oyuncunun kendisini ve etraftaki varlıkları içeren paket) sunucudan gelir. Erken rendering problemlerini (önüne geçme) için `initialDataFlags` durumu kontrol edilir. Her iki veri de ulaşınca `checkInitialDataComplete()` tetiklenerek oyun aktifleşir ve loading ekranı kapatılır.
+- **Fizik Dünya Sınırı ve Camera Bounds Etkileşimi (Önemli):** `cameras.main.setBounds()` bazı Phaser sürümlerinde `physics.world.setBounds()` öğrencisini tetikler ve Arcade physics body snake head'i harita sınırında fiziksel olarak bloke eder (sıkışma). Bu nedenle `onStartGame` içinde `physics.world.setBounds()` görsel dünya boyutunun 3 katı kadar büyük ayarlanır. Ek olarak `Snake.js` içinde `head.body.setCollideWorldBounds(false)` kesin olarak belirtilir. Ölüm kontrolü tamamen sunucu tarafında `SnakeHeadBodyCollisionSystem` üzerinden yapılır.
+
+## Başlangıç Yönü ve Kuyruk Oluşumu (Start Direction)
+- `Snake.js` oluşturulurken `StartInformation` veya diğer entity'lerin spawn bilgilerinden gelen `angle` bilgisi constructor'a parametre olarak geçilir (`initialAngleRaw`). `_initPathWarmup` sırasında yılanın ilk kuyruk segmentlerinin yerleştirileceği "path" dizisi hesaplanırken, başlangıç açısına uygun (başın arkasına düşecek) vektörel yön `(-Math.cos(angle), -Math.sin(angle))` kullanılır. Bu sayede oyuna giren yılanın baş yönüyle kuyruk dizilimi birebir örtüşür ve "zıt yön" veya uzun atlamalı lerp hatalarının önüne geçilir.

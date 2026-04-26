@@ -263,6 +263,7 @@ export class Snake {
         if (this.isPlayerControlled) {
             this.scene.physics.world.enable(this.head);
             this.head.body.setSize(40, 40).setOffset(-20, -20);
+            this.head.body.setCollideWorldBounds(false); // Ölüm kontrolü sunucu tarafında — fizik sınırı snake'i bloke etmemeli
         }
         for (let i = 0; i < this.sct; i++) {
             const seg = this._createSegmentSprite(i, x, y);

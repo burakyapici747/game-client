@@ -114,6 +114,16 @@ export class Game extends Phaser.Scene {
         if (Number.isFinite(worldRadius)) {
             const worldSize = worldRadius * 2;
             this.cameras.main.setBounds(0, 0, worldSize, worldSize);
+            // Physics world bounds'u kamera sınırından çok büyük tut:
+            // cameras.main.setBounds() bazı Phaser sürümlerinde physics.world.setBounds()'ı
+            // tetikler ve snake head body sınırda sıkışır. Bunu önlemek için fizik sınırını
+            // görsel sınırın çok ötesine alıyoruz — ölüm kontrolü sunucu tarafından yapılıyor.
+            const physicsPadding = worldRadius * 2;
+            this.physics.world.setBounds(
+                -physicsPadding, -physicsPadding,
+                worldSize + physicsPadding * 2,
+                worldSize + physicsPadding * 2
+            );
             console.log(`Dünya sınırı ayarlandı: ${worldSize}x${worldSize}`);
 
             if (this.boundaryGraphics) {
