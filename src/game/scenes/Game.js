@@ -120,9 +120,9 @@ export class Game extends Phaser.Scene {
                 this.boundaryGraphics.destroy();
             }
             this.boundaryGraphics = this.add.graphics();
-            this.boundaryGraphics.lineStyle(4, 0xff0000, 1);
-            this.boundaryGraphics.strokeCircle(worldRadius, worldRadius, worldRadius);
-            this.boundaryGraphics.setDepth(-1);
+            this.boundaryGraphics.lineStyle(6, 0xff0000, 1.0);
+            this.boundaryGraphics.strokeCircle(worldRadius, worldRadius, worldRadius - 3);
+            this.boundaryGraphics.setDepth(500);
         }
 
         this.ensurePlayerSnake(
