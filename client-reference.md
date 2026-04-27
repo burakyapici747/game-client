@@ -17,6 +17,13 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
 2. **Yılan Çizimi ve Mantığı (`Snake.js`)**
    - Yılan başı (head) ve segmentleri (vücudu) için "Path History" (Geçmiş Yol İzleme) optimizasyonu kullanılır. Sunucudan segmentlerin anlık koordinatları yerine, sadece başın hareketi gelir ve gövde başın eski geçtiği yolları (path) takip ederek render edilir.
    - Yılan boyutunu büyütmek için dinamik `scale` sistemi mevcuttur.
+   - **Reconciliation — Velocity-Offset Pattern (Önemli):** `_reconcilePlayerWithServer()` sunucu pozisyonuna uyum sağlamak için `head.setPosition()` KULLANMAZ. Bu, sprite'ı anında hareket ettirir ve jitter yaratır. Bunun yerine `body.velocity`'e küçük bir offset eklenir. `updateFromInput()` bir sonraki frame'de velocity'i sıfırlar, bu offset yalnızca tek frame etkilidir. Emergency snap (>800px) için setPosition+body.reset hâlâ kullanılır ve `cameraAnchor` senkronize edilir.
+   - **Bilinen Jitter Kaynakları ve Çözümler:**
+     1. `setRoundPixels(true)` + sürekli zoom lerp → 1px pixel-snap → **Çözüm:** kaldırıldı, zoom `|Δ| > 0.0005` eşiğiyle güncelleniyor.
+     2. `Math.round()` segment/göz pozisyonlarında → pixel boundary snap → **Çözüm:** kaldırıldı.
+     3. `longitudinal > 0` koşulu: sunucu latency nedeniyle her zaman geride olduğundan her frame tetikleniyordu → **Çözüm:** `longitudinal > maxExpectedLag * 0.3` koşuluyla eşikli hâle getirildi.
+   - **SnakeConfig Reconciliation Sabitleri:** `RECONCILIATION_LATERAL_DEADZONE=15px`, `RECONCILIATION_LONGITUDINAL_MAX_LAG=1.2`, `RECONCILIATION_VELOCITY_GAIN=4.0`, `RECONCILIATION_SNAP_DISTANCE=800px`.
+   - **Kamera Anchor:** Kamera `head` yerine `scene.cameraAnchor = {x, y}` objesini takip eder. `update()` içinde `updateFromInput` sonrasında güncellenir. Emergency snap'te de senkronize edilir.
 
 3. **Veri Formatı ve Encode/Decode (`bundle.js`)**
    - Sunucudan alınan binary (byte[]) paketler protobuf.js modülü ile parse edilir. Projenin `.proto` yapılarının TypeScript tanımları `bundle.d.ts` dosyasında bulunabilir.
