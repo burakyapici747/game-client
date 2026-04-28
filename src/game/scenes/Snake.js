@@ -13,9 +13,10 @@ const SnakeConfig = {
     REMOTE_INTERPOLATION_FACTOR: 0.35,
     // Reconciliation: yalnızca lateral velocity-offset + emergency snap
     // Longitudinal düzeltme KALDIRILDI — boost geçişlerinde segment sliding'e yol açıyordu
-    RECONCILIATION_LATERAL_DEADZONE: 15.0,  // Lateral ölü bölge (px)
-    RECONCILIATION_VELOCITY_GAIN: 4.0,      // Velocity-offset kazanım oranı
-    RECONCILIATION_SNAP_DISTANCE: 800,       // Bu üstesinde anında snap
+    RECONCILIATION_LATERAL_DEADZONE: 25.0,  // Lateral ölü bölge (px) — küçük sapmalar prediction tarafından emilir
+    RECONCILIATION_VELOCITY_GAIN: 0.8,      // Velocity-offset kazanım oranı — base hızın küçük fraksiyonu olmalı
+    RECONCILIATION_SNAP_DISTANCE: 800,      // Bu üstesinde anında snap
+    RECONCILIATION_MAX_VELOCITY_CAP: 0.30,  // Velocity offset'in base hıza oranı (maks %30)
 };
 
 export class Snake {
@@ -373,14 +374,29 @@ export class Snake {
         // atlatıyor → path'e büyük/küçük segment giriyor → segment kayması (sliding).
         // Longitudinal fark client-side prediction tarafından yönetilir; sunucu
         // render için değil, game logic (çarpışma, ölüm) için otoritedir.
+        //
+        // ÖNEMLİ: velocity offset'i çok büyük tutmak (eski GAIN=4.0) head'i bir frame'de
+        // anormal şekilde yana kaydırır. Bu _sampleHeadToPath'e yanlış nokta kaydeder ve
+        // sonraki frame'deki targetAngle hesabını bozar → sunucuya yanlış açı gider →
+        // diğer oyuncular bu oyuncuyu yanlış pozisyonda görür. Cap ile kısıtlandı.
         const sin = Math.sin(this.head.rotation);
         const cos = Math.cos(this.head.rotation);
         const lateral = dx * -sin + dy * cos;
 
         if (Math.abs(lateral) > this.config.RECONCILIATION_LATERAL_DEADZONE) {
             const lateralErr = lateral - Math.sign(lateral) * this.config.RECONCILIATION_LATERAL_DEADZONE;
-            this.head.body.velocity.x += lateralErr * -sin * this.config.RECONCILIATION_VELOCITY_GAIN;
-            this.head.body.velocity.y += lateralErr * cos * this.config.RECONCILIATION_VELOCITY_GAIN;
+            const rawOffsetX = lateralErr * -sin * this.config.RECONCILIATION_VELOCITY_GAIN;
+            const rawOffsetY = lateralErr * cos * this.config.RECONCILIATION_VELOCITY_GAIN;
+
+            // Velocity offset'i base hızın belirli bir fraksiyonuyla sınırla.
+            // Aksi hâlde büyük lateral hatalarda offset, head'i bir frame'de çok sıçratır
+            // ve sunucuya gönderilen açıyı bozar → diğer oyuncular yanlış konumda görünür.
+            const maxOffset = this.calculateBaseSpeed() * this.config.RECONCILIATION_MAX_VELOCITY_CAP;
+            const offsetMag = Math.hypot(rawOffsetX, rawOffsetY);
+            const scale = offsetMag > maxOffset ? maxOffset / offsetMag : 1;
+
+            this.head.body.velocity.x += rawOffsetX * scale;
+            this.head.body.velocity.y += rawOffsetY * scale;
         }
     }
 
