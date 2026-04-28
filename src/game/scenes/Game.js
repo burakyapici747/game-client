@@ -39,6 +39,11 @@ export class Game extends Phaser.Scene {
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
 
+        // Physics step SONRASI, render ÖNCESİ: segmentler ve gözler head'in gerçek
+        // fiziksel pozisyonuyla senkronize edilir. update() içinde physics henüz
+        // çalışmadığından oradan çağrılmak 1 frame gecikmeye (esniyor hissi) yol açıyordu.
+        this.events.on('postupdate', this._onPostUpdate, this);
+
         this.networkManager.connect();
 
         this.cameras.main.setZoom(1).roundPixels = true;
@@ -605,5 +610,16 @@ export class Game extends Phaser.Scene {
             .setOrigin(0, 0)
             .setScrollFactor(0)
             .setDepth(-1);
+    }
+
+    // Physics step tamamlandıktan sonra, render öncesi çağrılır.
+    // Segmentleri ve gözleri head'in gerçek fiziksel pozisyonuyla senkronize eder.
+    _onPostUpdate() {
+        if (!this.gameStarted) return;
+        this.snakes.forEach(snake => {
+            if (snake.alive && snake.getHead()?.active) {
+                snake.postPhysicsUpdate();
+            }
+        });
     }
 }

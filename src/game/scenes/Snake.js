@@ -317,6 +317,7 @@ export class Snake {
         this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
     }
 
+    // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
     postUpdate(delta = 16.67) {
         if (!this.alive || !this.head?.active) return;
         if (this.isPlayerControlled) {
@@ -324,10 +325,19 @@ export class Snake {
         } else {
             this._interpolateRemoteSnake(delta);
         }
+        // _sampleHeadToPath, _positionSegmentsByPath ve _updateEyes artık
+        // Phaser'ın postupdate event'inde çağrılıyor (physics step SONRASI, render ÖNCESİ).
+        // Bu sayede segmentler ve gözler head'in o frame'deki gerçek fiziksel pozisyonunu
+        // yakalar — update() sırasında physics henüz çalışmadığından 1 frame gecikme (esniyor
+        // hissi) oluşuyordu.
+        this._delta = delta;
+    }
 
+    // Physics step sonrası segment + göz güncelleme — scene.events 'postupdate' içinde çağrılır
+    postPhysicsUpdate() {
+        if (!this.alive || !this.head?.active) return;
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
-
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
         this._updateEyes(worldPoint.x, worldPoint.y);
     }

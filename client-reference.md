@@ -12,11 +12,15 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
    - `onStartGame(startInfo)`: Sunucuya bağlanıldığında tetiklenir. `worldRadius` verisini kullanarak kameranın sınırlarını çizer ve kırmızı bir sınır çizgisi render eder. **Önemli:** `boundaryGraphics` `depth=500` ile ayarlanmalıdır; grid `depth=-1, scrollFactor=0` olduğundan boundary'nin `depth=-1` olması çizginin görünmemesine sebep olur. `strokeCircle(worldRadius, worldRadius, worldRadius - 3)` ile worldspace koordinatlarında çizilir.
    - `onEntityCollection(entityCollection)`: Görüş alanındaki (AOI) diğer yılanların verilerini işler. Diğer oyuncuların yılanları oluşturulurken açı bilgisini parse eder.
    - `upsertFood(foodData)`: Yeni yemleri haritaya ekler. Performans için Phaser'ın `Blitter` (çok sayıda statik resmi tek seferde çizen sistem) altyapısını kullanır. Yemler kümeler halinde görselleştirilir.
-   - `update(time, delta)`: Her frame'de yılanları hareket ettirir, kamerayı zoomlar (skora göre) ve fare tıklama durumunu sunucuya iletir.
+   - `update(time, delta)`: Her frame'de yılanları hareket ettirir, kamerayı zoomlar (skora göre) ve fare tıklama durumunu sunucuya iletir. Her yılan için `snake.postUpdate(delta)` çağrılır (reconciliation/interpolation). Segment + göz güncellemesi ise `_onPostUpdate()` handler'ı aracılığıyla `postupdate` scene event'inde yapılır (aşağıya bak).
+   - `_onPostUpdate()` **(Önemli — Segment/Göz Senkronizasyonu):** Phaser'ın `postupdate` scene event'ine kayıtlı handler. Physics step tamamlandıktan **sonra**, render öncesi çağrılır. Tüm yılanlar için `snake.postPhysicsUpdate()` tetikler. **Neden gerekli:** `update()` içinde physics step henüz çalışmamıştır; dolayısıyla `_sampleHeadToPath()` ve `_positionSegmentsByPath()` burada çağrılsaydı head'in **önceki frame'deki** pozisyonu path'e kaydedilir, segmentler + gözler 1 frame geride kalırdı — hızlanmada (boost) bu mesafe büyür ve "esniyor" hissi oluşur.
 
 2. **Yılan Çizimi ve Mantığı (`Snake.js`)**
    - Yılan başı (head) ve segmentleri (vücudu) için "Path History" (Geçmiş Yol İzleme) optimizasyonu kullanılır. Sunucudan segmentlerin anlık koordinatları yerine, sadece başın hareketi gelir ve gövde başın eski geçtiği yolları (path) takip ederek render edilir.
    - Yılan boyutunu büyütmek için dinamik `scale` sistemi mevcuttur.
+   - **Güncelleme Döngüsü İki Aşamalıdır:**
+     1. `postUpdate(delta)` → `update()` içinde çağrılır. Reconciliation (oyuncu yılanı) ve interpolation (uzak yılanlar) burada yapılır. Velocity set edilir ama physics step **henüz çalışmamıştır**.
+     2. `postPhysicsUpdate()` → `scene.events 'postupdate'` içinde çağrılır (physics step SONRASI). `_sampleHeadToPath()`, `_positionSegmentsByPath()`, `_updateEyes()` burada çalışır. Head'in **gerçek** o-frame fiziksel pozisyonu yakalanır; böylece segmentler ve gözler head'e yapışık görünür.
 
 3. **Veri Formatı ve Encode/Decode (`bundle.js`)**
    - Sunucudan alınan binary (byte[]) paketler protobuf.js modülü ile parse edilir. Projenin `.proto` yapılarının TypeScript tanımları `bundle.d.ts` dosyasında bulunabilir.
