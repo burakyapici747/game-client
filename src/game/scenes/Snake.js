@@ -18,7 +18,7 @@ const SnakeConfig = {
 };
 
 export class Snake {
-    constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT) {
+    constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT, initialAngleRaw = 0) {
         this.scene = scene;
         this.config = SnakeConfig;
         this.isPlayerControlled = isPlayerControlled;
@@ -28,7 +28,9 @@ export class Snake {
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
-        this.networkTarget = { x: x, y: y, angle: 0 };
+        
+        const initialAngle = this._decodeServerAngle(initialAngleRaw);
+        this.networkTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTarget = { x: x, y: y };
         this.hasServerState = false;
         this.hasSelfServerState = false;
@@ -51,7 +53,7 @@ export class Snake {
         this.eyeL = null; this.eyeR = null;
         this.pupilL = null; this.pupilR = null;
         this._lookVec = new Phaser.Math.Vector2(1, 0);
-        this.create(x, y);
+        this.create(x, y, initialAngle);
     }
 
     calculateBaseSpeed() {
@@ -254,12 +256,14 @@ export class Snake {
         }
     }
 
-    create(x, y) {
+    create(x, y, angle) {
         this.head = this.scene.add.sprite(x, y, 'snake_head48')
             .setOrigin(0.5);
+        this.head.rotation = angle;
         if (this.isPlayerControlled) {
             this.scene.physics.world.enable(this.head);
             this.head.body.setSize(40, 40).setOffset(-20, -20);
+            this.head.body.setCollideWorldBounds(false); // Ölüm kontrolü sunucu tarafında — fizik sınırı snake'i bloke etmemeli
         }
         for (let i = 0; i < this.sct; i++) {
             const seg = this._createSegmentSprite(i, x, y);
@@ -313,6 +317,7 @@ export class Snake {
         this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
     }
 
+    // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
     postUpdate(delta = 16.67) {
         if (!this.alive || !this.head?.active) return;
         if (this.isPlayerControlled) {
@@ -320,10 +325,19 @@ export class Snake {
         } else {
             this._interpolateRemoteSnake(delta);
         }
+        // _sampleHeadToPath, _positionSegmentsByPath ve _updateEyes artık
+        // Phaser'ın postupdate event'inde çağrılıyor (physics step SONRASI, render ÖNCESİ).
+        // Bu sayede segmentler ve gözler head'in o frame'deki gerçek fiziksel pozisyonunu
+        // yakalar — update() sırasında physics henüz çalışmadığından 1 frame gecikme (esniyor
+        // hissi) oluşuyordu.
+        this._delta = delta;
+    }
 
+    // Physics step sonrası segment + göz güncelleme — scene.events 'postupdate' içinde çağrılır
+    postPhysicsUpdate() {
+        if (!this.alive || !this.head?.active) return;
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
-
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
         this._updateEyes(worldPoint.x, worldPoint.y);
     }
@@ -438,7 +452,8 @@ export class Snake {
         this.totalPathLen = 0;
         const spacing = this.getSegmentSpacing();
         const needLen = (this.segments.length + 1) * spacing + 400;
-        const dir = new Phaser.Math.Vector2(-1, 0);
+        const angle = this.head ? this.head.rotation : 0;
+        const dir = new Phaser.Math.Vector2(-Math.cos(angle), -Math.sin(angle));
         for (let carried = 0; carried < needLen; carried += spacing) {
             const last = this.path[this.path.length - 1];
             const next = new Phaser.Math.Vector2(last.x + dir.x * spacing, last.y + dir.y * spacing);

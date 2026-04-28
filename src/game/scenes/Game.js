@@ -15,6 +15,7 @@ export class Game extends Phaser.Scene {
         this.myId = null;
         this.networkManager = null;
         this.gameStarted = false;
+        this.initialDataFlags = { startInfo: false, entities: false };
 
         this.pointer = null;
         this.fpsText = null;
@@ -22,6 +23,8 @@ export class Game extends Phaser.Scene {
     }
 
     create() {
+        this.gameStarted = false;
+        this.initialDataFlags = { startInfo: false, entities: false };
         this.networkManager = new NetworkManager(this);
 
         this.events.on('start_game', this.onStartGame, this);
@@ -35,6 +38,11 @@ export class Game extends Phaser.Scene {
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
+
+        // Physics step SONRASI, render ÖNCESİ: segmentler ve gözler head'in gerçek
+        // fiziksel pozisyonuyla senkronize edilir. update() içinde physics henüz
+        // çalışmadığından oradan çağrılmak 1 frame gecikmeye (esniyor hissi) yol açıyordu.
+        this.events.on('postupdate', this._onPostUpdate, this);
 
         this.networkManager.connect();
 
@@ -92,31 +100,44 @@ export class Game extends Phaser.Scene {
 
     onStartGame(startInfo) {
         console.log("onStartGame Alındı:", startInfo);
-        this.hideLoader();
-        
         const clientId = this.toId(startInfo?.clientId ?? startInfo?.client_id);
         if (clientId === null) {
             console.warn('Geçersiz clientId alındı:', startInfo);
             return;
         }
 
-        this.gameStarted = true;
         this.myId = clientId;
-
-        if (!this.grid) {
-            this.createTiledBackground();
-        }
+        this.initialDataFlags.startInfo = true;
 
         const startX = Number(startInfo?.x);
         const startY = Number(startInfo?.y);
         const startSegmentCount = Number(startInfo?.segmentCount ?? startInfo?.segment_count);
         const startScale = Number(startInfo?.scale ?? 1.0);
         const worldRadius = Number(startInfo?.worldRadius ?? startInfo?.world_radius);
+        const startDirection = Number(startInfo?.startDirection ?? startInfo?.start_direction ?? 0);
 
         if (Number.isFinite(worldRadius)) {
             const worldSize = worldRadius * 2;
             this.cameras.main.setBounds(0, 0, worldSize, worldSize);
+            // Physics world bounds'u kamera sınırından çok büyük tut:
+            // cameras.main.setBounds() bazı Phaser sürümlerinde physics.world.setBounds()'ı
+            // tetikler ve snake head body sınırda sıkışır. Bunu önlemek için fizik sınırını
+            // görsel sınırın çok ötesine alıyoruz — ölüm kontrolü sunucu tarafından yapılıyor.
+            const physicsPadding = worldRadius * 2;
+            this.physics.world.setBounds(
+                -physicsPadding, -physicsPadding,
+                worldSize + physicsPadding * 2,
+                worldSize + physicsPadding * 2
+            );
             console.log(`Dünya sınırı ayarlandı: ${worldSize}x${worldSize}`);
+
+            if (this.boundaryGraphics) {
+                this.boundaryGraphics.destroy();
+            }
+            this.boundaryGraphics = this.add.graphics();
+            this.boundaryGraphics.lineStyle(6, 0xff0000, 1.0);
+            this.boundaryGraphics.strokeCircle(worldRadius, worldRadius, worldRadius - 3);
+            this.boundaryGraphics.setDepth(500);
         }
 
         this.ensurePlayerSnake(
@@ -124,8 +145,10 @@ export class Game extends Phaser.Scene {
             Number.isFinite(startX) ? startX : 0,
             Number.isFinite(startY) ? startY : 0,
             Number.isFinite(startSegmentCount) ? startSegmentCount : undefined,
-            Number.isFinite(startScale) ? startScale : undefined
+            Number.isFinite(startScale) ? startScale : undefined,
+            startDirection
         );
+        this.checkInitialDataComplete();
     }
 
     hideLoader() {
@@ -142,13 +165,8 @@ export class Game extends Phaser.Scene {
         const entityIds = entityCollection?.entityIds ?? [];
         if (entityIds.length === 0) return;
 
-        this.hideLoader();
-        if (!this.gameStarted) {
-            this.gameStarted = true;
-            if (!this.grid) {
-                this.createTiledBackground();
-            }
-        }
+        this.initialDataFlags.entities = true;
+        this.checkInitialDataComplete();
 
         const xs = entityCollection?.xs ?? [];
         const ys = entityCollection?.ys ?? [];
@@ -180,7 +198,9 @@ export class Game extends Phaser.Scene {
                     entityId,
                     Number.isFinite(initialX) ? initialX : 0,
                     Number.isFinite(initialY) ? initialY : 0,
-                    entitySegmentCount
+                    entitySegmentCount,
+                    undefined,
+                    angle
                 );
                 this.flushPendingSegmentMutations(entityId, playerSnake);
                 continue;
@@ -194,7 +214,8 @@ export class Game extends Phaser.Scene {
                     false,
                     Number.isFinite(initialX) ? initialX : 0,
                     Number.isFinite(initialY) ? initialY : 0,
-                    entitySegmentCount
+                    entitySegmentCount,
+                    angle
                 );
                 this.snakes.set(entityId, snake);
             }
@@ -272,12 +293,8 @@ export class Game extends Phaser.Scene {
         }
         if (entityId !== this.myId) return;
 
-        if (!this.gameStarted) {
-            this.gameStarted = true;
-            if (!this.grid) {
-                this.createTiledBackground();
-            }
-        }
+        this.initialDataFlags.entities = true;
+        this.checkInitialDataComplete();
 
         const x = Number(selfPosition?.x);
         const y = Number(selfPosition?.y);
@@ -302,7 +319,7 @@ export class Game extends Phaser.Scene {
         this.snakes.delete(entityId);
     }
 
-    ensurePlayerSnake(entityId, x, y, segmentCount, scale) {
+    ensurePlayerSnake(entityId, x, y, segmentCount, scale, angleRaw) {
         const existingSnake = this.snakes.get(entityId);
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
             if (segmentCount !== undefined) {
@@ -319,7 +336,7 @@ export class Game extends Phaser.Scene {
             this.snakes.delete(entityId);
         }
 
-        const playerSnake = new Snake(this, true, x, y, segmentCount);
+        const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
         this.cameras.main.startFollow(playerSnake.getHead(), true, 1.0, 1.0);
@@ -343,6 +360,16 @@ export class Game extends Phaser.Scene {
             snake.applySegmentMutationFromServer(mutation);
         });
         this.pendingSegmentMutations.delete(entityId);
+    }
+
+    checkInitialDataComplete() {
+        if (!this.gameStarted && this.initialDataFlags.startInfo && this.initialDataFlags.entities) {
+            this.gameStarted = true;
+            if (!this.grid) {
+                this.createTiledBackground();
+            }
+            this.hideLoader();
+        }
     }
 
     toId(rawId) {
@@ -518,6 +545,10 @@ export class Game extends Phaser.Scene {
         console.log("Bağlantı koptu!");
         this.gameStarted = false;
         this.clearFoods();
+        if (this.boundaryGraphics) {
+            this.boundaryGraphics.destroy();
+            this.boundaryGraphics = null;
+        }
         this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
             `Sunucu bağlantısı koptu!`,
             { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000' }
@@ -579,5 +610,16 @@ export class Game extends Phaser.Scene {
             .setOrigin(0, 0)
             .setScrollFactor(0)
             .setDepth(-1);
+    }
+
+    // Physics step tamamlandıktan sonra, render öncesi çağrılır.
+    // Segmentleri ve gözleri head'in gerçek fiziksel pozisyonuyla senkronize eder.
+    _onPostUpdate() {
+        if (!this.gameStarted) return;
+        this.snakes.forEach(snake => {
+            if (snake.alive && snake.getHead()?.active) {
+                snake.postPhysicsUpdate();
+            }
+        });
     }
 }
