@@ -11,12 +11,10 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
-    // Reconciliation: velocity-offset + emergency snap
-    // head.setPosition() KULLANILMAZ — sprite'i anında taşır, jitter yaratır
-    RECONCILIATION_LATERAL_DEADZONE: 15.0,    // Lateral ölü bölge (px)
-    RECONCILIATION_LONGITUDINAL_MAX_LAG: 1.2, // Client sunucudan max speed * bu kadar önde olabilir
-    RECONCILIATION_VELOCITY_GAIN: 4.0,        // Velocity-offset kazanım oranı
-    RECONCILIATION_SNAP_DISTANCE: 800,         // Bu üstesinde anında snap
+    RECONCILIATION_POSITION_FACTOR: 0.18,
+    RECONCILIATION_DEADZONE: 2.5,
+    RECONCILIATION_SNAP_DISTANCE: 140,
+    RECONCILIATION_MAX_CORRECTION_SPEED: 480,
 };
 
 export class Snake {
@@ -305,7 +303,8 @@ export class Snake {
 
     updateFromInput(targetAngle, isBoosting, delta) {
         if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
-        this.setBoost(isBoosting); // tekrar çağrım kaldırıldı (duplicate bug fix)
+        this.setBoost(isBoosting);
+        this.setBoost(isBoosting);
         const baseSpeed = this.calculateBaseSpeed();
         const boostSpeed = this.calculateBoostSpeed();
         this.speed = this.isBoosting ? boostSpeed : baseSpeed;
@@ -350,56 +349,58 @@ export class Snake {
     }
 
     _reconcilePlayerWithServer(delta) {
-        if (!this.hasSelfServerState || !this.head?.body) return;
+        if (!this.hasSelfServerState) return;
 
         const dx = this.selfServerTarget.x - this.head.x;
         const dy = this.selfServerTarget.y - this.head.y;
         const absDistance = Math.hypot(dx, dy);
 
-        // Emergency snap: çok büyük pozisyon sapmışı (respawn, lag spike)
-        if (absDistance > this.config.RECONCILIATION_SNAP_DISTANCE) {
+        // Sunucu 10 FPS çalışırken ping ile birlikte mesafe 200-300 pikseli aşabilir.
+        // O yüzden sadece ÇOK saçma bir farkta (örn. ölüm, yeniden doğma vb.) 800 veriyoruz.
+        if (absDistance > 800) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
-            this.head.body.reset(this.selfServerTarget.x, this.selfServerTarget.y);
-            if (this.scene.cameraAnchor) {
-                this.scene.cameraAnchor.x = this.selfServerTarget.x;
-                this.scene.cameraAnchor.y = this.selfServerTarget.y;
-            }
+            this.head.body?.updateFromGameObject();
             return;
         }
 
-        // Velocity-offset reconciliation:
-        // head.setPosition() KULLANILMAZ — sprite'i anında taşır, jitter yaratır.
-        // Bunun yerine body.velocity'e küçük bir düzeltme vektörü eklenir.
-        // Arcade physics bu offset'i bir sonraki frame'in doğal hareketine katar.
-        // updateFromInput() bir sonraki frame'de velocity'i sıfırlar, bu offset tek frame etkilidir.
+        // Vector from Client to Server
         const cos = Math.cos(this.head.rotation);
         const sin = Math.sin(this.head.rotation);
 
-        const lateral = dx * -sin + dy * cos;
         const longitudinal = dx * cos + dy * sin;
-        const maxExpectedLag = this.speed * this.config.RECONCILIATION_LONGITUDINAL_MAX_LAG;
+        const lateral = dx * -sin + dy * cos;
 
-        let offsetVx = 0;
-        let offsetVy = 0;
+        let corrX = 0;
+        let corrY = 0;
+        let hasCorrection = false;
 
-        // Lateral: dead zone dışındaki yanal sapmayı velocity offset ile düzelt
-        if (Math.abs(lateral) > this.config.RECONCILIATION_LATERAL_DEADZONE) {
-            const lateralErr = lateral - Math.sign(lateral) * this.config.RECONCILIATION_LATERAL_DEADZONE;
-            offsetVx += lateralErr * -sin * this.config.RECONCILIATION_VELOCITY_GAIN;
-            offsetVy += lateralErr * cos * this.config.RECONCILIATION_VELOCITY_GAIN;
+        if (Math.abs(lateral) > this.config.RECONCILIATION_DEADZONE) {
+            corrX += lateral * -sin;
+            corrY += lateral * cos;
+            hasCorrection = true;
         }
 
-        // Longitudinal: yalnızca sunucu beklenenden çok önde veya arkadaysa düzelt
-        // (longitudinal > 0 koşulu kaldırıldı — sunucu her zaman client'tan geride
-        //  lag nedeniyle, bu koşul her frame tetikleniyordu ve jitter yaratıyordu)
-        if (longitudinal > maxExpectedLag * 0.3 || longitudinal < -maxExpectedLag) {
-            offsetVx += longitudinal * cos * this.config.RECONCILIATION_VELOCITY_GAIN;
-            offsetVy += longitudinal * sin * this.config.RECONCILIATION_VELOCITY_GAIN;
+        const maxExpectedLag = (this.speed || 300) * 0.9;
+        if (longitudinal > 0 || longitudinal < -maxExpectedLag) {
+            corrX += longitudinal * cos;
+            corrY += longitudinal * sin;
+            hasCorrection = true;
         }
 
-        if (Math.abs(offsetVx) > 0.01 || Math.abs(offsetVy) > 0.01) {
-            this.head.body.velocity.x += offsetVx;
-            this.head.body.velocity.y += offsetVy;
+        if (hasCorrection) {
+            const corrDist = Math.hypot(corrX, corrY);
+            if (corrDist > 0.1) {
+                const posFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
+                const desiredStep = corrDist * posFactor * 0.55;
+                const maxStep = this.config.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
+                const step = Math.min(desiredStep, maxStep);
+
+                const nx = this.head.x + (corrX / corrDist) * step;
+                const ny = this.head.y + (corrY / corrDist) * step;
+
+                this.head.setPosition(nx, ny);
+                this.head.body?.updateFromGameObject();
+            }
         }
     }
 
