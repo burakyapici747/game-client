@@ -5,7 +5,7 @@ const SnakeConfig = {
     BASE_SPEED_FACTOR: 3.75,
     SPEED_REDUCTION_PER_SCALE: 0.5 / 106,
     BOOST_SPEED_FACTOR: 12,
-    TURN_ANGLE_BASE: 3.3,
+    TURN_ANGLE_BASE: 5.5,
     TURN_SPEED_INFLUENCE: 4.8,
     INITIAL_SEGMENT_COUNT: 32,
     SEGMENT_SPACING_BASE: 12.5,
@@ -338,8 +338,18 @@ export class Snake {
         if (!this.alive || !this.head?.active) return;
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
-        const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
-        this._updateEyes(worldPoint.x, worldPoint.y);
+        if (this.isPlayerControlled) {
+            // Oyuncunun kendi yılanı: gözler mouse yönüne göre konumlanır
+            const worldPoint = this.scene.cameras.main.getWorldPoint(
+                this.scene.input.activePointer.x,
+                this.scene.input.activePointer.y
+            );
+            this._updateEyes(worldPoint.x, worldPoint.y);
+        } else {
+            // Uzak yılan: gözler kendi head.rotation yönüne göre konumlanır,
+            // lokal mouse'u takip etmemeli.
+            this._updateEyes(null, null);
+        }
     }
 
     _frameAdjustedFactor(baseFactor, delta) {
@@ -414,34 +424,42 @@ export class Snake {
         }
     }
 
+    // tx, ty: dünya koordinatında hedef nokta (oyuncu mouse'u). null ise head.rotation yönü kullanılır.
     _updateEyes(tx, ty) {
         if (!this.head.active) return;
-        const dir = new Phaser.Math.Vector2(tx - this.head.x, ty - this.head.y);
-        if (dir.lengthSq() < 0.0001) {
-            dir.setTo(Math.cos(this.head.rotation), Math.sin(this.head.rotation));
+
+        // Gözlerin baktığı yön: mouse varsa mouse yönü, yoksa head.rotation yönü
+        let dir;
+        if (tx !== null && ty !== null) {
+            dir = new Phaser.Math.Vector2(tx - this.head.x, ty - this.head.y);
+            if (dir.lengthSq() < 0.0001) {
+                dir.setTo(Math.cos(this.head.rotation), Math.sin(this.head.rotation));
+            }
+            dir.normalize();
+        } else {
+            // Uzak yılanlar için: hareket yönü = head.rotation
+            dir = new Phaser.Math.Vector2(Math.cos(this.head.rotation), Math.sin(this.head.rotation));
         }
-        dir.normalize();
         this._lookVec.copy(dir);
-        
+
         const rot = this.head.rotation;
         const cos = Math.cos(rot), sin = Math.sin(rot);
         const l = this._eyeLocalL;
         const r = this._eyeLocalR;
-        
-        // Scale offset by snake scale
+
         const curScale = this.scale;
         const lx = this.head.x + (l.x * curScale * cos - l.y * curScale * sin);
         const ly = this.head.y + (l.x * curScale * sin + l.y * curScale * cos);
         const rx = this.head.x + (r.x * curScale * cos - r.y * curScale * sin);
         const ry = this.head.y + (r.x * curScale * sin + r.y * curScale * cos);
-        
+
         this.eyeL.setPosition(Math.round(lx), Math.round(ly)).setScale(curScale);
         this.eyeR.setPosition(Math.round(rx), Math.round(ry)).setScale(curScale);
-        
+
         const maxR = this._pupilMax * curScale;
         const px = Phaser.Math.Clamp(dir.x * maxR, -maxR, maxR);
         const py = Phaser.Math.Clamp(dir.y * maxR, -maxR, maxR);
-        
+
         this.pupilL.setPosition(Math.round(lx + px), Math.round(ly + py)).setScale(curScale);
         this.pupilR.setPosition(Math.round(rx + px), Math.round(ry + py)).setScale(curScale);
     }

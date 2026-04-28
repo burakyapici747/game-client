@@ -21,6 +21,10 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
    - **Güncelleme Döngüsü İki Aşamalıdır:**
      1. `postUpdate(delta)` → `update()` içinde çağrılır. Reconciliation (oyuncu yılanı) ve interpolation (uzak yılanlar) burada yapılır. Velocity set edilir ama physics step **henüz çalışmamıştır**.
      2. `postPhysicsUpdate()` → `scene.events 'postupdate'` içinde çağrılır (physics step SONRASI). `_sampleHeadToPath()`, `_positionSegmentsByPath()`, `_updateEyes()` burada çalışır. Head'in **gerçek** o-frame fiziksel pozisyonu yakalanır; böylece segmentler ve gözler head'e yapışık görünür.
+   - **Göz Sistemi (`_updateEyes`) — Önemli Kurallar:**
+     - Oyuncu yılanı (`isPlayerControlled=true`): `_updateEyes(worldX, worldY)` ile mouse dünya koordinatı geçilir. Pupil mouse yönüne kayar.
+     - Uzak yılanlar (`isPlayerControlled=false`): `_updateEyes(null, null)` ile çağrılır. `null` gönderildiğinde göz/pupil `head.rotation` yönüne bakar, lokal mouse'u takip etmez. **Uzak yılanlara lokal mouse geçilmemeli** — geçilirse diğer oyuncuların gözleri kullanıcının mouse'unu takip eder.
+   - **Dönüş Hızı:** `TURN_ANGLE_BASE=5.5 rad/s`. Bu değer düşük tutulursa (eski: 3.3) head vücuda göre yavaş kalır ve geri kalan his oluşur.
 
 3. **Veri Formatı ve Encode/Decode (`bundle.js`)**
    - Sunucudan alınan binary (byte[]) paketler protobuf.js modülü ile parse edilir. Projenin `.proto` yapılarının TypeScript tanımları `bundle.d.ts` dosyasında bulunabilir.
