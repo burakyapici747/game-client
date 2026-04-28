@@ -11,11 +11,12 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
-    // Reconciliation: yalnızca lateral velocity-offset + emergency snap
-    // Longitudinal düzeltme KALDIRILDI — boost geçişlerinde segment sliding'e yol açıyordu
-    RECONCILIATION_LATERAL_DEADZONE: 15.0,  // Lateral ölü bölge (px)
-    RECONCILIATION_VELOCITY_GAIN: 4.0,      // Velocity-offset kazanım oranı
-    RECONCILIATION_SNAP_DISTANCE: 800,       // Bu üstesinde anında snap
+    // Reconciliation: velocity-offset + emergency snap
+    // head.setPosition() KULLANILMAZ — sprite'i anında taşır, jitter yaratır
+    RECONCILIATION_LATERAL_DEADZONE: 15.0,    // Lateral ölü bölge (px)
+    RECONCILIATION_LONGITUDINAL_MAX_LAG: 1.2, // Client sunucudan max speed * bu kadar önde olabilir
+    RECONCILIATION_VELOCITY_GAIN: 4.0,        // Velocity-offset kazanım oranı
+    RECONCILIATION_SNAP_DISTANCE: 800,         // Bu üstesinde anında snap
 };
 
 export class Snake {
@@ -355,7 +356,7 @@ export class Snake {
         const dy = this.selfServerTarget.y - this.head.y;
         const absDistance = Math.hypot(dx, dy);
 
-        // Emergency snap: çok büyük pozisyon sapması (respawn, lag spike)
+        // Emergency snap: çok büyük pozisyon sapmışı (respawn, lag spike)
         if (absDistance > this.config.RECONCILIATION_SNAP_DISTANCE) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
             this.head.body.reset(this.selfServerTarget.x, this.selfServerTarget.y);
@@ -366,24 +367,41 @@ export class Snake {
             return;
         }
 
-        // Yalnızca LATERAL (yanal) velocity-offset düzeltmesi:
-        // Longitudinal düzeltme KALDIRILDI — boost geçişlerinde sunucu farklı bir
-        // hız rejiminden (latency-delayed) pozisyon gönderiyor. Bu durum longitudinal
-        // velocity offset'ini agresif tetikleyerek head'i bir frame'de anormal mesafe
-        // atlatıyor → path'e büyük/küçük segment giriyor → segment kayması (sliding).
-        // Longitudinal fark client-side prediction tarafından yönetilir; sunucu
-        // render için değil, game logic (çarpışma, ölüm) için otoritedir.
-        const sin = Math.sin(this.head.rotation);
+        // Velocity-offset reconciliation:
+        // head.setPosition() KULLANILMAZ — sprite'i anında taşır, jitter yaratır.
+        // Bunun yerine body.velocity'e küçük bir düzeltme vektörü eklenir.
+        // Arcade physics bu offset'i bir sonraki frame'in doğal hareketine katar.
+        // updateFromInput() bir sonraki frame'de velocity'i sıfırlar, bu offset tek frame etkilidir.
         const cos = Math.cos(this.head.rotation);
-        const lateral = dx * -sin + dy * cos;
+        const sin = Math.sin(this.head.rotation);
 
+        const lateral = dx * -sin + dy * cos;
+        const longitudinal = dx * cos + dy * sin;
+        const maxExpectedLag = this.speed * this.config.RECONCILIATION_LONGITUDINAL_MAX_LAG;
+
+        let offsetVx = 0;
+        let offsetVy = 0;
+
+        // Lateral: dead zone dışındaki yanal sapmayı velocity offset ile düzelt
         if (Math.abs(lateral) > this.config.RECONCILIATION_LATERAL_DEADZONE) {
             const lateralErr = lateral - Math.sign(lateral) * this.config.RECONCILIATION_LATERAL_DEADZONE;
-            this.head.body.velocity.x += lateralErr * -sin * this.config.RECONCILIATION_VELOCITY_GAIN;
-            this.head.body.velocity.y += lateralErr * cos * this.config.RECONCILIATION_VELOCITY_GAIN;
+            offsetVx += lateralErr * -sin * this.config.RECONCILIATION_VELOCITY_GAIN;
+            offsetVy += lateralErr * cos * this.config.RECONCILIATION_VELOCITY_GAIN;
+        }
+
+        // Longitudinal: yalnızca sunucu beklenenden çok önde veya arkadaysa düzelt
+        // (longitudinal > 0 koşulu kaldırıldı — sunucu her zaman client'tan geride
+        //  lag nedeniyle, bu koşul her frame tetikleniyordu ve jitter yaratıyordu)
+        if (longitudinal > maxExpectedLag * 0.3 || longitudinal < -maxExpectedLag) {
+            offsetVx += longitudinal * cos * this.config.RECONCILIATION_VELOCITY_GAIN;
+            offsetVy += longitudinal * sin * this.config.RECONCILIATION_VELOCITY_GAIN;
+        }
+
+        if (Math.abs(offsetVx) > 0.01 || Math.abs(offsetVy) > 0.01) {
+            this.head.body.velocity.x += offsetVx;
+            this.head.body.velocity.y += offsetVy;
         }
     }
-
 
     _updateEyes(tx, ty) {
         if (!this.head.active) return;
