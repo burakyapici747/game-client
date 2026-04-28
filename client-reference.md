@@ -22,7 +22,7 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
      1. `setRoundPixels(true)` + sürekli zoom lerp → 1px pixel-snap → **Çözüm:** kaldırıldı, zoom `|Δ| > 0.0005` eşiğiyle güncelleniyor.
      2. `Math.round()` segment/göz pozisyonlarında → pixel boundary snap → **Çözüm:** kaldırıldı.
      3. `longitudinal > 0` koşulu: sunucu latency nedeniyle her zaman geride olduğundan her frame tetikleniyordu → **Çözüm:** `longitudinal > maxExpectedLag * 0.3` koşuluyla eşikli hâle getirildi.
-   - **SnakeConfig Reconciliation Sabitleri:** `RECONCILIATION_LATERAL_DEADZONE=15px`, `RECONCILIATION_LONGITUDINAL_MAX_LAG=1.2`, `RECONCILIATION_VELOCITY_GAIN=4.0`, `RECONCILIATION_SNAP_DISTANCE=800px`.
+   - **SnakeConfig Reconciliation Sabitleri:** `RECONCILIATION_LATERAL_DEADZONE=15px`, `RECONCILIATION_VELOCITY_GAIN=4.0`, `RECONCILIATION_SNAP_DISTANCE=800px`. **Longitudinal düzeltme kaldırıldı** — boost geçişlerinde sunucu farklı hız rejiminden delayed pozisyon gönderir, bu longitudinal velocity offset'ini agresif tetikleyerek path'e anormal büyük/küçük segment sokuyordu → segment sliding. Longitudinal fark client-side prediction tarafından yönetilir.
    - **Kamera Anchor:** Kamera `head` yerine `scene.cameraAnchor = {x, y}` objesini takip eder. `update()` içinde `updateFromInput` sonrasında güncellenir. Emergency snap'te de senkronize edilir.
 
 3. **Veri Formatı ve Encode/Decode (`bundle.js`)**
