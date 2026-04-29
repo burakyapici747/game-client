@@ -239,7 +239,6 @@ export class Snake {
 
         this.sct = this.segments.length;
         this._refreshSegmentDepths();
-        this._initPathWarmup(this.head.x, this.head.y);
     }
 
     applySegmentMutationFromServer(mutation) {
