@@ -4,7 +4,8 @@ const SnakeConfig = {
     PHYS_CONST: 60,
     BASE_SPEED_FACTOR: 3.75,
     SPEED_REDUCTION_PER_SCALE: 0.5 / 106,
-    BOOST_SPEED_FACTOR: 12,
+    BOOST_SPEED_FACTOR: 5.5,
+    BOOST_MIN_SEGMENTS: 10,
     TURN_ANGLE_BASE: 3.3,
     TURN_SPEED_INFLUENCE: 4.8,
     INITIAL_SEGMENT_COUNT: 32,
@@ -57,12 +58,16 @@ export class Snake {
     }
 
     calculateBaseSpeed() {
-        const PHYS = this.config.PHYS_CONST;
-        const baseSpeedNoScale = (this.config.BASE_SPEED_FACTOR * PHYS) / 40;
-        const reduction = ((this.config.SPEED_REDUCTION_PER_SCALE * PHYS) / 40) * (this.scale - 1);
-        return (baseSpeedNoScale - reduction) * 40;
+        const baseSpeed = this.config.BASE_SPEED_FACTOR * this.config.PHYS_CONST;
+        const scaleFactor = 1.0 / (1.0 + (this.scale - 1.0) * 0.2);
+        return baseSpeed * scaleFactor;
     }
-    calculateBoostSpeed() { return this.config.BOOST_SPEED_FACTOR * this.config.PHYS_CONST; }
+
+    calculateBoostSpeed() {
+        const boostSpeed = this.config.BOOST_SPEED_FACTOR * this.config.PHYS_CONST;
+        const scaleFactor = 1.0 / (1.0 + (this.scale - 1.0) * 0.2);
+        return boostSpeed * scaleFactor;
+    }
     calculateScaleTurnFactor() { return 0.13 + 0.87 * Math.pow((7.5 - this.scale) / 6, 2); }
     calculateSpeedTurnFactor() { return Math.min(1, this.speed / this.config.TURN_SPEED_INFLUENCE); }
     getSegmentSpacing() {
@@ -303,17 +308,23 @@ export class Snake {
 
     updateFromInput(targetAngle, isBoosting, delta) {
         if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
-        this.setBoost(isBoosting);
-        this.setBoost(isBoosting);
+
+        const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
+        const effectiveBoosting = isBoosting && canBoost;
+        this.setBoost(effectiveBoosting);
+
         const baseSpeed = this.calculateBaseSpeed();
         const boostSpeed = this.calculateBoostSpeed();
-        this.speed = this.isBoosting ? boostSpeed : baseSpeed;
+        this.speed = effectiveBoosting ? boostSpeed : baseSpeed;
+
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
+
         const targetRad = Phaser.Math.DegToRad(targetAngle);
         const diff = Phaser.Math.Angle.Wrap(targetRad - this.head.rotation);
         const maxTurn = this.turnSpeed * (delta / 1000);
         this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+
         this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
     }
 
