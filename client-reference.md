@@ -21,7 +21,6 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
    - **Güncelleme Döngüsü İki Aşamalıdır:**
      1. `postUpdate(delta)` → `update()` içinde çağrılır. Reconciliation (oyuncu yılanı) ve interpolation (uzak yılanlar) burada yapılır. Velocity set edilir ama physics step **henüz çalışmamıştır**.
      2. `postPhysicsUpdate()` → `scene.events 'postupdate'` içinde çağrılır (physics step SONRASI). `_sampleHeadToPath()`, `_positionSegmentsByPath()`, `_updateEyes()` burada çalışır. Head'in **gerçek** o-frame fiziksel pozisyonu yakalanır; böylece segmentler ve gözler head'e yapışık görünür.
-   - **Boost Sistemi:** `BOOST_SPEED_FACTOR=7` (420 px/s, base ~225 px/s). `BOOST_DRAIN_INTERVAL_MS=150` — her 150ms'de `_drainOneSegment()` ile 1 segment kaldırılır (client-side tahmin). `BOOST_MIN_SEGMENTS=10` — bu sayının altında boost otomatik kapanır. `_drainOneSegment()` hafif metoddur: `removeSegmentsFromServer`'dan farklı olarak `_initPathWarmup` çağrılmaz, path doğal olarak kısalır. Sunucu da `isBoosting` input'unu alır ve kendi segment mutation'larını gönderir; client drain buñun görsel ön-tahminidir.
 
 3. **Veri Formatı ve Encode/Decode (`bundle.js`)**
    - Sunucudan alınan binary (byte[]) paketler protobuf.js modülü ile parse edilir. Projenin `.proto` yapılarının TypeScript tanımları `bundle.d.ts` dosyasında bulunabilir.

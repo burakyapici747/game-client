@@ -4,9 +4,7 @@ const SnakeConfig = {
     PHYS_CONST: 60,
     BASE_SPEED_FACTOR: 3.75,
     SPEED_REDUCTION_PER_SCALE: 0.5 / 106,
-    BOOST_SPEED_FACTOR: 5.5,            // Boost hızı: 5.5 * 60 = 330 px/s (base ~225 px/s)
-    BOOST_DRAIN_INTERVAL_MS: 150,       // Her 150ms'de 1 segment drain (boost aktifken)
-    BOOST_MIN_SEGMENTS: 10,             // Bu sayının altında boost devre dışı
+    BOOST_SPEED_FACTOR: 12,
     TURN_ANGLE_BASE: 3.3,
     TURN_SPEED_INFLUENCE: 4.8,
     INITIAL_SEGMENT_COUNT: 32,
@@ -30,7 +28,6 @@ export class Snake {
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
-        this._boostDrainAccumMs = 0; // Boost drain birikim sayıcısı
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
         this.networkTarget = { x: x, y: y, angle: initialAngle };
@@ -60,19 +57,12 @@ export class Snake {
     }
 
     calculateBaseSpeed() {
-        const baseSpeed = this.config.BASE_SPEED_FACTOR * this.config.PHYS_CONST;
-        // Server mantığıyla birebir senkronize: (1.0 -> 1.0x, 6.0 -> ~0.5x)
-        const scaleFactor = 1.0 / (1.0 + (this.scale - 1.0) * 0.2);
-        return baseSpeed * scaleFactor;
+        const PHYS = this.config.PHYS_CONST;
+        const baseSpeedNoScale = (this.config.BASE_SPEED_FACTOR * PHYS) / 40;
+        const reduction = ((this.config.SPEED_REDUCTION_PER_SCALE * PHYS) / 40) * (this.scale - 1);
+        return (baseSpeedNoScale - reduction) * 40;
     }
-
-    calculateBoostSpeed() {
-        const boostSpeed = this.config.BOOST_SPEED_FACTOR * this.config.PHYS_CONST;
-        // Boost hızı da yılan boyutuyla orantılı olarak azalır
-        const scaleFactor = 1.0 / (1.0 + (this.scale - 1.0) * 0.2);
-        return boostSpeed * scaleFactor;
-    }
-    
+    calculateBoostSpeed() { return this.config.BOOST_SPEED_FACTOR * this.config.PHYS_CONST; }
     calculateScaleTurnFactor() { return 0.13 + 0.87 * Math.pow((7.5 - this.scale) / 6, 2); }
     calculateSpeedTurnFactor() { return Math.min(1, this.speed / this.config.TURN_SPEED_INFLUENCE); }
     getSegmentSpacing() {
@@ -313,16 +303,11 @@ export class Snake {
 
     updateFromInput(targetAngle, isBoosting, delta) {
         if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
-
-        // Yeterli segment yoksa boost devre dışı
-        const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
-        const effectiveBoosting = isBoosting && canBoost;
-        this.setBoost(effectiveBoosting);
-
+        this.setBoost(isBoosting);
+        this.setBoost(isBoosting);
         const baseSpeed = this.calculateBaseSpeed();
         const boostSpeed = this.calculateBoostSpeed();
-        this.speed = effectiveBoosting ? boostSpeed : baseSpeed;
-
+        this.speed = this.isBoosting ? boostSpeed : baseSpeed;
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
         const targetRad = Phaser.Math.DegToRad(targetAngle);
@@ -330,28 +315,6 @@ export class Snake {
         const maxTurn = this.turnSpeed * (delta / 1000);
         this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
         this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
-
-        // Boost drain: aktif boost sırasında belirli aralıklarla segment kırp
-        if (this.isBoosting) {
-            this._boostDrainAccumMs += delta;
-            if (this._boostDrainAccumMs >= this.config.BOOST_DRAIN_INTERVAL_MS) {
-                this._boostDrainAccumMs -= this.config.BOOST_DRAIN_INTERVAL_MS;
-                this._drainOneSegment();
-            }
-        } else {
-            // Boost bitti — timer'i sıfırla (sonraki boost başlatmada temiz başlasın)
-            this._boostDrainAccumMs = 0;
-        }
-    }
-
-    // Boost drain için hafif segment kaldırma — path'i sıfırlamaz
-    // (removeSegmentsFromServer'dan farklı: _initPathWarmup çağrılmaz, path doğal olarak kısalır)
-    _drainOneSegment() {
-        if (this.segments.length === 0) return;
-        const seg = this.segments.pop();
-        seg?.destroy();
-        this.sct = this.segments.length;
-        this._refreshSegmentDepths();
     }
 
     // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
