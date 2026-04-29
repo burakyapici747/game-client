@@ -4,7 +4,7 @@ const SnakeConfig = {
     PHYS_CONST: 60,
     BASE_SPEED_FACTOR: 3.75,
     SPEED_REDUCTION_PER_SCALE: 0.5 / 106,
-    BOOST_SPEED_FACTOR: 7,              // Boost hızı: 7 * 60 = 420 px/s (base ~225 px/s)
+    BOOST_SPEED_FACTOR: 5.5,            // Boost hızı: 5.5 * 60 = 330 px/s (base ~225 px/s)
     BOOST_DRAIN_INTERVAL_MS: 150,       // Her 150ms'de 1 segment drain (boost aktifken)
     BOOST_MIN_SEGMENTS: 10,             // Bu sayının altında boost devre dışı
     TURN_ANGLE_BASE: 3.3,
