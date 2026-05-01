@@ -568,7 +568,30 @@ export class Game extends Phaser.Scene {
 
             if (head?.active) {
                 const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
-                const targetAngle = Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y));
+
+                // --- Mouse Dead Zone & Blend Zone ---
+                // Mouse head'e çok yakınsa Phaser.Math.Angle.Between sayısal kararssızlığa girer:
+                // minicik fare hareketi targetAngle'yı yüz derece değiştirebilir → zigzag / dar kıvrım.
+                // Çözüm: mesafeye göre hedef açıyı mevcut yönle blend ederek yumuşat.
+                const STEER_DEAD_ZONE_PX = 35;   // Bu içinde: hiç dönme
+                const STEER_FULL_ZONE_PX  = 90;   // Bunun ötesinde: tam yönlendirme
+
+                const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
+                const steerFactor = Phaser.Math.Clamp(
+                    (distToMouse - STEER_DEAD_ZONE_PX) / (STEER_FULL_ZONE_PX - STEER_DEAD_ZONE_PX),
+                    0, 1
+                );
+
+                // steerFactor=0 → mouse'a bakılmaz, mevcut açı korunur
+                // steerFactor=1 → tam mouse yönlendirme
+                const rawAngleDeg = Phaser.Math.RadToDeg(
+                    Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y)
+                );
+                const currentAngleDeg = Phaser.Math.RadToDeg(head.rotation);
+
+                // Açı farkını [-180, 180] aralığında tutarak blend yap
+                const angleDiff = Phaser.Math.Angle.WrapDegrees(rawAngleDeg - currentAngleDeg);
+                const targetAngle = currentAngleDeg + angleDiff * steerFactor;
 
                 this.networkManager.updateAndSendInput(targetAngle, isBoosting, delta);
 
