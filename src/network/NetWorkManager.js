@@ -13,7 +13,7 @@ export class NetworkManager {
 
 
         const serverIP = import.meta.env.VITE_SERVER_URL || '127.0.0.1';
-        this.wsUrl = `ws://${serverIP}:8080/ws`;
+        this.wsUrl = (window.gameSettings && window.gameSettings.serverUrl) ? window.gameSettings.serverUrl : `ws://${serverIP}:8080/ws`;
         this.isCurrentlyBoosting = false;
 
         this.lastSentAngleValue = -1;
