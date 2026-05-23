@@ -180,10 +180,15 @@ export class Game extends Phaser.Scene {
 
         const fullyDataIds = entityCollection?.fullyDataEntityIds ?? [];
         const fullyDataCounts = entityCollection?.fullyDataSegmentCounts ?? [];
+        const fullyDataNicknames = entityCollection?.fullyDataNicknames ?? [];
 
         const fullyDataMap = new Map();
+        const fullyDataNicknameMap = new Map();
         for (let i = 0; i < fullyDataIds.length; i++) {
             fullyDataMap.set(fullyDataIds[i], fullyDataCounts[i]);
+            if (fullyDataNicknames && fullyDataNicknames.length > i) {
+                fullyDataNicknameMap.set(fullyDataIds[i], fullyDataNicknames[i]);
+            }
         }
 
         for (let i = 0; i < entityIds.length; i++) {
@@ -214,19 +219,25 @@ export class Game extends Phaser.Scene {
             let snake = this.snakes.get(entityId);
 
             if (!snake) {
+                const remoteNickname = fullyDataNicknameMap.get(rawId) || '';
                 snake = new Snake(
                     this,
                     false,
                     Number.isFinite(initialX) ? initialX : 0,
                     Number.isFinite(initialY) ? initialY : 0,
                     entitySegmentCount,
-                    angle
+                    angle,
+                    remoteNickname
                 );
                 this.snakes.set(entityId, snake);
             }
 
             if (entitySegmentCount !== undefined) {
                 snake.syncSegmentCountFromServer(entitySegmentCount);
+            }
+
+            if (fullyDataNicknameMap.has(rawId)) {
+                snake.setNickname(fullyDataNicknameMap.get(rawId));
             }
 
             snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
@@ -326,12 +337,16 @@ export class Game extends Phaser.Scene {
 
     ensurePlayerSnake(entityId, x, y, segmentCount, scale, angleRaw) {
         const existingSnake = this.snakes.get(entityId);
+        const nickname = window.gameSettings?.nickname || '';
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
             if (segmentCount !== undefined) {
                 existingSnake.syncSegmentCountFromServer(segmentCount);
             }
             if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
                 existingSnake.scale = scale;
+            }
+            if (!existingSnake.nickname) {
+                existingSnake.setNickname(nickname);
             }
             return existingSnake;
         }
@@ -341,7 +356,7 @@ export class Game extends Phaser.Scene {
             this.snakes.delete(entityId);
         }
 
-        const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw);
+        const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw, nickname);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
         this.cameras.main.startFollow(playerSnake.getHead(), true, 1.0, 1.0);

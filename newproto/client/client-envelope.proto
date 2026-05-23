@@ -5,9 +5,14 @@ package client;
 import "client/client-input.proto";
 import "client/ping.proto";
 
+message JoinRequest {
+  string nickname = 1;
+}
+
 message ClientEnvelope {
   oneof payload {
     ClientInput clientInput = 1;
     Ping ping = 2;
+    JoinRequest joinRequest = 3;
   }
 }

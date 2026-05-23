@@ -13,4 +13,5 @@ message EntityCollection {
   repeated uint32 fully_data_entity_ids = 5 [packed=true];
   repeated uint32 fully_data_segment_counts = 6 [packed=true];
   repeated float scales = 7 [packed=true];
+  repeated string fully_data_nicknames = 8;
 }

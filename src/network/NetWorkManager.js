@@ -4,6 +4,7 @@ const ClientEnvelope = client.ClientEnvelope;
 const ClientInput = client.ClientInput;
 const Ping = client.Ping;
 const ServerEnvelope = server.ServerEnvelope;
+const JoinRequest = client.JoinRequest;
 
 export class NetworkManager {
     constructor(scene, options = {}) {
@@ -40,9 +41,9 @@ export class NetworkManager {
             console.log('Sunucuya bağlanıldı.');
             this.connected = true;
 
-            // Bazı sunucu akışlarında başlangıç state'inin gelmesi için
-            // client'tan ilk paket beklenir.
-            this.sendAction(0);
+            // Nickname bilgisini sunucuya gonder
+            const nickname = window.gameSettings?.nickname || '';
+            this.sendJoinRequest(nickname);
             this.sendPing();
         };
 
@@ -210,6 +211,14 @@ export class NetworkManager {
         const actionValue = Math.max(0, Math.min(252, Number(value) || 0));
         const clientInput = ClientInput.create({ actionValue });
         const envelope = ClientEnvelope.create({ clientInput: clientInput });
+        const buffer = ClientEnvelope.encode(envelope).finish();
+        this.socket.send(buffer);
+    }
+
+    sendJoinRequest(nickname) {
+        if (!this.canSend()) return;
+        const joinRequest = JoinRequest.create({ nickname });
+        const envelope = ClientEnvelope.create({ joinRequest: joinRequest });
         const buffer = ClientEnvelope.encode(envelope).finish();
         this.socket.send(buffer);
     }

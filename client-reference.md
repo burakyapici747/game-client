@@ -33,3 +33,9 @@ Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve 
 
 ## Başlangıç Yönü ve Kuyruk Oluşumu (Start Direction)
 - `Snake.js` oluşturulurken `StartInformation` veya diğer entity'lerin spawn bilgilerinden gelen `angle` bilgisi constructor'a parametre olarak geçilir (`initialAngleRaw`). `_initPathWarmup` sırasında yılanın ilk kuyruk segmentlerinin yerleştirileceği "path" dizisi hesaplanırken, başlangıç açısına uygun (başın arkasına düşecek) vektörel yön `(-Math.cos(angle), -Math.sin(angle))` kullanılır. Bu sayede oyuna giren yılanın baş yönüyle kuyruk dizilimi birebir örtüşür ve "zıt yön" veya uzun atlamalı lerp hatalarının önüne geçilir.
+
+## Nickname Gösterimi ve Optimizasyonu
+- **Giriş Bilgisi:** Giriş ekranında (`index.html`) girilen nickname `window.gameSettings.nickname` içinde saklanır.
+- **Bağlantı Anında Gönderim:** `NetWorkManager.js` içindeki `onopen` handler'ında, WebSocket bağlandığı an sunucuya `JoinRequest` paketi ile nickname gönderilir. Bu, sunucuya ilk paket olarak gider.
+- **Görselleştirme:** Her `Snake` objesi, `nickname` bilgisini aldığında Phaser Text Game Object (`this.nicknameText`) oluşturur. Bu metin, yılan başının üzerine (`this.head.y - 35 * this.scale`) konumlandırılır. `postPhysicsUpdate` döngüsünde yılanın başıyla birlikte pürüzsüzce takip etmesi sağlanır.
+- **Ağ Optimizasyonu (Cost Reduction):** Nickname verisi her tick update'inde gitmez. Yalnızca remote oyuncular ilk kez görüş alanına (AOI) girdiğinde (`FULLY_DATA` replikasyon modu) `fullyDataNicknames` repeated alanı içinde 1 kez iletilir. İstemci bunu `fullyDataNicknameMap` üzerinden eşleştirip `Snake` nesnesine atar.
