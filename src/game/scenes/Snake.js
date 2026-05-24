@@ -320,7 +320,7 @@ export class Snake {
             this.nicknameText = this.scene.add.text(this.head.x, this.head.y - 35 * this.scale, nickname, {
                 fontFamily: 'Outfit, Inter, Arial, sans-serif',
                 fontSize: '14px',
-                fontWeight: 'bold',
+                fontStyle: 'bold',
                 fill: '#ffffff',
                 stroke: '#000000',
                 strokeThickness: 3

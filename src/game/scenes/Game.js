@@ -185,9 +185,10 @@ export class Game extends Phaser.Scene {
         const fullyDataMap = new Map();
         const fullyDataNicknameMap = new Map();
         for (let i = 0; i < fullyDataIds.length; i++) {
-            fullyDataMap.set(fullyDataIds[i], fullyDataCounts[i]);
+            const fid = Number(fullyDataIds[i]);
+            fullyDataMap.set(fid, fullyDataCounts[i]);
             if (fullyDataNicknames && fullyDataNicknames.length > i) {
-                fullyDataNicknameMap.set(fullyDataIds[i], fullyDataNicknames[i]);
+                fullyDataNicknameMap.set(fid, fullyDataNicknames[i]);
             }
         }
 
@@ -196,12 +197,14 @@ export class Game extends Phaser.Scene {
             const entityId = this.toId(rawId);
             if (entityId === null) continue;
 
+            const lookupId = Number(rawId);
+
             const initialX = Number(xs[i]);
             const initialY = Number(ys[i]);
             const angle = Number(angles[i]);
             const scale = (scales && scales.length > i) ? Number(scales[i]) : 1.0;
 
-            const entitySegmentCount = fullyDataMap.has(rawId) ? fullyDataMap.get(rawId) : undefined;
+            const entitySegmentCount = fullyDataMap.has(lookupId) ? fullyDataMap.get(lookupId) : undefined;
 
             if (this.myId !== null && entityId === this.myId) {
                 const playerSnake = this.ensurePlayerSnake(
@@ -219,7 +222,7 @@ export class Game extends Phaser.Scene {
             let snake = this.snakes.get(entityId);
 
             if (!snake) {
-                const remoteNickname = fullyDataNicknameMap.get(rawId) || '';
+                const remoteNickname = fullyDataNicknameMap.get(lookupId) || '';
                 snake = new Snake(
                     this,
                     false,
@@ -236,8 +239,8 @@ export class Game extends Phaser.Scene {
                 snake.syncSegmentCountFromServer(entitySegmentCount);
             }
 
-            if (fullyDataNicknameMap.has(rawId)) {
-                snake.setNickname(fullyDataNicknameMap.get(rawId));
+            if (fullyDataNicknameMap.has(lookupId)) {
+                snake.setNickname(fullyDataNicknameMap.get(lookupId));
             }
 
             snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
