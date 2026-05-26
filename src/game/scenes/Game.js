@@ -614,13 +614,7 @@ export class Game extends Phaser.Scene {
 
                 // Açı farkını [-180, 180] aralığında tutarak blend yap
                 const angleDiff = Phaser.Math.Angle.WrapDegrees(rawAngleDeg - currentAngleDeg);
-
-                // Yılanın bu karede aktif dönebileceği maksimum açıyı (derece cinsinden) hesaplayıp sınırla.
-                // Bu sayede yılan başının hedef açı rotasyonu aktif dönebildiği rotasyonla senkronize olur.
-                const turnSpeed = mySnake.turnSpeed || (mySnake.config.TURN_ANGLE_BASE * mySnake.calculateScaleTurnFactor() * mySnake.calculateSpeedTurnFactor());
-                const maxTurnDeg = Phaser.Math.RadToDeg(turnSpeed) * (delta / 1000);
-                const clampedAngleDiff = Phaser.Math.Clamp(angleDiff * steerFactor, -maxTurnDeg, maxTurnDeg);
-                const targetAngle = currentAngleDeg + clampedAngleDiff;
+                const targetAngle = currentAngleDeg + angleDiff * steerFactor;
 
                 this.networkManager.updateAndSendInput(targetAngle, isBoosting, delta);
 
