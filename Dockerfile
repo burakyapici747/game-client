@@ -10,6 +10,7 @@ RUN npm install
 
 COPY . .
 # Artık Vite build yaparken bu IP'yi görebilecek
+RUN npm run build-proto
 RUN npm run build-nolog
 
 # Production stage

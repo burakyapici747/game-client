@@ -20,6 +20,8 @@ export class Game extends Phaser.Scene {
         this.pointer = null;
         this.fpsText = null;
         this.grid = null;
+        this.minimapGraphics = null;
+        this.worldRadius = 0;
     }
 
     create() {
@@ -52,6 +54,8 @@ export class Game extends Phaser.Scene {
             fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
             backgroundColor: '#00000088', padding: { left: 4, right: 4, top: 2, bottom: 2 }
         }).setScrollFactor(0).setDepth(1000);
+
+        this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(2000);
 
         this.createLoadingUI();
     }
@@ -117,6 +121,7 @@ export class Game extends Phaser.Scene {
         const startDirection = Number(startInfo?.startDirection ?? startInfo?.start_direction ?? 0);
 
         if (Number.isFinite(worldRadius)) {
+            this.worldRadius = worldRadius;
             const worldSize = worldRadius * 2;
             this.cameras.main.setBounds(0, 0, worldSize, worldSize);
             // Physics world bounds'u kamera sınırından çok büyük tut:
@@ -175,10 +180,16 @@ export class Game extends Phaser.Scene {
 
         const fullyDataIds = entityCollection?.fullyDataEntityIds ?? [];
         const fullyDataCounts = entityCollection?.fullyDataSegmentCounts ?? [];
+        const fullyDataNicknames = entityCollection?.fullyDataNicknames ?? [];
 
         const fullyDataMap = new Map();
+        const fullyDataNicknameMap = new Map();
         for (let i = 0; i < fullyDataIds.length; i++) {
-            fullyDataMap.set(fullyDataIds[i], fullyDataCounts[i]);
+            const fid = Number(fullyDataIds[i]);
+            fullyDataMap.set(fid, fullyDataCounts[i]);
+            if (fullyDataNicknames && fullyDataNicknames.length > i) {
+                fullyDataNicknameMap.set(fid, fullyDataNicknames[i]);
+            }
         }
 
         for (let i = 0; i < entityIds.length; i++) {
@@ -186,12 +197,14 @@ export class Game extends Phaser.Scene {
             const entityId = this.toId(rawId);
             if (entityId === null) continue;
 
+            const lookupId = Number(rawId);
+
             const initialX = Number(xs[i]);
             const initialY = Number(ys[i]);
             const angle = Number(angles[i]);
             const scale = (scales && scales.length > i) ? Number(scales[i]) : 1.0;
 
-            const entitySegmentCount = fullyDataMap.has(rawId) ? fullyDataMap.get(rawId) : undefined;
+            const entitySegmentCount = fullyDataMap.has(lookupId) ? fullyDataMap.get(lookupId) : undefined;
 
             if (this.myId !== null && entityId === this.myId) {
                 const playerSnake = this.ensurePlayerSnake(
@@ -209,19 +222,25 @@ export class Game extends Phaser.Scene {
             let snake = this.snakes.get(entityId);
 
             if (!snake) {
+                const remoteNickname = fullyDataNicknameMap.get(lookupId) || '';
                 snake = new Snake(
                     this,
                     false,
                     Number.isFinite(initialX) ? initialX : 0,
                     Number.isFinite(initialY) ? initialY : 0,
                     entitySegmentCount,
-                    angle
+                    angle,
+                    remoteNickname
                 );
                 this.snakes.set(entityId, snake);
             }
 
             if (entitySegmentCount !== undefined) {
                 snake.syncSegmentCountFromServer(entitySegmentCount);
+            }
+
+            if (fullyDataNicknameMap.has(lookupId)) {
+                snake.setNickname(fullyDataNicknameMap.get(lookupId));
             }
 
             snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
@@ -321,12 +340,16 @@ export class Game extends Phaser.Scene {
 
     ensurePlayerSnake(entityId, x, y, segmentCount, scale, angleRaw) {
         const existingSnake = this.snakes.get(entityId);
+        const nickname = window.gameSettings?.nickname || '';
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
             if (segmentCount !== undefined) {
                 existingSnake.syncSegmentCountFromServer(segmentCount);
             }
             if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
                 existingSnake.scale = scale;
+            }
+            if (!existingSnake.nickname) {
+                existingSnake.setNickname(nickname);
             }
             return existingSnake;
         }
@@ -336,7 +359,7 @@ export class Game extends Phaser.Scene {
             this.snakes.delete(entityId);
         }
 
-        const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw);
+        const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw, nickname);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
         this.cameras.main.startFollow(playerSnake.getHead(), true, 1.0, 1.0);
@@ -626,6 +649,66 @@ export class Game extends Phaser.Scene {
            coordsText = ` | Koord: ${Math.round(mySnake.getHead().x)}, ${Math.round(mySnake.getHead().y)}`;
         }
         this.fpsText.setText(`FPS: ${Math.round(fps)} | Yılanlar: ${this.snakes.size} | Yiyecekler: ${this.foods.size}${coordsText}`);
+        
+        if (this.minimapGraphics) {
+            this.drawMinimap(mySnake);
+        }
+    }
+
+    drawMinimap(mySnake) {
+        const size = 150;
+        const padding = 20;
+        const cx = this.cameras.main.width - size / 2 - padding;
+        const cy = this.cameras.main.height - size / 2 - padding;
+
+        const g = this.minimapGraphics;
+        g.clear();
+
+        // Minimap border and background
+        g.fillStyle(0x0a0a14, 0.7);
+        g.fillCircle(cx, cy, size / 2);
+        g.lineStyle(3, 0x00ffcc, 0.5);
+        g.strokeCircle(cx, cy, size / 2);
+
+        if (!this.worldRadius) return;
+        
+        // Calculate scale from world to minimap
+        const mapScale = (size / 2) / this.worldRadius;
+
+        // Draw foods as tiny dots
+        g.fillStyle(0x00ffcc, 0.4); 
+        for (const bobs of this.foods.values()) {
+            const bob = Array.isArray(bobs) ? bobs[0] : bobs;
+            if (!bob) continue;
+            
+            const wx = bob.x - this.worldRadius;
+            const wy = bob.y - this.worldRadius;
+            
+            const mx = cx + wx * mapScale;
+            const my = cy + wy * mapScale;
+            
+            // Distances check to keep them inside the minimap circle
+            const distSq = wx * wx + wy * wy;
+            if (distSq <= this.worldRadius * this.worldRadius) {
+                g.fillRect(mx, my, 1.5, 1.5);
+            }
+        }
+
+        // Draw player as a prominent dot
+        if (mySnake && mySnake.alive && mySnake.getHead()) {
+            const head = mySnake.getHead();
+            const wx = head.x - this.worldRadius;
+            const wy = head.y - this.worldRadius;
+            
+            const mx = cx + wx * mapScale;
+            const my = cy + wy * mapScale;
+
+            const distSq = wx * wx + wy * wy;
+            if (distSq <= this.worldRadius * this.worldRadius) {
+                g.fillStyle(0xff00cc, 1.0);
+                g.fillCircle(mx, my, 3);
+            }
+        }
     }
 
     createTiledBackground() {

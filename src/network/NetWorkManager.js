@@ -1,9 +1,5 @@
 import { client, server } from './bundle.js';
 
-const ClientEnvelope = client.ClientEnvelope;
-const ClientInput = client.ClientInput;
-const Ping = client.Ping;
-const ServerEnvelope = server.ServerEnvelope;
 
 export class NetworkManager {
     constructor(scene, options = {}) {
@@ -40,18 +36,17 @@ export class NetworkManager {
             console.log('Sunucuya bağlanıldı.');
             this.connected = true;
 
-            // Bazı sunucu akışlarında başlangıç state'inin gelmesi için
-            // client'tan ilk paket beklenir.
-            this.sendAction(0);
+            // Nickname bilgisini sunucuya gonder
+            const nickname = window.gameSettings?.nickname || '';
+            this.sendJoinRequest(nickname);
             this.sendPing();
         };
 
         this.socket.onmessage = (event) => {
             if (event.data instanceof ArrayBuffer) {
                 try {
-                    const buffer = new Uint8Array(event.data);
-                    const serverEnvelope = ServerEnvelope.decode(buffer);
-                    this.handleMessage(serverEnvelope);
+                    const message = server.ServerEnvelope.decode(new Uint8Array(event.data));
+                    this.handleMessage(message);
                 } catch (error) {
                     console.error('Sunucu mesajı çözümlenemedi:', error);
                 }
@@ -149,9 +144,12 @@ export class NetworkManager {
 
     sendPing(nonce = 0) {
         if (!this.canSend()) return;
-        const pingMessage = Ping.create({ clientTimestamp: Date.now(), nonce });
-        const envelope = ClientEnvelope.create({ ping: pingMessage });
-        const buffer = ClientEnvelope.encode(envelope).finish();
+        const pingMsg = client.Ping.create({
+            clientTimestamp: Date.now(),
+            nonce: Math.floor(Math.random() * 1000000)
+        });
+        const envelope = client.ClientEnvelope.create({ ping: pingMsg });
+        const buffer = client.ClientEnvelope.encode(envelope).finish();
         this.socket.send(buffer);
     }
     
@@ -208,9 +206,17 @@ export class NetworkManager {
     sendAction(value) {
         if (!this.canSend()) return;
         const actionValue = Math.max(0, Math.min(252, Number(value) || 0));
-        const clientInput = ClientInput.create({ actionValue });
-        const envelope = ClientEnvelope.create({ clientInput: clientInput });
-        const buffer = ClientEnvelope.encode(envelope).finish();
+        const inputMsg = client.ClientInput.create({ actionValue });
+        const envelope = client.ClientEnvelope.create({ clientInput: inputMsg });
+        const buffer = client.ClientEnvelope.encode(envelope).finish();
+        this.socket.send(buffer);
+    }
+
+    sendJoinRequest(nickname) {
+        if (!this.canSend()) return;
+        const joinRequest = client.JoinRequest.create({ nickname });
+        const envelope = client.ClientEnvelope.create({ joinRequest: joinRequest });
+        const buffer = client.ClientEnvelope.encode(envelope).finish();
         this.socket.send(buffer);
     }
 }

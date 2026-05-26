@@ -3,6 +3,103 @@ import Long = require("long");
 /** Namespace client. */
 export namespace client {
 
+    /** Properties of a JoinRequest. */
+    interface IJoinRequest {
+
+        /** JoinRequest nickname */
+        nickname?: (string|null);
+    }
+
+    /** Represents a JoinRequest. */
+    class JoinRequest implements IJoinRequest {
+
+        /**
+         * Constructs a new JoinRequest.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: client.IJoinRequest);
+
+        /** JoinRequest nickname. */
+        public nickname: string;
+
+        /**
+         * Creates a new JoinRequest instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns JoinRequest instance
+         */
+        public static create(properties?: client.IJoinRequest): client.JoinRequest;
+
+        /**
+         * Encodes the specified JoinRequest message. Does not implicitly {@link client.JoinRequest.verify|verify} messages.
+         * @param message JoinRequest message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: client.IJoinRequest, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified JoinRequest message, length delimited. Does not implicitly {@link client.JoinRequest.verify|verify} messages.
+         * @param message JoinRequest message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: client.IJoinRequest, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a JoinRequest message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns JoinRequest
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): client.JoinRequest;
+
+        /**
+         * Decodes a JoinRequest message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns JoinRequest
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): client.JoinRequest;
+
+        /**
+         * Verifies a JoinRequest message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a JoinRequest message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns JoinRequest
+         */
+        public static fromObject(object: { [k: string]: any }): client.JoinRequest;
+
+        /**
+         * Creates a plain object from a JoinRequest message. Also converts values to other types if specified.
+         * @param message JoinRequest
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: client.JoinRequest, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this JoinRequest to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for JoinRequest
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
     /** Properties of a ClientEnvelope. */
     interface IClientEnvelope {
 
@@ -11,6 +108,9 @@ export namespace client {
 
         /** ClientEnvelope ping */
         ping?: (client.IPing|null);
+
+        /** ClientEnvelope joinRequest */
+        joinRequest?: (client.IJoinRequest|null);
     }
 
     /** Represents a ClientEnvelope. */
@@ -28,8 +128,11 @@ export namespace client {
         /** ClientEnvelope ping. */
         public ping?: (client.IPing|null);
 
+        /** ClientEnvelope joinRequest. */
+        public joinRequest?: (client.IJoinRequest|null);
+
         /** ClientEnvelope payload. */
-        public payload?: ("clientInput"|"ping");
+        public payload?: ("clientInput"|"ping"|"joinRequest");
 
         /**
          * Creates a new ClientEnvelope instance using the specified properties.
@@ -1072,8 +1175,8 @@ export namespace server {
         /** EntityCollection scales */
         scales?: (number[]|null);
 
-        /** EntityCollection fullyDataPaths */
-        fullyDataPaths?: (server.IEntityPath[]|null);
+        /** EntityCollection fullyDataNicknames */
+        fullyDataNicknames?: (string[]|null);
     }
 
     /** Represents an EntityCollection. */
@@ -1106,8 +1209,8 @@ export namespace server {
         /** EntityCollection scales. */
         public scales: number[];
 
-        /** EntityCollection fullyDataPaths. */
-        public fullyDataPaths: server.IEntityPath[];
+        /** EntityCollection fullyDataNicknames. */
+        public fullyDataNicknames: string[];
 
         /**
          * Creates a new EntityCollection instance using the specified properties.
@@ -1187,109 +1290,121 @@ export namespace server {
         public static getTypeUrl(typeUrlPrefix?: string): string;
     }
 
-    /** Properties of an EntityPath. */
-    interface IEntityPath {
+    /** Properties of an EntityFull. */
+    interface IEntityFull {
 
-        /** EntityPath entityId */
+        /** EntityFull entityId */
         entityId?: (number|null);
 
-        /** EntityPath xs */
-        xs?: (number[]|null);
+        /** EntityFull x */
+        x?: (number|null);
 
-        /** EntityPath ys */
-        ys?: (number[]|null);
+        /** EntityFull y */
+        y?: (number|null);
+
+        /** EntityFull angle */
+        angle?: (number|null);
+
+        /** EntityFull segmentCount */
+        segmentCount?: (number|null);
     }
 
-    /** Represents an EntityPath. */
-    class EntityPath implements IEntityPath {
+    /** Represents an EntityFull. */
+    class EntityFull implements IEntityFull {
 
         /**
-         * Constructs a new EntityPath.
+         * Constructs a new EntityFull.
          * @param [properties] Properties to set
          */
-        constructor(properties?: server.IEntityPath);
+        constructor(properties?: server.IEntityFull);
 
-        /** EntityPath entityId. */
+        /** EntityFull entityId. */
         public entityId: number;
 
-        /** EntityPath xs. */
-        public xs: number[];
+        /** EntityFull x. */
+        public x: number;
 
-        /** EntityPath ys. */
-        public ys: number[];
+        /** EntityFull y. */
+        public y: number;
+
+        /** EntityFull angle. */
+        public angle: number;
+
+        /** EntityFull segmentCount. */
+        public segmentCount: number;
 
         /**
-         * Creates a new EntityPath instance using the specified properties.
+         * Creates a new EntityFull instance using the specified properties.
          * @param [properties] Properties to set
-         * @returns EntityPath instance
+         * @returns EntityFull instance
          */
-        public static create(properties?: server.IEntityPath): server.EntityPath;
+        public static create(properties?: server.IEntityFull): server.EntityFull;
 
         /**
-         * Encodes the specified EntityPath message. Does not implicitly {@link server.EntityPath.verify|verify} messages.
-         * @param message EntityPath message or plain object to encode
+         * Encodes the specified EntityFull message. Does not implicitly {@link server.EntityFull.verify|verify} messages.
+         * @param message EntityFull message or plain object to encode
          * @param [writer] Writer to encode to
          * @returns Writer
          */
-        public static encode(message: server.IEntityPath, writer?: $protobuf.Writer): $protobuf.Writer;
+        public static encode(message: server.IEntityFull, writer?: $protobuf.Writer): $protobuf.Writer;
 
         /**
-         * Encodes the specified EntityPath message, length delimited. Does not implicitly {@link server.EntityPath.verify|verify} messages.
-         * @param message EntityPath message or plain object to encode
+         * Encodes the specified EntityFull message, length delimited. Does not implicitly {@link server.EntityFull.verify|verify} messages.
+         * @param message EntityFull message or plain object to encode
          * @param [writer] Writer to encode to
          * @returns Writer
          */
-        public static encodeDelimited(message: server.IEntityPath, writer?: $protobuf.Writer): $protobuf.Writer;
+        public static encodeDelimited(message: server.IEntityFull, writer?: $protobuf.Writer): $protobuf.Writer;
 
         /**
-         * Decodes an EntityPath message from the specified reader or buffer.
+         * Decodes an EntityFull message from the specified reader or buffer.
          * @param reader Reader or buffer to decode from
          * @param [length] Message length if known beforehand
-         * @returns EntityPath
+         * @returns EntityFull
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.EntityPath;
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.EntityFull;
 
         /**
-         * Decodes an EntityPath message from the specified reader or buffer, length delimited.
+         * Decodes an EntityFull message from the specified reader or buffer, length delimited.
          * @param reader Reader or buffer to decode from
-         * @returns EntityPath
+         * @returns EntityFull
          * @throws {Error} If the payload is not a reader or valid buffer
          * @throws {$protobuf.util.ProtocolError} If required fields are missing
          */
-        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.EntityPath;
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.EntityFull;
 
         /**
-         * Verifies an EntityPath message.
+         * Verifies an EntityFull message.
          * @param message Plain object to verify
          * @returns `null` if valid, otherwise the reason why it is not
          */
         public static verify(message: { [k: string]: any }): (string|null);
 
         /**
-         * Creates an EntityPath message from a plain object. Also converts values to their respective internal types.
+         * Creates an EntityFull message from a plain object. Also converts values to their respective internal types.
          * @param object Plain object
-         * @returns EntityPath
+         * @returns EntityFull
          */
-        public static fromObject(object: { [k: string]: any }): server.EntityPath;
+        public static fromObject(object: { [k: string]: any }): server.EntityFull;
 
         /**
-         * Creates a plain object from an EntityPath message. Also converts values to other types if specified.
-         * @param message EntityPath
+         * Creates a plain object from an EntityFull message. Also converts values to other types if specified.
+         * @param message EntityFull
          * @param [options] Conversion options
          * @returns Plain object
          */
-        public static toObject(message: server.EntityPath, options?: $protobuf.IConversionOptions): { [k: string]: any };
+        public static toObject(message: server.EntityFull, options?: $protobuf.IConversionOptions): { [k: string]: any };
 
         /**
-         * Converts this EntityPath to JSON.
+         * Converts this EntityFull to JSON.
          * @returns JSON object
          */
         public toJSON(): { [k: string]: any };
 
         /**
-         * Gets the default type url for EntityPath
+         * Gets the default type url for EntityFull
          * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
          * @returns The default type url
          */

@@ -20,7 +20,7 @@ const SnakeConfig = {
 };
 
 export class Snake {
-    constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT, initialAngleRaw = 0) {
+    constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT, initialAngleRaw = 0, nickname = '') {
         this.scene = scene;
         this.config = SnakeConfig;
         this.isPlayerControlled = isPlayerControlled;
@@ -30,6 +30,7 @@ export class Snake {
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
+        this.nickname = nickname;
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
         this.networkTarget = { x: x, y: y, angle: initialAngle };
@@ -289,6 +290,9 @@ export class Snake {
         this._eyeLocalL = new Phaser.Math.Vector2(+15, -6);
         this._eyeLocalR = new Phaser.Math.Vector2(+15, +6);
         this._pupilMax = 3;
+        if (this.nickname) {
+            this.setNickname(this.nickname);
+        }
     }
 
     destroy() {
@@ -303,7 +307,25 @@ export class Snake {
         this.eyeR?.destroy();
         this.pupilL?.destroy();
         this.pupilR?.destroy();
+        this.nicknameText?.destroy();
         this.segments = [];
+    }
+
+    setNickname(nickname) {
+        if (!nickname) return;
+        this.nickname = nickname;
+        if (this.nicknameText) {
+            this.nicknameText.setText(nickname);
+        } else {
+            this.nicknameText = this.scene.add.text(this.head.x, this.head.y - 35 * this.scale, nickname, {
+                fontFamily: 'Outfit, Inter, Arial, sans-serif',
+                fontSize: '14px',
+                fontStyle: 'bold',
+                fill: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 3
+            }).setOrigin(0.5).setDepth(2000);
+        }
     }
 
     updateFromInput(targetAngle, isBoosting, delta) {
@@ -351,6 +373,9 @@ export class Snake {
         this._positionSegmentsByPath();
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
         this._updateEyes(worldPoint.x, worldPoint.y);
+        if (this.nicknameText) {
+            this.nicknameText.setPosition(this.head.x, this.head.y - 35 * this.scale);
+        }
     }
 
     _frameAdjustedFactor(baseFactor, delta) {
