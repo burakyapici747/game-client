@@ -27,8 +27,8 @@ export class Snake {
         this.alive = true;
         this.sct = this._normalizeSegmentCount(initialSegmentCount);
         this.scale = 0.5;
-        this.speed = 0;
-        this.turnSpeed = 0;
+        this.speed = this.calculateBaseSpeed();
+        this.turnSpeed = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.isBoosting = false;
         this.nickname = nickname;
         
