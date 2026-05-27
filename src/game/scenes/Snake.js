@@ -420,27 +420,16 @@ export class Snake {
         let corrY = 0;
         let hasCorrection = false;
 
-        // Yumuşak ölü alan (Soft Deadzone) uygulaması: Eşiğin üzerindeki "fazlalık" farkı kademeli düzeltiriz.
-        // Bu sayede yılanın tamsayı piksel koordinatlarındaki kesiklilikten dolayı titremesini (jitter) tamamen önleriz.
-        const lateralAbs = Math.abs(lateral);
-        if (lateralAbs > this.config.RECONCILIATION_DEADZONE) {
-            const excessLateral = (lateralAbs - this.config.RECONCILIATION_DEADZONE) * Math.sign(lateral);
-            corrX += excessLateral * -sin;
-            corrY += excessLateral * cos;
+        if (Math.abs(lateral) > this.config.RECONCILIATION_DEADZONE) {
+            corrX += lateral * -sin;
+            corrY += lateral * cos;
             hasCorrection = true;
         }
 
         const maxExpectedLag = (this.speed || 300) * 0.9;
-        let excessLongitudinal = 0;
-        if (longitudinal > 0) {
-            excessLongitudinal = longitudinal;
-        } else if (longitudinal < -maxExpectedLag) {
-            excessLongitudinal = longitudinal + maxExpectedLag;
-        }
-
-        if (excessLongitudinal !== 0) {
-            corrX += excessLongitudinal * cos;
-            corrY += excessLongitudinal * sin;
+        if (longitudinal > 0 || longitudinal < -maxExpectedLag) {
+            corrX += longitudinal * cos;
+            corrY += longitudinal * sin;
             hasCorrection = true;
         }
 
@@ -464,8 +453,7 @@ export class Snake {
         // Bu sayede yılanın visual rotasyonu ile gerçek fiziki hareket rotasyonu mükemmel bir şekilde senkronize kalır.
         if (this.selfServerTarget.angle !== undefined) {
             const angleDiff = Phaser.Math.Angle.Wrap(this.selfServerTarget.angle - this.head.rotation);
-            // Ultra pürüzsüz dönüş için daha hafif bir rotFactor (0.12) kullanıyoruz.
-            const rotFactor = this._frameAdjustedFactor(0.12, delta);
+            const rotFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
             this.head.rotation += angleDiff * rotFactor;
         }
     }
@@ -626,15 +614,7 @@ export class Snake {
                 const dx = x - this.selfServerTarget.x;
                 const dy = y - this.selfServerTarget.y;
                 if (Math.hypot(dx, dy) > 0.01) {
-                    const newAngle = Math.atan2(dy, dx);
-                    if (this.selfServerTarget.angle === undefined) {
-                        this.selfServerTarget.angle = newAngle;
-                    } else {
-                        // Birinci dereceden alçak geçiren filtre (Low-pass filter / EWMA) uygulayarak,
-                        // tamsayı piksel koordinat değişimlerinden kaynaklanan açısal titreşimi (quantization noise) engelliyoruz.
-                        const diff = Phaser.Math.Angle.Wrap(newAngle - this.selfServerTarget.angle);
-                        this.selfServerTarget.angle += diff * 0.15;
-                    }
+                    this.selfServerTarget.angle = Math.atan2(dy, dx);
                 }
             }
         }
