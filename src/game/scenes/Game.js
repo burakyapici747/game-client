@@ -764,11 +764,12 @@ export class Game extends Phaser.Scene {
                     allReached = false;
                 } else {
                     bob.destroy();
+                    bob.isDestroyed = true;
                 }
             });
 
             // Yok edilen bob'ları listeden çıkar
-            data.bobs = bobs.filter(bob => bob.active);
+            data.bobs = bobs.filter(bob => !bob.isDestroyed);
 
             if (allReached || data.bobs.length === 0) {
                 this.eatingFoods.delete(foodId);
