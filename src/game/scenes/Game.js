@@ -659,7 +659,7 @@ export class Game extends Phaser.Scene {
             this.snakes.forEach(snake => {
                 if (!snake.alive || !snake.getHead()?.active) return;
                 const head = snake.getHead();
-                const magnetRange = 60 * snake.scale;
+                const magnetRange = 40 * snake.scale;
 
                 const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
                 const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
