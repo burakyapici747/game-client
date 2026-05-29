@@ -9,6 +9,7 @@ export class Game extends Phaser.Scene {
         super('Game');
         this.snakes = new Map();
         this.foods = new Map();
+        this.eatingFoods = new Map();
         this.foodBlitter = null;       // Normal food (scale=1), 16px glow dot
         this.foodBlitterLarge = null;   // Large food (scale>1), 24px glow dot
         this.pendingSegmentMutations = new Map();
@@ -496,12 +497,48 @@ export class Game extends Phaser.Scene {
         const bobs = this.foods.get(foodId);
         if (!bobs) return;
 
-        if (Array.isArray(bobs)) {
-            bobs.forEach(bob => bob.destroy());
-        } else {
-            bobs.destroy();
+        const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
+        const centerBob = bobsArray[0];
+
+        let isBeingPulled = false;
+        let closestSnake = null;
+
+        if (centerBob) {
+            let minDistance = Infinity;
+            this.snakes.forEach(snake => {
+                if (!snake.alive || !snake.getHead()?.active) return;
+                const head = snake.getHead();
+                const magnetRange = 45 * snake.scale;
+
+                const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
+                const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+
+                const dx = head.x - origX;
+                const dy = head.y - origY;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq < magnetRange * magnetRange) {
+                    const dist = Math.sqrt(distSq);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestSnake = snake;
+                        isBeingPulled = true;
+                    }
+                }
+            });
         }
-        this.foods.delete(foodId);
+
+        if (isBeingPulled && closestSnake) {
+            // Sunucu yemeyi onayladı ama görsel şöleni bozmamak için hemen yok etmeyip eatingFoods listesine alıyoruz.
+            this.eatingFoods.set(foodId, {
+                bobs: bobsArray,
+                targetSnake: closestSnake
+            });
+            this.foods.delete(foodId);
+        } else {
+            bobsArray.forEach(bob => bob.destroy());
+            this.foods.delete(foodId);
+        }
     }
 
     clearFoods() {
@@ -516,6 +553,7 @@ export class Game extends Phaser.Scene {
         this.foodBlitter = null;
         this.foodBlitterLarge = null;
         this.foods.clear();
+        this.eatingFoods.clear();
     }
 
     ensureFoodBlitter() {
@@ -704,6 +742,42 @@ export class Game extends Phaser.Scene {
                         bob.y = origY;
                     }
                 });
+            }
+        });
+
+        // Yenen yemlerin yılan kafasına uçarak yok olması animasyonu (Deferred food eat/magnet animation)
+        this.eatingFoods.forEach((data, foodId) => {
+            const { bobs, targetSnake } = data;
+            if (!targetSnake.alive || !targetSnake.getHead()?.active) {
+                // Yiyen yılan öldüyse veya aktif değilse yemleri hemen temizle
+                bobs.forEach(bob => bob.destroy());
+                this.eatingFoods.delete(foodId);
+                return;
+            }
+
+            const head = targetSnake.getHead();
+            let allReached = true;
+            const EATING_PULL_SPEED = 18.0; // Uçuş hızı daha canlı ve hızlı olsun
+
+            bobs.forEach(bob => {
+                const dx = head.x - bob.x;
+                const dy = head.y - bob.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 8.0) {
+                    bob.x += dx * EATING_PULL_SPEED * dt;
+                    bob.y += dy * EATING_PULL_SPEED * dt;
+                    allReached = false;
+                } else {
+                    bob.destroy();
+                }
+            });
+
+            // Yok edilen bob'ları listeden çıkar
+            data.bobs = bobs.filter(bob => bob.active);
+
+            if (allReached || data.bobs.length === 0) {
+                this.eatingFoods.delete(foodId);
             }
         });
 
