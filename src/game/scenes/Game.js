@@ -645,7 +645,7 @@ export class Game extends Phaser.Scene {
 
         // İstemci tarafı görsel mıknatıs çekim efekti (Client-side visual food magnet pull)
         const dt = delta / 1000;
-        const PULL_SPEED_FACTOR = 35.0;
+        const PULL_SPEED_FACTOR = 12.0;
 
         this.foods.forEach((bobs, foodId) => {
             const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
