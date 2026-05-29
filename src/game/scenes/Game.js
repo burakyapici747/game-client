@@ -500,36 +500,30 @@ export class Game extends Phaser.Scene {
         const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
         const centerBob = bobsArray[0];
 
-        let isBeingPulled = false;
         let closestSnake = null;
+        let minDistance = Infinity;
 
         if (centerBob) {
-            let minDistance = Infinity;
             this.snakes.forEach(snake => {
                 if (!snake.alive || !snake.getHead()?.active) return;
                 const head = snake.getHead();
-                const magnetRange = 45 * snake.scale;
 
                 const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
                 const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
 
                 const dx = head.x - origX;
                 const dy = head.y - origY;
-                const distSq = dx * dx + dy * dy;
+                const dist = Math.hypot(dx, dy);
 
-                if (distSq < magnetRange * magnetRange) {
-                    const dist = Math.sqrt(distSq);
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        closestSnake = snake;
-                        isBeingPulled = true;
-                    }
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestSnake = snake;
                 }
             });
         }
 
-        if (isBeingPulled && closestSnake) {
-            // Sunucu yemeyi onayladı ama görsel şöleni bozmamak için hemen yok etmeyip eatingFoods listesine alıyoruz.
+        // Geniş bir tolerans mesafesi (80 * scale px): ağ gecikmesi olsa bile yemeyi yapan yılanı kesin yakalar ve animasyonu tetikler.
+        if (closestSnake && minDistance < 80 * closestSnake.scale) {
             this.eatingFoods.set(foodId, {
                 bobs: bobsArray,
                 targetSnake: closestSnake
