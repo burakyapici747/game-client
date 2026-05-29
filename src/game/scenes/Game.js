@@ -664,8 +664,8 @@ export class Game extends Phaser.Scene {
                 if (!snake.alive || !snake.getHead()?.active) return;
                 const head = snake.getHead();
                 
-                // Server'ın yeme mesafesi olan 25.5 piksel ile birebir aynı ayar
-                const magnetRange = 25.5;
+                // Server'ın dinamik ölçeklenen yeme mesafesi olan 45.0 * scale piksel ile birebir aynı ayar
+                const magnetRange = 45 * snake.scale;
 
                 const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
                 const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
