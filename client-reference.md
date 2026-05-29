@@ -3,7 +3,7 @@
 Bu doküman, gelecekteki geliştirmelerde istemci projesini daha iyi anlamak ve yeni özellikleri hızlıca ekleyebilmek için bir başvuru kaynağıdır.
 
 ## Mimari ve Ana Bileşenler
-- **Oyun Motoru:** Phaser 3 kullanılmaktadır. Ekran boyutlandırması, kamera takibi ve oyun döngüsü Phaser Scene (`src/game/scenes/Game.js`) üzerinden kontrol edilir.
+- **Oyun Motoru:** Phaser 3 kullanılmaktadır. Ekran boyutlandırması, kamera takibi ve oyun döngüsü Phaser Scene (`src/game/scenes/Game.js`) üzerinden kontrol edilir. **Yumuşak Kamera Takibi (Camera Lerping):** Sunucu ile istemci arasındaki reconciliation (istemci tarafı düzeltme/snapping) adımlarında oluşan ping kaynaklı anlık koordinat atlamalarının oyuncunun ekranında titreme veya donmaya yol açmaması için, kamera takibinde `lerpX = 0.15, lerpY = 0.15` değerleri ile yumuşatılmış lerping uygulanmaktadır.
 - **Ağ ve Bağlantı:** WebSocket (`NetworkManager.js`) ile sunucuya bağlanılır. Protobuf formatındaki paketler dinlenir ve decode edilir. İlgili komutlar Phaser'ın `event` sistemi kullanılarak `Game.js`'e iletilir (Örn: `start_game`, `entity_collection`).
 - **Tahminleme (Client-Side Prediction):** Oyuncu kendi yılanını sunucudan veri gelmesini beklemeden yerel olarak hareket ettirir (`Snake.js` içindeki `updateFromInput` fonksiyonu). Sunucudan asıl pozisyon geldiğinde düzeltme yapılır.
 
