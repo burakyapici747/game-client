@@ -431,10 +431,13 @@ export class Game extends Phaser.Scene {
 
         const existingFood = this.foods.get(foodId);
         if (existingFood) {
-            if (existingFood.x !== targetX || existingFood.y !== targetY) {
-                existingFood.x = targetX;
-                existingFood.y = targetY;
-            }
+            const bobsArray = Array.isArray(existingFood) ? existingFood : [existingFood];
+            bobsArray.forEach(bob => {
+                if (bob && bob.originalX === undefined) {
+                    bob.originalX = bob.x;
+                    bob.originalY = bob.y;
+                }
+            });
             return foodId;
         }
 
@@ -452,7 +455,10 @@ export class Game extends Phaser.Scene {
         const baseColor = Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
         
         // 1. Ana yem parçasını tam merkeze koy.
-        bobs.push(targetBlitter.create(targetX, targetY, baseColor));
+        const centerBob = targetBlitter.create(targetX, targetY, baseColor);
+        centerBob.originalX = targetX;
+        centerBob.originalY = targetY;
+        bobs.push(centerBob);
 
         // 2. Diğer parçaları etrafına, daha düzenli ve organik bir dağılımla (spiral/yıldız) yay.
         for (let i = 1; i < clusterSize; i++) {
@@ -474,6 +480,8 @@ export class Game extends Phaser.Scene {
             }
 
             const bob = targetBlitter.create(targetX + offsetX, targetY + offsetY, colorFrame);
+            bob.originalX = targetX + offsetX;
+            bob.originalY = targetY + offsetY;
             bobs.push(bob);
         }
 
@@ -639,6 +647,65 @@ export class Game extends Phaser.Scene {
             this.grid.tilePositionX = this.cameras.main.scrollX;
             this.grid.tilePositionY = this.cameras.main.scrollY;
         }
+
+        // İstemci tarafı görsel mıknatıs çekim efekti (Client-side visual food magnet pull)
+        const dt = delta / 1000;
+        const PULL_SPEED_FACTOR = 12.0;
+
+        this.foods.forEach((bobs, foodId) => {
+            const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
+            const centerBob = bobsArray[0];
+            if (!centerBob) return;
+
+            let closestSnake = null;
+            let minDistance = Infinity;
+
+            this.snakes.forEach(snake => {
+                if (!snake.alive || !snake.getHead()?.active) return;
+                const head = snake.getHead();
+                
+                // Server'ın yeme mesafesi olan 25.5 piksel ile birebir aynı ayar
+                const magnetRange = 25.5;
+
+                const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
+                const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+
+                const dx = head.x - origX;
+                const dy = head.y - origY;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq < magnetRange * magnetRange) {
+                    const dist = Math.sqrt(distSq);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestSnake = snake;
+                    }
+                }
+            });
+
+            if (closestSnake) {
+                const head = closestSnake.getHead();
+                bobsArray.forEach(bob => {
+                    bob.x += (head.x - bob.x) * PULL_SPEED_FACTOR * dt;
+                    bob.y += (head.y - bob.y) * PULL_SPEED_FACTOR * dt;
+                });
+            } else {
+                bobsArray.forEach(bob => {
+                    const origX = bob.originalX !== undefined ? bob.originalX : bob.x;
+                    const origY = bob.originalY !== undefined ? bob.originalY : bob.y;
+
+                    const dx = origX - bob.x;
+                    const dy = origY - bob.y;
+                    if (Math.hypot(dx, dy) > 0.1) {
+                        bob.x += dx * PULL_SPEED_FACTOR * dt;
+                        bob.y += dy * PULL_SPEED_FACTOR * dt;
+                    } else {
+                        bob.x = origX;
+                        bob.y = origY;
+                    }
+                });
+            }
+        });
 
         // Food'lar artık statik renk frame'leri kullanıyor — animasyon döngüsü gerekmiyor.
         // Her Bob oluşturulurken sabit bir renk frame'i atanıyor.
