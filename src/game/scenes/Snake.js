@@ -34,7 +34,7 @@ export class Snake {
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
         this.networkTarget = { x: x, y: y, angle: initialAngle };
-        this.selfServerTarget = { x: x, y: y };
+        this.selfServerTarget = { x: x, y: y, angle: initialAngle };
         this.hasServerState = false;
         this.hasSelfServerState = false;
         this.segments = [];
@@ -448,6 +448,14 @@ export class Snake {
                 this.head.body?.updateFromGameObject();
             }
         }
+
+        // Yılanın visual rotasyonunu (head.rotation), server'dan hesapladığımız hareket açısına smoothly reconcile et.
+        // Bu sayede yılanın visual rotasyonu ile gerçek fiziki hareket rotasyonu mükemmel bir şekilde senkronize kalır.
+        if (this.selfServerTarget.angle !== undefined) {
+            const angleDiff = Phaser.Math.Angle.Wrap(this.selfServerTarget.angle - this.head.rotation);
+            const rotFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
+            this.head.rotation += angleDiff * rotFactor;
+        }
     }
 
     _updateEyes(tx, ty) {
@@ -600,6 +608,16 @@ export class Snake {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
         const scaleVal = Number(entityData?.scale);
+
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+            if (this.selfServerTarget.x !== undefined && this.selfServerTarget.y !== undefined) {
+                const dx = x - this.selfServerTarget.x;
+                const dy = y - this.selfServerTarget.y;
+                if (Math.hypot(dx, dy) > 0.01) {
+                    this.selfServerTarget.angle = Math.atan2(dy, dx);
+                }
+            }
+        }
 
         if (Number.isFinite(x)) {
             this.selfServerTarget.x = x;

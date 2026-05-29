@@ -9,6 +9,7 @@ export class Game extends Phaser.Scene {
         super('Game');
         this.snakes = new Map();
         this.foods = new Map();
+        this.eatingFoods = new Map();
         this.foodBlitter = null;       // Normal food (scale=1), 16px glow dot
         this.foodBlitterLarge = null;   // Large food (scale>1), 24px glow dot
         this.pendingSegmentMutations = new Map();
@@ -362,7 +363,7 @@ export class Game extends Phaser.Scene {
         const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw, nickname);
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
-        this.cameras.main.startFollow(playerSnake.getHead(), true, 1.0, 1.0);
+        this.cameras.main.startFollow(playerSnake.getHead(), true, 0.15, 0.15);
         this.cameras.main.setRoundPixels(true);
         return playerSnake;
     }
@@ -431,10 +432,13 @@ export class Game extends Phaser.Scene {
 
         const existingFood = this.foods.get(foodId);
         if (existingFood) {
-            if (existingFood.x !== targetX || existingFood.y !== targetY) {
-                existingFood.x = targetX;
-                existingFood.y = targetY;
-            }
+            const bobsArray = Array.isArray(existingFood) ? existingFood : [existingFood];
+            bobsArray.forEach(bob => {
+                if (bob && bob.originalX === undefined) {
+                    bob.originalX = bob.x;
+                    bob.originalY = bob.y;
+                }
+            });
             return foodId;
         }
 
@@ -452,7 +456,10 @@ export class Game extends Phaser.Scene {
         const baseColor = Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
         
         // 1. Ana yem parçasını tam merkeze koy.
-        bobs.push(targetBlitter.create(targetX, targetY, baseColor));
+        const centerBob = targetBlitter.create(targetX, targetY, baseColor);
+        centerBob.originalX = targetX;
+        centerBob.originalY = targetY;
+        bobs.push(centerBob);
 
         // 2. Diğer parçaları etrafına, daha düzenli ve organik bir dağılımla (spiral/yıldız) yay.
         for (let i = 1; i < clusterSize; i++) {
@@ -474,6 +481,8 @@ export class Game extends Phaser.Scene {
             }
 
             const bob = targetBlitter.create(targetX + offsetX, targetY + offsetY, colorFrame);
+            bob.originalX = targetX + offsetX;
+            bob.originalY = targetY + offsetY;
             bobs.push(bob);
         }
 
@@ -488,12 +497,42 @@ export class Game extends Phaser.Scene {
         const bobs = this.foods.get(foodId);
         if (!bobs) return;
 
-        if (Array.isArray(bobs)) {
-            bobs.forEach(bob => bob.destroy());
-        } else {
-            bobs.destroy();
+        const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
+        const centerBob = bobsArray[0];
+
+        let closestSnake = null;
+        let minDistance = Infinity;
+
+        if (centerBob) {
+            this.snakes.forEach(snake => {
+                if (!snake.alive || !snake.getHead()?.active) return;
+                const head = snake.getHead();
+
+                const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
+                const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+
+                const dx = head.x - origX;
+                const dy = head.y - origY;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestSnake = snake;
+                }
+            });
         }
-        this.foods.delete(foodId);
+
+        // Geniş bir tolerans mesafesi (80 * scale px): ağ gecikmesi olsa bile yemeyi yapan yılanı kesin yakalar ve animasyonu tetikler.
+        if (closestSnake && minDistance < 80 * closestSnake.scale) {
+            this.eatingFoods.set(foodId, {
+                bobs: bobsArray,
+                targetSnake: closestSnake
+            });
+            this.foods.delete(foodId);
+        } else {
+            bobsArray.forEach(bob => bob.destroy());
+            this.foods.delete(foodId);
+        }
     }
 
     clearFoods() {
@@ -508,6 +547,7 @@ export class Game extends Phaser.Scene {
         this.foodBlitter = null;
         this.foodBlitterLarge = null;
         this.foods.clear();
+        this.eatingFoods.clear();
     }
 
     ensureFoodBlitter() {
@@ -639,6 +679,102 @@ export class Game extends Phaser.Scene {
             this.grid.tilePositionX = this.cameras.main.scrollX;
             this.grid.tilePositionY = this.cameras.main.scrollY;
         }
+
+        // İstemci tarafı görsel mıknatıs çekim efekti (Client-side visual food magnet pull)
+        const dt = delta / 1000;
+        const PULL_SPEED_FACTOR = 12.0;
+
+        this.foods.forEach((bobs, foodId) => {
+            const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
+            const centerBob = bobsArray[0];
+            if (!centerBob) return;
+
+            let closestSnake = null;
+            let minDistance = Infinity;
+
+            this.snakes.forEach(snake => {
+                if (!snake.alive || !snake.getHead()?.active) return;
+                const head = snake.getHead();
+                
+                // Server'ın dinamik ölçeklenen yeme mesafesi olan 45.0 * scale piksel ile birebir aynı ayar
+                const magnetRange = 45 * snake.scale;
+
+                const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
+                const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+
+                const dx = head.x - origX;
+                const dy = head.y - origY;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq < magnetRange * magnetRange) {
+                    const dist = Math.sqrt(distSq);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestSnake = snake;
+                    }
+                }
+            });
+
+            if (closestSnake) {
+                const head = closestSnake.getHead();
+                bobsArray.forEach(bob => {
+                    bob.x += (head.x - bob.x) * PULL_SPEED_FACTOR * dt;
+                    bob.y += (head.y - bob.y) * PULL_SPEED_FACTOR * dt;
+                });
+            } else {
+                bobsArray.forEach(bob => {
+                    const origX = bob.originalX !== undefined ? bob.originalX : bob.x;
+                    const origY = bob.originalY !== undefined ? bob.originalY : bob.y;
+
+                    const dx = origX - bob.x;
+                    const dy = origY - bob.y;
+                    if (Math.hypot(dx, dy) > 0.1) {
+                        bob.x += dx * PULL_SPEED_FACTOR * dt;
+                        bob.y += dy * PULL_SPEED_FACTOR * dt;
+                    } else {
+                        bob.x = origX;
+                        bob.y = origY;
+                    }
+                });
+            }
+        });
+
+        // Yenen yemlerin yılan kafasına uçarak yok olması animasyonu (Deferred food eat/magnet animation)
+        this.eatingFoods.forEach((data, foodId) => {
+            const { bobs, targetSnake } = data;
+            if (!targetSnake.alive || !targetSnake.getHead()?.active) {
+                // Yiyen yılan öldüyse veya aktif değilse yemleri hemen temizle
+                bobs.forEach(bob => bob.destroy());
+                this.eatingFoods.delete(foodId);
+                return;
+            }
+
+            const head = targetSnake.getHead();
+            let allReached = true;
+            const EATING_PULL_SPEED = 18.0; // Uçuş hızı daha canlı ve hızlı olsun
+
+            bobs.forEach(bob => {
+                const dx = head.x - bob.x;
+                const dy = head.y - bob.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 8.0) {
+                    bob.x += dx * EATING_PULL_SPEED * dt;
+                    bob.y += dy * EATING_PULL_SPEED * dt;
+                    allReached = false;
+                } else {
+                    bob.destroy();
+                    bob.isDestroyed = true;
+                }
+            });
+
+            // Yok edilen bob'ları listeden çıkar
+            data.bobs = bobs.filter(bob => !bob.isDestroyed);
+
+            if (allReached || data.bobs.length === 0) {
+                this.eatingFoods.delete(foodId);
+            }
+        });
 
         // Food'lar artık statik renk frame'leri kullanıyor — animasyon döngüsü gerekmiyor.
         // Her Bob oluşturulurken sabit bir renk frame'i atanıyor.
