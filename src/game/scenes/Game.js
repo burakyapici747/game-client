@@ -498,18 +498,17 @@ export class Game extends Phaser.Scene {
         if (!bobs) return;
 
         const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
-        const centerBob = bobsArray[0];
 
         let closestSnake = null;
         let minDistance = Infinity;
 
-        if (centerBob) {
-            this.snakes.forEach(snake => {
-                if (!snake.alive || !snake.getHead()?.active) return;
-                const head = snake.getHead();
+        this.snakes.forEach(snake => {
+            if (!snake.alive || !snake.getHead()?.active) return;
+            const head = snake.getHead();
 
-                const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
-                const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+            for (const bob of bobsArray) {
+                const origX = bob.originalX !== undefined ? bob.originalX : bob.x;
+                const origY = bob.originalY !== undefined ? bob.originalY : bob.y;
 
                 const dx = head.x - origX;
                 const dy = head.y - origY;
@@ -519,8 +518,8 @@ export class Game extends Phaser.Scene {
                     minDistance = dist;
                     closestSnake = snake;
                 }
-            });
-        }
+            }
+        });
 
         // Geniş bir tolerans mesafesi (80 * scale px): ağ gecikmesi olsa bile yemeyi yapan yılanı kesin yakalar ve animasyonu tetikler.
         if (closestSnake && minDistance < 80 * closestSnake.scale) {
@@ -699,18 +698,21 @@ export class Game extends Phaser.Scene {
                 // Server'ın dinamik ölçeklenen yeme mesafesi olan 45.0 * scale piksel ile birebir aynı ayar
                 const magnetRange = 45 * snake.scale;
 
-                const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
-                const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+                for (const bob of bobsArray) {
+                    const origX = bob.originalX !== undefined ? bob.originalX : bob.x;
+                    const origY = bob.originalY !== undefined ? bob.originalY : bob.y;
 
-                const dx = head.x - origX;
-                const dy = head.y - origY;
-                const distSq = dx * dx + dy * dy;
+                    const dx = head.x - origX;
+                    const dy = head.y - origY;
+                    const distSq = dx * dx + dy * dy;
 
-                if (distSq < magnetRange * magnetRange) {
-                    const dist = Math.sqrt(distSq);
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        closestSnake = snake;
+                    if (distSq < magnetRange * magnetRange) {
+                        const dist = Math.sqrt(distSq);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            closestSnake = snake;
+                        }
+                        break; // Bu yılan için range sağlandıysa diğer bob'lara bakmaya gerek yok
                     }
                 }
             });
