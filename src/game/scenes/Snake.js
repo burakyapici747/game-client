@@ -43,10 +43,6 @@ export class Snake {
         this.lastAcknowledgedSeq = 0;
         this.serverTickId = 0;
         this.serverAngle = null;
-        this.remoteSpeed = 0;
-        this.remoteLastServerX = x;
-        this.remoteLastServerY = y;
-        this.remoteLastServerTime = performance.now();
         this.segments = [];
         this.segmentPrimaryColor = 0xD4AF37;
         this.segmentSecondaryColor = 0x2B2B2B;
@@ -432,34 +428,12 @@ export class Snake {
     _interpolateRemoteSnake(delta) {
         if (!this.hasServerState) return;
 
-        const dtSec = delta / 1000;
-
-        // 1. Smoothly rotate toward the server-provided angle
         const interpFactor = this._frameAdjustedFactor(this.config.REMOTE_INTERPOLATION_FACTOR, delta);
+        this.head.x = Phaser.Math.Linear(this.head.x, this.networkTarget.x, interpFactor);
+        this.head.y = Phaser.Math.Linear(this.head.y, this.networkTarget.y, interpFactor);
+
         const wrappedAngle = Phaser.Math.Angle.Wrap(this.networkTarget.angle - this.head.rotation);
         this.head.rotation += wrappedAngle * interpFactor;
-
-        // 2. Dead-reckon: move the head forward using current rotation & estimated speed
-        if (this.remoteSpeed > 0) {
-            this.head.x += Math.cos(this.head.rotation) * this.remoteSpeed * dtSec;
-            this.head.y += Math.sin(this.head.rotation) * this.remoteSpeed * dtSec;
-        }
-
-        // 3. Correct toward the server target (smooth blend)
-        const errorX = this.networkTarget.x - this.head.x;
-        const errorY = this.networkTarget.y - this.head.y;
-        const errorDist = Math.hypot(errorX, errorY);
-
-        if (errorDist > 500) {
-            // Teleport — entity moved too far (respawn or initial placement)
-            this.head.x = this.networkTarget.x;
-            this.head.y = this.networkTarget.y;
-        } else if (errorDist > 1.0) {
-            // Exponential blend toward server position
-            const correctionFactor = this._frameAdjustedFactor(this.config.REMOTE_INTERPOLATION_FACTOR, delta);
-            this.head.x += errorX * correctionFactor;
-            this.head.y += errorY * correctionFactor;
-        }
     }
 
     _reconcilePlayerWithServer(delta) {
@@ -645,25 +619,12 @@ export class Snake {
         const rawAngle = Number(entityData?.angle);
         const scaleVal = Number(entityData?.scale);
 
-        // Estimate remote speed from position delta
-        const now = performance.now();
-        if (this.remoteLastServerTime > 0 && Number.isFinite(x) && Number.isFinite(y)) {
-            const timeDelta = (now - this.remoteLastServerTime) / 1000;
-            if (timeDelta > 0.01 && timeDelta < 1.0 && this.remoteLastServerX > 0 && this.remoteLastServerY > 0) {
-                const dist = Math.hypot(x - this.remoteLastServerX, y - this.remoteLastServerY);
-                this.remoteSpeed = dist / timeDelta;
-            }
-        }
         if (Number.isFinite(x)) {
             this.networkTarget.x = x;
-            this.remoteLastServerX = x;
         }
         if (Number.isFinite(y)) {
             this.networkTarget.y = y;
-            this.remoteLastServerY = y;
         }
-        this.remoteLastServerTime = now;
-
         if (Number.isFinite(rawAngle)) {
             this.networkTarget.angle = this._decodeServerAngle(rawAngle);
         }
