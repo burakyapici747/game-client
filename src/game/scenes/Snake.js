@@ -33,6 +33,7 @@ export class Snake {
         this.nickname = nickname;
         this.predictionBuffer = [];
         this.currentFrameSequenceId = 0;
+        this.lastReconciledSequenceId = 0;
         this.reconciliationOffsetX = 0;
         this.reconciliationOffsetY = 0;
         this.appliedOffsetX = 0;
@@ -696,9 +697,20 @@ export class Snake {
             this.predictionBuffer = [];
         }
 
-        // Find matching predicted state in the buffer
+        // CRITICAL: The server runs at 60 Hz but the client only sends inputs at 30 Hz.
+        // This means the server will echo the SAME lastProcessedSequenceId in two consecutive
+        // snapshots. After the first snapshot processes and prunes the prediction buffer,
+        // the second snapshot with the same ID finds no match (matchIndex === -1).
+        // Without this guard, every second snapshot would cause a hard snap → ~30 snaps/sec = massive jitter.
+        if (serverSeqId <= this.lastReconciledSequenceId) {
+            return;
+        }
+
+        // Find the LAST matching predicted state in the buffer for this sequence ID.
+        // Multiple frames share the same sequence_id (client sends at 30Hz, runs at 60fps).
+        // Using the last match gives the most accurate comparison point.
         let matchIndex = -1;
-        for (let i = 0; i < this.predictionBuffer.length; i++) {
+        for (let i = this.predictionBuffer.length - 1; i >= 0; i--) {
             if (this.predictionBuffer[i].sequence_id === serverSeqId) {
                 matchIndex = i;
                 break;
@@ -706,28 +718,32 @@ export class Snake {
         }
 
         if (matchIndex === -1) {
-            // No match found, snap directly to server coordinates
-            this.head.setPosition(serverX, serverY);
-            this.head.body?.updateFromGameObject();
+            // Sequence ID not found in buffer at all — likely very old or buffer was already pruned.
+            // Do nothing; wait for a snapshot with a sequence ID we can match.
             return;
         }
 
+        this.lastReconciledSequenceId = serverSeqId;
+
         const matchedState = this.predictionBuffer[matchIndex];
         
-        // Calculate prediction error
-        const truePhysX = this.head.x - this.appliedOffsetX;
-        const truePhysY = this.head.y - this.appliedOffsetY;
+        // Calculate prediction error: compare where we predicted we'd be at that tick
+        // vs. where the server says we actually were.
         const dx = serverX - matchedState.x;
         const dy = serverY - matchedState.y;
         const errorDistance = Math.hypot(dx, dy);
 
-        // If error exceeds deadzone, snap and replay inputs
+        // If error exceeds deadzone, snap base to server and replay subsequent inputs
         if (errorDistance > this.config.RECONCILIATION_DEADZONE) {
+            // Get current true physical position (strip away any visual offset)
+            const truePhysX = this.head.x - this.appliedOffsetX;
+            const truePhysY = this.head.y - this.appliedOffsetY;
+
             let currentX = serverX;
             let currentY = serverY;
             let currentRotation = matchedState.angle;
 
-            // Replay subsequent inputs
+            // Replay all subsequent predicted frames on top of the corrected base
             for (let i = matchIndex + 1; i < this.predictionBuffer.length; i++) {
                 const state = this.predictionBuffer[i];
                 
@@ -756,19 +772,20 @@ export class Snake {
                 state.angle = currentRotation;
             }
 
+            // The visual offset absorbs the difference between where the head was
+            // and where it needs to be, then decays smoothly over subsequent frames.
             const correctionX = truePhysX - currentX;
             const correctionY = truePhysY - currentY;
 
-            // Add the correction to our visual offset
             this.reconciliationOffsetX += correctionX;
             this.reconciliationOffsetY += correctionY;
 
-            // Update physical coordinates
+            // Update physical coordinates to the replayed result
             this.head.setPosition(currentX, currentY);
             this.head.rotation = currentRotation;
             this.head.body?.updateFromGameObject();
 
-            // Clear old applied offsets since we updated body
+            // Clear applied offsets since we just repositioned the body
             this.appliedOffsetX = 0;
             this.appliedOffsetY = 0;
 
@@ -781,7 +798,7 @@ export class Snake {
             }
         }
 
-        // Clean up buffered inputs older than matching tick
+        // Clean up all buffered states up to and including the matched tick
         this.predictionBuffer.splice(0, matchIndex + 1);
     }
 
