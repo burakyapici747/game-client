@@ -659,7 +659,7 @@ export class Game extends Phaser.Scene {
                 this.networkManager.updateAndSendInput(targetAngle, isBoosting, delta);
 
                 // İstemci tarafı tahminleme (Client-Side Prediction)
-                mySnake.updateFromInput(targetAngle, isBoosting, delta);
+                mySnake.updateFromInput(targetAngle, isBoosting, delta, this.networkManager.nextSequenceId);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);

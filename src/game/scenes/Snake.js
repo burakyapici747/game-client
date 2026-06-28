@@ -31,6 +31,14 @@ export class Snake {
         this.turnSpeed = 0;
         this.isBoosting = false;
         this.nickname = nickname;
+        this.predictionBuffer = [];
+        this.currentFrameSequenceId = 0;
+        this.reconciliationOffsetX = 0;
+        this.reconciliationOffsetY = 0;
+        this.appliedOffsetX = 0;
+        this.appliedOffsetY = 0;
+        this.lastTargetAngle = initialAngleRaw;
+        this.lastIsBoosting = false;
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
         this.networkTarget = { x: x, y: y, angle: initialAngle };
@@ -328,8 +336,21 @@ export class Snake {
         }
     }
 
-    updateFromInput(targetAngle, isBoosting, delta) {
+    updateFromInput(targetAngle, isBoosting, delta, sequenceId = 0) {
         if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
+
+        // Restore true physical position before running prediction/physics
+        if (this.appliedOffsetX !== 0 || this.appliedOffsetY !== 0) {
+            this.head.x -= this.appliedOffsetX;
+            this.head.y -= this.appliedOffsetY;
+            this.head.body?.updateFromGameObject();
+            this.appliedOffsetX = 0;
+            this.appliedOffsetY = 0;
+        }
+
+        this.currentFrameSequenceId = sequenceId || this.currentFrameSequenceId;
+        this.lastTargetAngle = targetAngle;
+        this.lastIsBoosting = isBoosting;
 
         const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
         const effectiveBoosting = isBoosting && canBoost;
@@ -353,28 +374,60 @@ export class Snake {
     // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
     postUpdate(delta = 16.67) {
         if (!this.alive || !this.head?.active) return;
-        if (this.isPlayerControlled) {
-            this._reconcilePlayerWithServer(delta);
-        } else {
+        if (!this.isPlayerControlled) {
             this._interpolateRemoteSnake(delta);
         }
-        // _sampleHeadToPath, _positionSegmentsByPath ve _updateEyes artık
-        // Phaser'ın postupdate event'inde çağrılıyor (physics step SONRASI, render ÖNCESİ).
-        // Bu sayede segmentler ve gözler head'in o frame'deki gerçek fiziksel pozisyonunu
-        // yakalar — update() sırasında physics henüz çalışmadığından 1 frame gecikme (esniyor
-        // hissi) oluşuyordu.
         this._delta = delta;
     }
 
     // Physics step sonrası segment + göz güncelleme — scene.events 'postupdate' içinde çağrılır
     postPhysicsUpdate() {
         if (!this.alive || !this.head?.active) return;
+
+        // 1. If player controlled, record predicted state
+        if (this.isPlayerControlled) {
+            this.predictionBuffer.push({
+                sequence_id: this.currentFrameSequenceId,
+                x: this.head.x,
+                y: this.head.y,
+                angle: this.head.rotation,
+                delta: this._delta || 16.67,
+                targetAngle: this.lastTargetAngle,
+                isBoosting: this.lastIsBoosting
+            });
+            if (this.predictionBuffer.length > 500) {
+                this.predictionBuffer.shift();
+            }
+        }
+
+        // Apply visual offset for rendering and pathing
+        const visualX = this.head.x + (this.reconciliationOffsetX || 0);
+        const visualY = this.head.y + (this.reconciliationOffsetY || 0);
+
+        // Record the offset we are applying for rendering this frame
+        this.appliedOffsetX = this.reconciliationOffsetX || 0;
+        this.appliedOffsetY = this.reconciliationOffsetY || 0;
+
+        // Swap to visual position for rendering
+        this.head.x = visualX;
+        this.head.y = visualY;
+
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
+        
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
         this._updateEyes(worldPoint.x, worldPoint.y);
+        
         if (this.nicknameText) {
-            this.nicknameText.setPosition(this.head.x, this.head.y - 35 * this.scale);
+            this.nicknameText.setPosition(visualX, visualY - 35 * this.scale);
+        }
+
+        // Decay offset for next frame
+        if (this.isPlayerControlled) {
+            this.reconciliationOffsetX *= 0.88;
+            this.reconciliationOffsetY *= 0.88;
+            if (Math.abs(this.reconciliationOffsetX) < 0.05) this.reconciliationOffsetX = 0;
+            if (Math.abs(this.reconciliationOffsetY) < 0.05) this.reconciliationOffsetY = 0;
         }
     }
 
@@ -608,29 +661,128 @@ export class Snake {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
         const scaleVal = Number(entityData?.scale);
+        const serverSeqId = Number(entityData?.lastProcessedSequenceId ?? entityData?.last_processed_sequence_id);
 
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-            if (this.selfServerTarget.x !== undefined && this.selfServerTarget.y !== undefined) {
-                const dx = x - this.selfServerTarget.x;
-                const dy = y - this.selfServerTarget.y;
-                if (Math.hypot(dx, dy) > 0.01) {
-                    this.selfServerTarget.angle = Math.atan2(dy, dx);
-                }
-            }
-        }
-
-        if (Number.isFinite(x)) {
-            this.selfServerTarget.x = x;
-        }
-        if (Number.isFinite(y)) {
-            this.selfServerTarget.y = y;
-        }
         if (Number.isFinite(scaleVal) && scaleVal > 0) {
             this.scale = scaleVal;
             this._updateSegmentScaling();
         }
 
+        if (!this.isPlayerControlled) {
+            if (Number.isFinite(x) && Number.isFinite(y)) {
+                if (this.selfServerTarget.x !== undefined && this.selfServerTarget.y !== undefined) {
+                    const dx = x - this.selfServerTarget.x;
+                    const dy = y - this.selfServerTarget.y;
+                    if (Math.hypot(dx, dy) > 0.01) {
+                        this.selfServerTarget.angle = Math.atan2(dy, dx);
+                    }
+                }
+                this.selfServerTarget.x = x;
+                this.selfServerTarget.y = y;
+            }
+            this.hasSelfServerState = true;
+            return;
+        }
+
+        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(serverSeqId) && serverSeqId > 0) {
+            this.reconcilePlayer(x, y, serverSeqId);
+        }
+
         this.hasSelfServerState = true;
+    }
+
+    reconcilePlayer(serverX, serverY, serverSeqId) {
+        if (!this.predictionBuffer) {
+            this.predictionBuffer = [];
+        }
+
+        // Find matching predicted state in the buffer
+        let matchIndex = -1;
+        for (let i = 0; i < this.predictionBuffer.length; i++) {
+            if (this.predictionBuffer[i].sequence_id === serverSeqId) {
+                matchIndex = i;
+                break;
+            }
+        }
+
+        if (matchIndex === -1) {
+            // No match found, snap directly to server coordinates
+            this.head.setPosition(serverX, serverY);
+            this.head.body?.updateFromGameObject();
+            return;
+        }
+
+        const matchedState = this.predictionBuffer[matchIndex];
+        
+        // Calculate prediction error
+        const truePhysX = this.head.x - this.appliedOffsetX;
+        const truePhysY = this.head.y - this.appliedOffsetY;
+        const dx = serverX - matchedState.x;
+        const dy = serverY - matchedState.y;
+        const errorDistance = Math.hypot(dx, dy);
+
+        // If error exceeds deadzone, snap and replay inputs
+        if (errorDistance > this.config.RECONCILIATION_DEADZONE) {
+            let currentX = serverX;
+            let currentY = serverY;
+            let currentRotation = matchedState.angle;
+
+            // Replay subsequent inputs
+            for (let i = matchIndex + 1; i < this.predictionBuffer.length; i++) {
+                const state = this.predictionBuffer[i];
+                
+                const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
+                const effectiveBoosting = state.isBoosting && canBoost;
+                const baseSpeed = this.calculateBaseSpeed();
+                const boostSpeed = this.calculateBoostSpeed();
+                const speed = effectiveBoosting ? boostSpeed : baseSpeed;
+
+                const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
+                const targetRad = Phaser.Math.DegToRad(state.targetAngle);
+                const diff = Phaser.Math.Angle.Wrap(targetRad - currentRotation);
+                const maxTurn = turn * (state.delta / 1000);
+                
+                currentRotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+
+                const vx = Math.cos(currentRotation) * speed;
+                const vy = Math.sin(currentRotation) * speed;
+                
+                currentX += vx * (state.delta / 1000);
+                currentY += vy * (state.delta / 1000);
+
+                // Update prediction history with re-calculated position
+                state.x = currentX;
+                state.y = currentY;
+                state.angle = currentRotation;
+            }
+
+            const correctionX = truePhysX - currentX;
+            const correctionY = truePhysY - currentY;
+
+            // Add the correction to our visual offset
+            this.reconciliationOffsetX += correctionX;
+            this.reconciliationOffsetY += correctionY;
+
+            // Update physical coordinates
+            this.head.setPosition(currentX, currentY);
+            this.head.rotation = currentRotation;
+            this.head.body?.updateFromGameObject();
+
+            // Clear old applied offsets since we updated body
+            this.appliedOffsetX = 0;
+            this.appliedOffsetY = 0;
+
+            // Clamp offset to prevent visual snap jumps on huge lag spikes
+            const maxOffset = 150;
+            const offsetLen = Math.hypot(this.reconciliationOffsetX, this.reconciliationOffsetY);
+            if (offsetLen > maxOffset) {
+                this.reconciliationOffsetX = (this.reconciliationOffsetX / offsetLen) * maxOffset;
+                this.reconciliationOffsetY = (this.reconciliationOffsetY / offsetLen) * maxOffset;
+            }
+        }
+
+        // Clean up buffered inputs older than matching tick
+        this.predictionBuffer.splice(0, matchIndex + 1);
     }
 
     _decodeServerAngle(rawAngle) {
