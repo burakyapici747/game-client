@@ -428,7 +428,7 @@ export class Snake {
         }
 
         const maxExpectedLag = (this.speed || 300) * 0.9;
-        if (longitudinal > 0 || longitudinal < -maxExpectedLag) {
+        if (longitudinal > this.config.RECONCILIATION_DEADZONE || longitudinal < -maxExpectedLag) {
             corrX += longitudinal * cos;
             corrY += longitudinal * sin;
             hasCorrection = true;
