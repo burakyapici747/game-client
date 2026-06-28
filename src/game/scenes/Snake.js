@@ -449,14 +449,6 @@ export class Snake {
                 this.head.body?.updateFromGameObject();
             }
         }
-
-        // Yılanın visual rotasyonunu (head.rotation), server'dan hesapladığımız hareket açısına smoothly reconcile et.
-        // Bu sayede yılanın visual rotasyonu ile gerçek fiziki hareket rotasyonu mükemmel bir şekilde senkronize kalır.
-        if (this.selfServerTarget.angle !== undefined) {
-            const angleDiff = Phaser.Math.Angle.Wrap(this.selfServerTarget.angle - this.head.rotation);
-            const rotFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
-            this.head.rotation += angleDiff * rotFactor;
-        }
     }
 
     _updateEyes(tx, ty) {
@@ -617,27 +609,9 @@ export class Snake {
         }
 
         if (Number.isFinite(x) && Number.isFinite(y)) {
-            // Skip duplicate snapshots: the server sends at 60 Hz but the client
-            // only sends new inputs at 30 Hz, so the same lastProcessedSequenceId
-            // arrives in ~2 consecutive snapshots. Only update selfServerTarget
-            // once per new sequence to avoid stale overwrites.
-            if (Number.isFinite(serverSeqId) && serverSeqId > 0 && serverSeqId <= this.lastReconciledSequenceId) {
-                return;
-            }
-
-            // Compute the server's actual movement angle from consecutive positions.
-            if (this.selfServerTarget.x !== undefined && this.selfServerTarget.y !== undefined) {
-                const dx = x - this.selfServerTarget.x;
-                const dy = y - this.selfServerTarget.y;
-                if (Math.hypot(dx, dy) > 0.01) {
-                    this.selfServerTarget.angle = Math.atan2(dy, dx);
-                }
-            }
-
             this.selfServerTarget.x = x;
             this.selfServerTarget.y = y;
 
-            // Mark this sequence as processed.
             if (Number.isFinite(serverSeqId) && serverSeqId > 0) {
                 this.lastReconciledSequenceId = serverSeqId;
             }
