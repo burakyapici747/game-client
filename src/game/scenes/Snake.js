@@ -37,6 +37,12 @@ export class Snake {
         this.selfServerTarget = { x: x, y: y, angle: initialAngle };
         this.hasServerState = false;
         this.hasSelfServerState = false;
+
+        // Input replay reconciliation
+        this.inputBuffer = [];  // Array of { seq, angle, isBoosting, delta }
+        this.lastAcknowledgedSeq = 0;
+        this.serverTickId = 0;
+        this.serverAngle = null;
         this.segments = [];
         this.segmentPrimaryColor = 0xD4AF37;
         this.segmentSecondaryColor = 0x2B2B2B;
@@ -81,6 +87,42 @@ export class Snake {
     }
     getSampleMinStep() { return Math.max(this.config.PATH_SAMPLE_MIN_STEP, this.getSegmentSpacing() * 0.1); }
     setBoost(b) { this.isBoosting = b; }
+
+    recordInput(seq, targetAngle, isBoosting, delta) {
+        this.inputBuffer.push({ seq, angle: targetAngle, isBoosting, delta });
+        // Prevent memory leak — keep max 120 entries (4 seconds at 30 Hz)
+        if (this.inputBuffer.length > 120) {
+            this.inputBuffer.splice(0, this.inputBuffer.length - 120);
+        }
+    }
+
+    _simulateMovementStep(angle, isBoosting, delta) {
+        // Deterministic replay: matches server's MovementSystem.java exactly
+        const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
+        const effectiveBoosting = isBoosting && canBoost;
+
+        const baseSpeed = this.calculateBaseSpeed();
+        const boostSpeed = this.calculateBoostSpeed();
+        const speed = effectiveBoosting ? boostSpeed : baseSpeed;
+
+        // Temporarily set speed for turn factor calculation
+        const prevSpeed = this.speed;
+        this.speed = speed;
+
+        const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
+
+        const targetRad = Phaser.Math.DegToRad(angle);
+        const diff = Phaser.Math.Angle.Wrap(targetRad - this.head.rotation);
+        const maxTurn = turn * (delta / 1000);
+        this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+
+        // Direct position update (no physics engine during replay)
+        const dtSec = delta / 1000;
+        this.head.x += Math.cos(this.head.rotation) * speed * dtSec;
+        this.head.y += Math.sin(this.head.rotation) * speed * dtSec;
+
+        this.speed = prevSpeed; // Restore
+    }
 
     _normalizeSegmentCount(rawCount) {
         const count = Math.round(Number(rawCount));
@@ -395,67 +437,64 @@ export class Snake {
     }
 
     _reconcilePlayerWithServer(delta) {
-        if (!this.hasSelfServerState) return;
+        if (!this.hasSelfServerState || this.lastAcknowledgedSeq === 0) return;
 
-        const dx = this.selfServerTarget.x - this.head.x;
-        const dy = this.selfServerTarget.y - this.head.y;
-        const absDistance = Math.hypot(dx, dy);
-
-        // Sunucu 10 FPS çalışırken ping ile birlikte mesafe 200-300 pikseli aşabilir.
-        // O yüzden sadece ÇOK saçma bir farkta (örn. ölüm, yeniden doğma vb.) 800 veriyoruz.
-        if (absDistance > 800) {
-            this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
-            this.head.body?.updateFromGameObject();
-            return;
+        // 1. Remove all acknowledged inputs from the buffer
+        const ackSeq = this.lastAcknowledgedSeq;
+        while (this.inputBuffer.length > 0 && this.inputBuffer[0].seq <= ackSeq) {
+            this.inputBuffer.shift();
         }
 
-        // Vector from Client to Server
-        const cos = Math.cos(this.head.rotation);
-        const sin = Math.sin(this.head.rotation);
+        // 2. Save the current visual position
+        const visualX = this.head.x;
+        const visualY = this.head.y;
+        const visualRotation = this.head.rotation;
 
-        const longitudinal = dx * cos + dy * sin;
-        const lateral = dx * -sin + dy * cos;
-
-        let corrX = 0;
-        let corrY = 0;
-        let hasCorrection = false;
-
-        if (Math.abs(lateral) > this.config.RECONCILIATION_DEADZONE) {
-            corrX += lateral * -sin;
-            corrY += lateral * cos;
-            hasCorrection = true;
+        // 3. Snap to the server's authoritative state
+        this.head.x = this.selfServerTarget.x;
+        this.head.y = this.selfServerTarget.y;
+        if (this.serverAngle !== null) {
+            this.head.rotation = this.serverAngle;
         }
 
-        const maxExpectedLag = (this.speed || 300) * 0.9;
-        if (longitudinal > 0 || longitudinal < -maxExpectedLag) {
-            corrX += longitudinal * cos;
-            corrY += longitudinal * sin;
-            hasCorrection = true;
+        // 4. Replay all unacknowledged inputs
+        for (const input of this.inputBuffer) {
+            this._simulateMovementStep(input.angle, input.isBoosting, input.delta);
         }
 
-        if (hasCorrection) {
-            const corrDist = Math.hypot(corrX, corrY);
-            if (corrDist > 0.1) {
-                const posFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
-                const desiredStep = corrDist * posFactor * 0.55;
-                const maxStep = this.config.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
-                const step = Math.min(desiredStep, maxStep);
+        // 5. Compare replayed position with previous visual position
+        const replayedX = this.head.x;
+        const replayedY = this.head.y;
+        const replayedRotation = this.head.rotation;
 
-                const nx = this.head.x + (corrX / corrDist) * step;
-                const ny = this.head.y + (corrY / corrDist) * step;
+        const errorDist = Math.hypot(replayedX - visualX, replayedY - visualY);
 
-                this.head.setPosition(nx, ny);
-                this.head.body?.updateFromGameObject();
+        if (errorDist > 800) {
+            // Teleport — respawn or extreme desync
+            if (this.head.body) {
+                this.head.body.reset(replayedX, replayedY);
             }
+        } else if (errorDist > 2.0) {
+            // Smooth visual correction using exponential smoothing
+            const smoothFactor = 1.0 - Math.pow(0.05, delta / (1000 / 60));
+            this.head.x = visualX + (replayedX - visualX) * smoothFactor;
+            this.head.y = visualY + (replayedY - visualY) * smoothFactor;
+
+            const angleDiff = Phaser.Math.Angle.Wrap(replayedRotation - visualRotation);
+            this.head.rotation = visualRotation + angleDiff * smoothFactor;
+        }
+        // else: error < 2px — prediction was accurate, no correction needed
+
+        // 6. Sync physics body
+        if (this.head.body) {
+            this.scene.physics.velocityFromRotation(
+                this.head.rotation, this.speed, this.head.body.velocity
+            );
+            this.head.body.updateFromGameObject();
         }
 
-        // Yılanın visual rotasyonunu (head.rotation), server'dan hesapladığımız hareket açısına smoothly reconcile et.
-        // Bu sayede yılanın visual rotasyonu ile gerçek fiziki hareket rotasyonu mükemmel bir şekilde senkronize kalır.
-        if (this.selfServerTarget.angle !== undefined) {
-            const angleDiff = Phaser.Math.Angle.Wrap(this.selfServerTarget.angle - this.head.rotation);
-            const rotFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
-            this.head.rotation += angleDiff * rotFactor;
-        }
+        // Don't re-reconcile until next server update
+        this.hasSelfServerState = false;
     }
 
     _updateEyes(tx, ty) {
@@ -608,16 +647,9 @@ export class Snake {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
         const scaleVal = Number(entityData?.scale);
-
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-            if (this.selfServerTarget.x !== undefined && this.selfServerTarget.y !== undefined) {
-                const dx = x - this.selfServerTarget.x;
-                const dy = y - this.selfServerTarget.y;
-                if (Math.hypot(dx, dy) > 0.01) {
-                    this.selfServerTarget.angle = Math.atan2(dy, dx);
-                }
-            }
-        }
+        const tickId = Number(entityData?.tickId ?? entityData?.tick_id ?? 0);
+        const lastProcessedInputSeq = Number(entityData?.lastProcessedInputSeq ?? entityData?.last_processed_input_seq ?? 0);
+        const rawAngle = entityData?.angle;
 
         if (Number.isFinite(x)) {
             this.selfServerTarget.x = x;
@@ -628,6 +660,22 @@ export class Snake {
         if (Number.isFinite(scaleVal) && scaleVal > 0) {
             this.scale = scaleVal;
             this._updateSegmentScaling();
+        }
+
+        // Store tick sequencing data for input replay
+        if (tickId > 0) {
+            this.serverTickId = tickId;
+        }
+        if (lastProcessedInputSeq > 0) {
+            this.lastAcknowledgedSeq = lastProcessedInputSeq;
+        }
+
+        // Decode server angle directly (no longer inferred from position deltas)
+        if (rawAngle !== undefined && rawAngle !== null) {
+            const angleNum = Number(rawAngle);
+            if (Number.isFinite(angleNum) && angleNum > 0) {
+                this.serverAngle = this._decodeServerAngle(angleNum);
+            }
         }
 
         this.hasSelfServerState = true;

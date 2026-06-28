@@ -18,6 +18,7 @@ export class Game extends Phaser.Scene {
         this.gameStarted = false;
         this.initialDataFlags = { startInfo: false, entities: false };
 
+        this._lastRecordedInputSeq = 0;
         this.pointer = null;
         this.fpsText = null;
         this.grid = null;
@@ -660,6 +661,13 @@ export class Game extends Phaser.Scene {
 
                 // İstemci tarafı tahminleme (Client-Side Prediction)
                 mySnake.updateFromInput(targetAngle, isBoosting, delta);
+
+                // Record sent inputs in the replay buffer for server reconciliation
+                const currentSeq = this.networkManager.inputSequence;
+                if (currentSeq > this._lastRecordedInputSeq) {
+                    mySnake.recordInput(currentSeq, targetAngle, isBoosting, delta);
+                    this._lastRecordedInputSeq = currentSeq;
+                }
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);
