@@ -49,7 +49,7 @@ export class Game extends Phaser.Scene {
 
         this.networkManager.connect();
 
-        this.cameras.main.setZoom(1).roundPixels = false;
+        this.cameras.main.setZoom(1).roundPixels = true;
 
         this.fpsText = this.add.text(4, 4, 'FPS: 0', {
             fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
@@ -364,7 +364,7 @@ export class Game extends Phaser.Scene {
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
         this.snakes.set(entityId, playerSnake);
         this.cameras.main.startFollow(playerSnake.getHead(), true, 0.15, 0.15);
-        this.cameras.main.setRoundPixels(false);
+        this.cameras.main.setRoundPixels(true);
         return playerSnake;
     }
 
