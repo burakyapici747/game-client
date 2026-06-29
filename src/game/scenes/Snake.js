@@ -15,6 +15,7 @@ const SnakeConfig = {
     REMOTE_INTERPOLATION_FACTOR: 0.35,
     RECONCILIATION_POSITION_FACTOR: 0.15,
     RECONCILIATION_DEAD_ZONE: 3.5,
+    RECONCILIATION_LATERAL_DEAD_ZONE: 7.0,
     RECONCILIATION_SNAP_DISTANCE: 140,
     RECONCILIATION_MAX_CORRECTION_SPEED: 480,
 };
@@ -380,8 +381,9 @@ export class Snake {
     }
 
     _frameAdjustedFactor(baseFactor, delta) {
-        const frameScale = delta / (1000 / 60);
-        return Phaser.Math.Clamp(baseFactor * frameScale, 0, 1);
+        // Exponential decay: frame-rate independent smooth lerp.
+        // At 60 FPS (delta=16.67ms) this equals baseFactor; at other rates it scales correctly.
+        return 1 - Math.pow(1 - baseFactor, delta / (1000 / 60));
     }
 
     _interpolateRemoteSnake(delta) {
@@ -421,7 +423,7 @@ export class Snake {
         let corrY = 0;
         let hasCorrection = false;
 
-        if (Math.abs(lateral) > this.config.RECONCILIATION_DEAD_ZONE) {
+        if (Math.abs(lateral) > this.config.RECONCILIATION_LATERAL_DEAD_ZONE) {
             corrX += lateral * -sin;
             corrY += lateral * cos;
             hasCorrection = true;
@@ -472,15 +474,15 @@ export class Snake {
         const rx = this.head.x + (r.x * curScale * cos - r.y * curScale * sin);
         const ry = this.head.y + (r.x * curScale * sin + r.y * curScale * cos);
         
-        this.eyeL.setPosition(Math.round(lx), Math.round(ly)).setScale(curScale);
-        this.eyeR.setPosition(Math.round(rx), Math.round(ry)).setScale(curScale);
-        
+        this.eyeL.setPosition(lx, ly).setScale(curScale);
+        this.eyeR.setPosition(rx, ry).setScale(curScale);
+
         const maxR = this._pupilMax * curScale;
         const px = Phaser.Math.Clamp(dir.x * maxR, -maxR, maxR);
         const py = Phaser.Math.Clamp(dir.y * maxR, -maxR, maxR);
-        
-        this.pupilL.setPosition(Math.round(lx + px), Math.round(ly + py)).setScale(curScale);
-        this.pupilR.setPosition(Math.round(rx + px), Math.round(ry + py)).setScale(curScale);
+
+        this.pupilL.setPosition(lx + px, ly + py).setScale(curScale);
+        this.pupilR.setPosition(rx + px, ry + py).setScale(curScale);
     }
 
     _initPathWarmup(x, y) {
@@ -502,25 +504,43 @@ export class Snake {
 
     _sampleHeadToPath() {
         if (!this.head.active) return;
-        const hp = new Phaser.Math.Vector2(this.head.x, this.head.y);
         const last = this.path[0];
         if (!last) {
-            this.path.unshift(hp.clone());
+            this.path.unshift(new Phaser.Math.Vector2(this.head.x, this.head.y));
             return;
         }
-        const step = this.getSampleMinStep();
-        const dist = Phaser.Math.Distance.Between(hp.x, hp.y, last.x, last.y);
-        if (dist >= step) {
-            this.path.unshift(hp.clone());
-            this.pathSegLens.unshift(dist);
-            this.totalPathLen += dist;
-            const spacing = this.getSegmentSpacing();
-            const maxNeeded = (this.segments.length + 2) * spacing + 600;
-            while (this.totalPathLen > maxNeeded && this.path.length > 2) {
-                const rem = this.pathSegLens.pop();
-                if (rem !== undefined) this.totalPathLen -= rem;
-                this.path.pop();
-            }
+
+        const dx = this.head.x - last.x;
+        const dy = this.head.y - last.y;
+        const dist = Math.hypot(dx, dy);
+        const fixedStep = this.getSampleMinStep();
+
+        if (dist < fixedStep) return;
+
+        // Sub-step: emit path points at exactly fixedStep intervals along the
+        // movement vector instead of one raw-delta point per frame.
+        // This keeps pathSegLens uniform and eliminates per-frame spacing jitter.
+        const nx = dx / dist;
+        const ny = dy / dist;
+        let remaining = dist;
+        let cx = last.x;
+        let cy = last.y;
+
+        while (remaining >= fixedStep) {
+            cx += nx * fixedStep;
+            cy += ny * fixedStep;
+            this.path.unshift(new Phaser.Math.Vector2(cx, cy));
+            this.pathSegLens.unshift(fixedStep);
+            this.totalPathLen += fixedStep;
+            remaining -= fixedStep;
+        }
+
+        const spacing = this.getSegmentSpacing();
+        const maxNeeded = (this.segments.length + 2) * spacing + 600;
+        while (this.totalPathLen > maxNeeded && this.path.length > 2) {
+            const rem = this.pathSegLens.pop();
+            if (rem !== undefined) this.totalPathLen -= rem;
+            this.path.pop();
         }
     }
 
@@ -532,7 +552,7 @@ export class Snake {
             const p = this._pointAndAngleAtDistance(d);
             const seg = this.segments[i];
             if (seg && seg.active) {
-                seg.setPosition(Math.round(p.x), Math.round(p.y));
+                seg.setPosition(p.x, p.y);
                 seg.rotation = p.angle;
             }
         }
