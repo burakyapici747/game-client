@@ -15,7 +15,6 @@ const SnakeConfig = {
     REMOTE_INTERPOLATION_FACTOR: 0.35,
     RECONCILIATION_POSITION_FACTOR: 0.15,
     RECONCILIATION_DEAD_ZONE: 3.5,
-    RECONCILIATION_LATERAL_DEAD_ZONE: 7.0,
     RECONCILIATION_SNAP_DISTANCE: 140,
     RECONCILIATION_MAX_CORRECTION_SPEED: 480,
 };
@@ -37,6 +36,7 @@ export class Snake {
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
         this.networkTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTarget = { x: x, y: y, angle: initialAngle };
+        this.selfServerTargetHeading = initialAngle;
         this.hasServerState = false;
         this.hasSelfServerState = false;
         this.segments = [];
@@ -412,9 +412,11 @@ export class Snake {
             return;
         }
 
-        // Vector from Client to Server
-        const cos = Math.cos(this.head.rotation);
-        const sin = Math.sin(this.head.rotation);
+        // Use the heading snapshot from when the server packet arrived, not the
+        // current heading. If the client has turned since that packet, the longitudinal
+        // lag would otherwise project onto the lateral axis and trigger false corrections.
+        const cos = Math.cos(this.selfServerTargetHeading);
+        const sin = Math.sin(this.selfServerTargetHeading);
 
         const longitudinal = dx * cos + dy * sin;
         const lateral = dx * -sin + dy * cos;
@@ -423,7 +425,7 @@ export class Snake {
         let corrY = 0;
         let hasCorrection = false;
 
-        if (Math.abs(lateral) > this.config.RECONCILIATION_LATERAL_DEAD_ZONE) {
+        if (Math.abs(lateral) > this.config.RECONCILIATION_DEAD_ZONE) {
             corrX += lateral * -sin;
             corrY += lateral * cos;
             hasCorrection = true;
@@ -613,6 +615,11 @@ export class Snake {
         if (Number.isFinite(x) && Number.isFinite(y)) {
             this.selfServerTarget.x = x;
             this.selfServerTarget.y = y;
+            // Snapshot the heading at the moment this server packet arrives.
+            // Reconciliation uses this fixed heading for lateral/longitudinal decomposition
+            // so that a client turn between server updates does not rotate the expected
+            // longitudinal lag into the lateral axis and fire false corrections.
+            this.selfServerTargetHeading = this.head ? this.head.rotation : 0;
 
             if (Number.isFinite(serverSeqId) && serverSeqId > 0) {
                 this.lastReconciledSequenceId = serverSeqId;
