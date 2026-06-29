@@ -49,7 +49,7 @@ export class Game extends Phaser.Scene {
 
         this.networkManager.connect();
 
-        this.cameras.main.setZoom(1).roundPixels = true;
+        this.cameras.main.setZoom(1).setRoundPixels(false);
 
         this.fpsText = this.add.text(4, 4, 'FPS: 0', {
             fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
