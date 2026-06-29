@@ -10,6 +10,7 @@ export class Game extends Phaser.Scene {
         this.snakes = new Map();
         this.foods = new Map();
         this.eatingFoods = new Map();
+        this.predictedEatenFoodIds = new Set(); // Client-side eat prediction: foods eaten before server confirms
         this.foodBlitter = null;       // Normal food (scale=1), 16px glow dot
         this.foodBlitterLarge = null;   // Large food (scale>1), 24px glow dot
         this.pendingSegmentMutations = new Map();
@@ -278,9 +279,11 @@ export class Game extends Phaser.Scene {
             }
         }
 
-        for (const [foodId, foodBob] of this.foods) {
+        for (const [foodId, foodBobs] of this.foods) {
             if (incomingFoodIds.has(foodId)) continue;
-            foodBob.destroy();
+            // foodBobs is an array of Blitter.Bob — iterate and destroy each one individually
+            const bobsArray = Array.isArray(foodBobs) ? foodBobs : [foodBobs];
+            bobsArray.forEach(bob => bob.destroy());
             this.foods.delete(foodId);
         }
     }
@@ -494,44 +497,49 @@ export class Game extends Phaser.Scene {
         const foodId = this.toFoodId(rawFoodId);
         if (foodId === null) return;
 
+        // Oyuncu kendi yılanıyla bu yemi zaten tahmin ederek yedi; sunucu sadece onaylıyor.
+        // eatingFoods animasyonu zaten devam ediyor — seti temizleyip çık.
+        if (this.predictedEatenFoodIds.has(foodId)) {
+            this.predictedEatenFoodIds.delete(foodId);
+            return;
+        }
+
+        // Uzak yılan tarafından yenilen yem (veya sunucu tahminimizden önce bildirdi)
         const bobs = this.foods.get(foodId);
         if (!bobs) return;
 
         const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
+        this.foods.delete(foodId);
+
         const centerBob = bobsArray[0];
-
-        let closestSnake = null;
-        let minDistance = Infinity;
-
-        if (centerBob) {
-            this.snakes.forEach(snake => {
-                if (!snake.alive || !snake.getHead()?.active) return;
-                const head = snake.getHead();
-
-                const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
-                const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
-
-                const dx = head.x - origX;
-                const dy = head.y - origY;
-                const dist = Math.hypot(dx, dy);
-
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    closestSnake = snake;
-                }
-            });
+        if (!centerBob) {
+            bobsArray.forEach(bob => bob.destroy());
+            return;
         }
 
-        // Geniş bir tolerans mesafesi (80 * scale px): ağ gecikmesi olsa bile yemeyi yapan yılanı kesin yakalar ve animasyonu tetikler.
-        if (closestSnake && minDistance < 80 * closestSnake.scale) {
-            this.eatingFoods.set(foodId, {
-                bobs: bobsArray,
-                targetSnake: closestSnake
-            });
-            this.foods.delete(foodId);
+        // Mıknatıs efekti bob konumunu zaten yılan kafasına doğru çekmiş olabilir.
+        // originalX/Y yerine güncel bob.x/y kullanmak çok daha isabetli bir mesafe verir.
+        const checkX = centerBob.x;
+        const checkY = centerBob.y;
+
+        let closestSnake = null;
+        let minDistance  = Infinity;
+
+        this.snakes.forEach(snake => {
+            if (!snake.alive || !snake.getHead()?.active) return;
+            const head = snake.getHead();
+            const dist = Math.hypot(head.x - checkX, head.y - checkY);
+            if (dist < minDistance) {
+                minDistance  = dist;
+                closestSnake = snake;
+            }
+        });
+
+        // 300 px: 45 px yeme yarıçapı + ~200 ms gecikme × 225 px/s ≈ 90 px + güvenlik payı
+        if (closestSnake && minDistance < 300 * closestSnake.scale) {
+            this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake: closestSnake });
         } else {
             bobsArray.forEach(bob => bob.destroy());
-            this.foods.delete(foodId);
         }
     }
 
@@ -548,6 +556,7 @@ export class Game extends Phaser.Scene {
         this.foodBlitterLarge = null;
         this.foods.clear();
         this.eatingFoods.clear();
+        this.predictedEatenFoodIds.clear();
     }
 
     ensureFoodBlitter() {
@@ -680,64 +689,89 @@ export class Game extends Phaser.Scene {
             this.grid.tilePositionY = this.cameras.main.scrollY;
         }
 
-        // İstemci tarafı görsel mıknatıs çekim efekti (Client-side visual food magnet pull)
+        // İstemci tarafı görsel mıknatıs çekim efekti + anında yeme tahmini (Client-side food magnet + eat prediction)
+        // Sunucu ile aynı yeme yarıçapı (45 * scale px) kullanılır. Oyuncunun yılanı bu mesafede bir yeme
+        // girince yemi hemen eatingFoods'a taşırız; sunucu onayı (~100ms sonra) gelince sadece seti temizleriz.
         const dt = delta / 1000;
         const PULL_SPEED_FACTOR = 12.0;
+        const EAT_RADIUS_FACTOR = 45.0; // Sunucunun FoodCollisionResolveSystem'deki değeriyle birebir eşleşir
 
-        this.foods.forEach((bobs, foodId) => {
+        // Tahmin edilen yemleri döngü dışında işlemek için toparla
+        const predictedEats = [];
+
+        for (const [foodId, bobs] of this.foods) {
             const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
             const centerBob = bobsArray[0];
-            if (!centerBob) return;
+            if (!centerBob) continue;
 
-            let closestSnake = null;
-            let minDistance = Infinity;
+            const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
+            const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
 
-            this.snakes.forEach(snake => {
-                if (!snake.alive || !snake.getHead()?.active) return;
+            let playerEatSnake = null;   // Oyuncu yılanı yeme yarıçapındaysa
+            let remoteSnake   = null;    // Uzak yılan için mıknatıs çekimi
+            let remoteDist    = Infinity;
+
+            for (const snake of this.snakes.values()) {
+                if (!snake.alive || !snake.getHead()?.active) continue;
                 const head = snake.getHead();
-                
-                // Server'ın dinamik ölçeklenen yeme mesafesi olan 45.0 * scale piksel ile birebir aynı ayar
-                const magnetRange = 45 * snake.scale;
-
-                const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
-                const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+                const eatRadius = EAT_RADIUS_FACTOR * snake.scale;
 
                 const dx = head.x - origX;
                 const dy = head.y - origY;
                 const distSq = dx * dx + dy * dy;
+                if (distSq > eatRadius * eatRadius) continue;
 
-                if (distSq < magnetRange * magnetRange) {
-                    const dist = Math.sqrt(distSq);
-                    if (dist < minDistance) {
-                        minDistance = dist;
-                        closestSnake = snake;
-                    }
+                if (snake.isPlayerControlled) {
+                    // Oyuncunun yılanı yeme menzilinde → hemen tahminle ye
+                    playerEatSnake = snake;
+                    break; // Oyuncu önceliği
                 }
-            });
 
-            if (closestSnake) {
-                const head = closestSnake.getHead();
+                const dist = Math.sqrt(distSq);
+                if (dist < remoteDist) {
+                    remoteDist  = dist;
+                    remoteSnake = snake;
+                }
+            }
+
+            if (playerEatSnake) {
+                // Sunucu onayı beklenmeden anında animasyona geç
+                predictedEats.push({ foodId, bobsArray, targetSnake: playerEatSnake });
+                continue;
+            }
+
+            if (remoteSnake) {
+                // Uzak yılan: sunucu onayı gelene kadar görsel mıknatıs çekimi uygula
+                const head = remoteSnake.getHead();
                 bobsArray.forEach(bob => {
                     bob.x += (head.x - bob.x) * PULL_SPEED_FACTOR * dt;
                     bob.y += (head.y - bob.y) * PULL_SPEED_FACTOR * dt;
                 });
             } else {
+                // Menzil dışında: orijinal konuma geri dön
                 bobsArray.forEach(bob => {
-                    const origX = bob.originalX !== undefined ? bob.originalX : bob.x;
-                    const origY = bob.originalY !== undefined ? bob.originalY : bob.y;
-
-                    const dx = origX - bob.x;
-                    const dy = origY - bob.y;
+                    const oX = bob.originalX !== undefined ? bob.originalX : bob.x;
+                    const oY = bob.originalY !== undefined ? bob.originalY : bob.y;
+                    const dx = oX - bob.x;
+                    const dy = oY - bob.y;
                     if (Math.hypot(dx, dy) > 0.1) {
                         bob.x += dx * PULL_SPEED_FACTOR * dt;
                         bob.y += dy * PULL_SPEED_FACTOR * dt;
                     } else {
-                        bob.x = origX;
-                        bob.y = origY;
+                        bob.x = oX;
+                        bob.y = oY;
                     }
                 });
             }
-        });
+        }
+
+        // Tahmin edilen yemeleri ana döngüden sonra işle (bu.foods'u güvenle değiştirebiliriz)
+        for (const { foodId, bobsArray, targetSnake } of predictedEats) {
+            if (this.predictedEatenFoodIds.has(foodId)) continue; // Aynı kare içinde tekrar tahmin önlemi
+            this.predictedEatenFoodIds.add(foodId);
+            this.foods.delete(foodId);
+            this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake });
+        }
 
         // Yenen yemlerin yılan kafasına uçarak yok olması animasyonu (Deferred food eat/magnet animation)
         this.eatingFoods.forEach((data, foodId) => {
