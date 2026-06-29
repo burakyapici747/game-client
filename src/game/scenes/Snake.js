@@ -504,43 +504,25 @@ export class Snake {
 
     _sampleHeadToPath() {
         if (!this.head.active) return;
+        const hp = new Phaser.Math.Vector2(this.head.x, this.head.y);
         const last = this.path[0];
         if (!last) {
-            this.path.unshift(new Phaser.Math.Vector2(this.head.x, this.head.y));
+            this.path.unshift(hp.clone());
             return;
         }
-
-        const dx = this.head.x - last.x;
-        const dy = this.head.y - last.y;
-        const dist = Math.hypot(dx, dy);
-        const fixedStep = this.getSampleMinStep();
-
-        if (dist < fixedStep) return;
-
-        // Sub-step: emit path points at exactly fixedStep intervals along the
-        // movement vector instead of one raw-delta point per frame.
-        // This keeps pathSegLens uniform and eliminates per-frame spacing jitter.
-        const nx = dx / dist;
-        const ny = dy / dist;
-        let remaining = dist;
-        let cx = last.x;
-        let cy = last.y;
-
-        while (remaining >= fixedStep) {
-            cx += nx * fixedStep;
-            cy += ny * fixedStep;
-            this.path.unshift(new Phaser.Math.Vector2(cx, cy));
-            this.pathSegLens.unshift(fixedStep);
-            this.totalPathLen += fixedStep;
-            remaining -= fixedStep;
-        }
-
-        const spacing = this.getSegmentSpacing();
-        const maxNeeded = (this.segments.length + 2) * spacing + 600;
-        while (this.totalPathLen > maxNeeded && this.path.length > 2) {
-            const rem = this.pathSegLens.pop();
-            if (rem !== undefined) this.totalPathLen -= rem;
-            this.path.pop();
+        const step = this.getSampleMinStep();
+        const dist = Phaser.Math.Distance.Between(hp.x, hp.y, last.x, last.y);
+        if (dist >= step) {
+            this.path.unshift(hp.clone());
+            this.pathSegLens.unshift(dist);
+            this.totalPathLen += dist;
+            const spacing = this.getSegmentSpacing();
+            const maxNeeded = (this.segments.length + 2) * spacing + 600;
+            while (this.totalPathLen > maxNeeded && this.path.length > 2) {
+                const rem = this.pathSegLens.pop();
+                if (rem !== undefined) this.totalPathLen -= rem;
+                this.path.pop();
+            }
         }
     }
 
