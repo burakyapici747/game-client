@@ -13,8 +13,8 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
-    RECONCILIATION_POSITION_FACTOR: 0.18,
-    RECONCILIATION_DEADZONE: 1,
+    RECONCILIATION_POSITION_FACTOR: 0.15,
+    RECONCILIATION_DEAD_ZONE: 3.5,
     RECONCILIATION_SNAP_DISTANCE: 140,
     RECONCILIATION_MAX_CORRECTION_SPEED: 480,
 };
@@ -421,14 +421,14 @@ export class Snake {
         let corrY = 0;
         let hasCorrection = false;
 
-        if (Math.abs(lateral) > this.config.RECONCILIATION_DEADZONE) {
+        if (Math.abs(lateral) > this.config.RECONCILIATION_DEAD_ZONE) {
             corrX += lateral * -sin;
             corrY += lateral * cos;
             hasCorrection = true;
         }
 
         const maxExpectedLag = (this.speed || 300) * 0.9;
-        if (longitudinal > this.config.RECONCILIATION_DEADZONE || longitudinal < -maxExpectedLag) {
+        if (longitudinal > this.config.RECONCILIATION_DEAD_ZONE || longitudinal < -maxExpectedLag) {
             corrX += longitudinal * cos;
             corrY += longitudinal * sin;
             hasCorrection = true;
