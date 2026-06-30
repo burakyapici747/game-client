@@ -13,8 +13,8 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
-    RECONCILIATION_POSITION_FACTOR: 0.18,
-    RECONCILIATION_DEADZONE: 2.5,
+    RECONCILIATION_POSITION_FACTOR: 0.15,
+    RECONCILIATION_DEAD_ZONE: 3.5,
     RECONCILIATION_SNAP_DISTANCE: 140,
     RECONCILIATION_MAX_CORRECTION_SPEED: 480,
 };
@@ -31,10 +31,12 @@ export class Snake {
         this.turnSpeed = 0;
         this.isBoosting = false;
         this.nickname = nickname;
+        this.lastReconciledSequenceId = 0;
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
         this.networkTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTarget = { x: x, y: y, angle: initialAngle };
+        this.selfServerTargetHeading = initialAngle;
         this.hasServerState = false;
         this.hasSelfServerState = false;
         this.segments = [];
@@ -328,7 +330,7 @@ export class Snake {
         }
     }
 
-    updateFromInput(targetAngle, isBoosting, delta) {
+    updateFromInput(targetAngleRad, isBoosting, delta, sequenceId = 0) {
         if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
 
         const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
@@ -342,8 +344,9 @@ export class Snake {
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
 
-        const targetRad = Phaser.Math.DegToRad(targetAngle);
-        const diff = Phaser.Math.Angle.Wrap(targetRad - this.head.rotation);
+        // targetAngleRad radyan cinsinden; Angle.Wrap ile kısa yay seçilir.
+        // Phaser'ın rotation setter'ı zaten WrapAngle uygular, ayrıca normalize etmeye gerek yok.
+        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.head.rotation);
         const maxTurn = this.turnSpeed * (delta / 1000);
         this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
 
@@ -379,8 +382,9 @@ export class Snake {
     }
 
     _frameAdjustedFactor(baseFactor, delta) {
-        const frameScale = delta / (1000 / 60);
-        return Phaser.Math.Clamp(baseFactor * frameScale, 0, 1);
+        // Exponential decay: frame-rate independent smooth lerp.
+        // At 60 FPS (delta=16.67ms) this equals baseFactor; at other rates it scales correctly.
+        return 1 - Math.pow(1 - baseFactor, delta / (1000 / 60));
     }
 
     _interpolateRemoteSnake(delta) {
@@ -392,6 +396,7 @@ export class Snake {
 
         const wrappedAngle = Phaser.Math.Angle.Wrap(this.networkTarget.angle - this.head.rotation);
         this.head.rotation += wrappedAngle * interpFactor;
+        // Phaser rotation setter'ı WrapAngle uygular; ayrıca normalize gerekmez.
     }
 
     _reconcilePlayerWithServer(delta) {
@@ -409,9 +414,11 @@ export class Snake {
             return;
         }
 
-        // Vector from Client to Server
-        const cos = Math.cos(this.head.rotation);
-        const sin = Math.sin(this.head.rotation);
+        // Use the heading snapshot from when the server packet arrived, not the
+        // current heading. If the client has turned since that packet, the longitudinal
+        // lag would otherwise project onto the lateral axis and trigger false corrections.
+        const cos = Math.cos(this.selfServerTargetHeading);
+        const sin = Math.sin(this.selfServerTargetHeading);
 
         const longitudinal = dx * cos + dy * sin;
         const lateral = dx * -sin + dy * cos;
@@ -420,14 +427,14 @@ export class Snake {
         let corrY = 0;
         let hasCorrection = false;
 
-        if (Math.abs(lateral) > this.config.RECONCILIATION_DEADZONE) {
+        if (Math.abs(lateral) > this.config.RECONCILIATION_DEAD_ZONE) {
             corrX += lateral * -sin;
             corrY += lateral * cos;
             hasCorrection = true;
         }
 
         const maxExpectedLag = (this.speed || 300) * 0.9;
-        if (longitudinal > 0 || longitudinal < -maxExpectedLag) {
+        if (longitudinal > this.config.RECONCILIATION_DEAD_ZONE || longitudinal < -maxExpectedLag) {
             corrX += longitudinal * cos;
             corrY += longitudinal * sin;
             hasCorrection = true;
@@ -447,14 +454,6 @@ export class Snake {
                 this.head.setPosition(nx, ny);
                 this.head.body?.updateFromGameObject();
             }
-        }
-
-        // Yılanın visual rotasyonunu (head.rotation), server'dan hesapladığımız hareket açısına smoothly reconcile et.
-        // Bu sayede yılanın visual rotasyonu ile gerçek fiziki hareket rotasyonu mükemmel bir şekilde senkronize kalır.
-        if (this.selfServerTarget.angle !== undefined) {
-            const angleDiff = Phaser.Math.Angle.Wrap(this.selfServerTarget.angle - this.head.rotation);
-            const rotFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
-            this.head.rotation += angleDiff * rotFactor;
         }
     }
 
@@ -479,15 +478,15 @@ export class Snake {
         const rx = this.head.x + (r.x * curScale * cos - r.y * curScale * sin);
         const ry = this.head.y + (r.x * curScale * sin + r.y * curScale * cos);
         
-        this.eyeL.setPosition(Math.round(lx), Math.round(ly)).setScale(curScale);
-        this.eyeR.setPosition(Math.round(rx), Math.round(ry)).setScale(curScale);
-        
+        this.eyeL.setPosition(lx, ly).setScale(curScale);
+        this.eyeR.setPosition(rx, ry).setScale(curScale);
+
         const maxR = this._pupilMax * curScale;
         const px = Phaser.Math.Clamp(dir.x * maxR, -maxR, maxR);
         const py = Phaser.Math.Clamp(dir.y * maxR, -maxR, maxR);
-        
-        this.pupilL.setPosition(Math.round(lx + px), Math.round(ly + py)).setScale(curScale);
-        this.pupilR.setPosition(Math.round(rx + px), Math.round(ry + py)).setScale(curScale);
+
+        this.pupilL.setPosition(lx + px, ly + py).setScale(curScale);
+        this.pupilR.setPosition(rx + px, ry + py).setScale(curScale);
     }
 
     _initPathWarmup(x, y) {
@@ -539,7 +538,7 @@ export class Snake {
             const p = this._pointAndAngleAtDistance(d);
             const seg = this.segments[i];
             if (seg && seg.active) {
-                seg.setPosition(Math.round(p.x), Math.round(p.y));
+                seg.setPosition(p.x, p.y);
                 seg.rotation = p.angle;
             }
         }
@@ -608,26 +607,25 @@ export class Snake {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
         const scaleVal = Number(entityData?.scale);
+        const serverSeqId = Number(entityData?.lastProcessedSequenceId ?? entityData?.last_processed_sequence_id);
 
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-            if (this.selfServerTarget.x !== undefined && this.selfServerTarget.y !== undefined) {
-                const dx = x - this.selfServerTarget.x;
-                const dy = y - this.selfServerTarget.y;
-                if (Math.hypot(dx, dy) > 0.01) {
-                    this.selfServerTarget.angle = Math.atan2(dy, dx);
-                }
-            }
-        }
-
-        if (Number.isFinite(x)) {
-            this.selfServerTarget.x = x;
-        }
-        if (Number.isFinite(y)) {
-            this.selfServerTarget.y = y;
-        }
         if (Number.isFinite(scaleVal) && scaleVal > 0) {
             this.scale = scaleVal;
             this._updateSegmentScaling();
+        }
+
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+            this.selfServerTarget.x = x;
+            this.selfServerTarget.y = y;
+            // Snapshot the heading at the moment this server packet arrives.
+            // Reconciliation uses this fixed heading for lateral/longitudinal decomposition
+            // so that a client turn between server updates does not rotate the expected
+            // longitudinal lag into the lateral axis and fire false corrections.
+            this.selfServerTargetHeading = this.head ? this.head.rotation : 0;
+
+            if (Number.isFinite(serverSeqId) && serverSeqId > 0) {
+                this.lastReconciledSequenceId = serverSeqId;
+            }
         }
 
         this.hasSelfServerState = true;

@@ -217,6 +217,9 @@ export namespace client {
 
         /** ClientInput actionValue */
         actionValue?: (number|null);
+
+        /** ClientInput sequenceId */
+        sequenceId?: (number|null);
     }
 
     /** Represents a ClientInput. */
@@ -230,6 +233,9 @@ export namespace client {
 
         /** ClientInput actionValue. */
         public actionValue: number;
+
+        /** ClientInput sequenceId. */
+        public sequenceId: number;
 
         /**
          * Creates a new ClientInput instance using the specified properties.
@@ -1425,6 +1431,9 @@ export namespace server {
 
         /** SelfPosition scale */
         scale?: (number|null);
+
+        /** SelfPosition lastProcessedSequenceId */
+        lastProcessedSequenceId?: (number|null);
     }
 
     /** Represents a SelfPosition. */
@@ -1447,6 +1456,9 @@ export namespace server {
 
         /** SelfPosition scale. */
         public scale: number;
+
+        /** SelfPosition lastProcessedSequenceId. */
+        public lastProcessedSequenceId: number;
 
         /**
          * Creates a new SelfPosition instance using the specified properties.

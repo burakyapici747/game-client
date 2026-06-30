@@ -7,4 +7,5 @@ message SelfPosition {
   uint32 x = 2;
   uint32 y = 3;
   float scale = 4;
+  uint32 last_processed_sequence_id = 5;
 }

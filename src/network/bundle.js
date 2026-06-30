@@ -527,6 +527,7 @@ export const client = $root.client = (() => {
          * @memberof client
          * @interface IClientInput
          * @property {number|null} [actionValue] ClientInput actionValue
+         * @property {number|null} [sequenceId] ClientInput sequenceId
          */
 
         /**
@@ -551,6 +552,14 @@ export const client = $root.client = (() => {
          * @instance
          */
         ClientInput.prototype.actionValue = 0;
+
+        /**
+         * ClientInput sequenceId.
+         * @member {number} sequenceId
+         * @memberof client.ClientInput
+         * @instance
+         */
+        ClientInput.prototype.sequenceId = 0;
 
         /**
          * Creates a new ClientInput instance using the specified properties.
@@ -578,6 +587,8 @@ export const client = $root.client = (() => {
                 writer = $Writer.create();
             if (message.actionValue != null && Object.hasOwnProperty.call(message, "actionValue"))
                 writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.actionValue);
+            if (message.sequenceId != null && Object.hasOwnProperty.call(message, "sequenceId"))
+                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.sequenceId);
             return writer;
         };
 
@@ -618,6 +629,10 @@ export const client = $root.client = (() => {
                         message.actionValue = reader.uint32();
                         break;
                     }
+                case 2: {
+                        message.sequenceId = reader.uint32();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -656,6 +671,9 @@ export const client = $root.client = (() => {
             if (message.actionValue != null && message.hasOwnProperty("actionValue"))
                 if (!$util.isInteger(message.actionValue))
                     return "actionValue: integer expected";
+            if (message.sequenceId != null && message.hasOwnProperty("sequenceId"))
+                if (!$util.isInteger(message.sequenceId))
+                    return "sequenceId: integer expected";
             return null;
         };
 
@@ -673,6 +691,8 @@ export const client = $root.client = (() => {
             let message = new $root.client.ClientInput();
             if (object.actionValue != null)
                 message.actionValue = object.actionValue >>> 0;
+            if (object.sequenceId != null)
+                message.sequenceId = object.sequenceId >>> 0;
             return message;
         };
 
@@ -689,10 +709,14 @@ export const client = $root.client = (() => {
             if (!options)
                 options = {};
             let object = {};
-            if (options.defaults)
+            if (options.defaults) {
                 object.actionValue = 0;
+                object.sequenceId = 0;
+            }
             if (message.actionValue != null && message.hasOwnProperty("actionValue"))
                 object.actionValue = message.actionValue;
+            if (message.sequenceId != null && message.hasOwnProperty("sequenceId"))
+                object.sequenceId = message.sequenceId;
             return object;
         };
 
@@ -3770,6 +3794,7 @@ export const server = $root.server = (() => {
          * @property {number|null} [x] SelfPosition x
          * @property {number|null} [y] SelfPosition y
          * @property {number|null} [scale] SelfPosition scale
+         * @property {number|null} [lastProcessedSequenceId] SelfPosition lastProcessedSequenceId
          */
 
         /**
@@ -3820,6 +3845,14 @@ export const server = $root.server = (() => {
         SelfPosition.prototype.scale = 0;
 
         /**
+         * SelfPosition lastProcessedSequenceId.
+         * @member {number} lastProcessedSequenceId
+         * @memberof server.SelfPosition
+         * @instance
+         */
+        SelfPosition.prototype.lastProcessedSequenceId = 0;
+
+        /**
          * Creates a new SelfPosition instance using the specified properties.
          * @function create
          * @memberof server.SelfPosition
@@ -3851,6 +3884,8 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
             if (message.scale != null && Object.hasOwnProperty.call(message, "scale"))
                 writer.uint32(/* id 4, wireType 5 =*/37).float(message.scale);
+            if (message.lastProcessedSequenceId != null && Object.hasOwnProperty.call(message, "lastProcessedSequenceId"))
+                writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.lastProcessedSequenceId);
             return writer;
         };
 
@@ -3903,6 +3938,10 @@ export const server = $root.server = (() => {
                         message.scale = reader.float();
                         break;
                     }
+                case 5: {
+                        message.lastProcessedSequenceId = reader.uint32();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -3950,6 +3989,9 @@ export const server = $root.server = (() => {
             if (message.scale != null && message.hasOwnProperty("scale"))
                 if (typeof message.scale !== "number")
                     return "scale: number expected";
+            if (message.lastProcessedSequenceId != null && message.hasOwnProperty("lastProcessedSequenceId"))
+                if (!$util.isInteger(message.lastProcessedSequenceId))
+                    return "lastProcessedSequenceId: integer expected";
             return null;
         };
 
@@ -3973,6 +4015,8 @@ export const server = $root.server = (() => {
                 message.y = object.y >>> 0;
             if (object.scale != null)
                 message.scale = Number(object.scale);
+            if (object.lastProcessedSequenceId != null)
+                message.lastProcessedSequenceId = object.lastProcessedSequenceId >>> 0;
             return message;
         };
 
@@ -3994,6 +4038,7 @@ export const server = $root.server = (() => {
                 object.x = 0;
                 object.y = 0;
                 object.scale = 0;
+                object.lastProcessedSequenceId = 0;
             }
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 object.entityId = message.entityId;
@@ -4003,6 +4048,8 @@ export const server = $root.server = (() => {
                 object.y = message.y;
             if (message.scale != null && message.hasOwnProperty("scale"))
                 object.scale = options.json && !isFinite(message.scale) ? String(message.scale) : message.scale;
+            if (message.lastProcessedSequenceId != null && message.hasOwnProperty("lastProcessedSequenceId"))
+                object.lastProcessedSequenceId = message.lastProcessedSequenceId;
             return object;
         };
 

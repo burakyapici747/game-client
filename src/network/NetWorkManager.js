@@ -18,6 +18,7 @@ export class NetworkManager {
         // 30Hz gonderim yeterli hassasiyet sagliyor, paket sayisi yarisina dusuyor.
         this.angleSendIntervalMoving = 1000 / 30;
         this.angleSendIntervalStill = 250;
+        this.nextSequenceId = 0;
     }
 
     canSend() {
@@ -160,7 +161,8 @@ export class NetworkManager {
         if (isBoosting !== this.isCurrentlyBoosting) {
             this.isCurrentlyBoosting = isBoosting;
             const actionValue = isBoosting ? 251 : 252; // 251: Boost Başlat, 252: Boost Bitir
-            this.sendAction(actionValue);
+            this.nextSequenceId++;
+            this.sendAction(actionValue, this.nextSequenceId);
         }
 
         // 2. Zamanlayıcıyı, son kareden bu yana geçen gerçek süre (delta) ile artır.
@@ -197,16 +199,17 @@ export class NetworkManager {
         // 5. Eğer gönderme koşulu sağlandıysa, paketi gönder ve zamanlayıcıyı sıfırla.
         if (shouldSendAngle) {
             // Sunucuya sadece 0-250 arasındaki sıkıştırılmış değeri gönderiyoruz.
-            this.sendAction(angleValue);
+            this.nextSequenceId++;
+            this.sendAction(angleValue, this.nextSequenceId);
             this.lastSentAngleValue = angleValue;
             this.angleSendTimer = 0; // Zamanlayıcıyı sıfırla
         }
     }
 
-    sendAction(value) {
+    sendAction(value, sequenceId = 0) {
         if (!this.canSend()) return;
         const actionValue = Math.max(0, Math.min(252, Number(value) || 0));
-        const inputMsg = client.ClientInput.create({ actionValue });
+        const inputMsg = client.ClientInput.create({ actionValue, sequenceId });
         const envelope = client.ClientEnvelope.create({ clientInput: inputMsg });
         const buffer = client.ClientEnvelope.encode(envelope).finish();
         this.socket.send(buffer);
