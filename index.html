@@ -99,26 +99,10 @@
             </div>
         </div>
 
-        <!-- In-game Mobile Controls Overlay (shown after game starts on touch devices) -->
-        <div id="mobile-overlay" class="mobile-overlay hidden">
-            <!-- Dynamic joystick: this zone is an invisible touch-capture area covering
-                 half the screen. The joystick itself is nearly transparent at rest and
-                 is teleported to the exact touch point as soon as a touch starts. -->
-            <div id="joystick-zone" class="mc-move-zone mc-left"></div>
-            <div id="joystick-outer" class="joystick-outer">
-                <div id="joystick-knob" class="joystick-knob"></div>
-            </div>
-            <div id="boost-zone" class="mc-zone mc-right">
-                <div id="boost-btn" class="boost-btn">
-                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                    </svg>
-                    <span class="boost-label">BOOST</span>
-                </div>
-                <span class="mc-hint">HOLD</span>
-            </div>
-        </div>
-        
+        <!-- In-game joystick/boost controls are rendered as native Phaser
+             GameObjects (this.add.circle / this.add.zone) by
+             src/game/ui/MobileControls.js — no DOM overlay needed here. -->
+
         <!-- Servers Modal -->
         <div id="servers-modal" class="modal hidden">
             <div class="modal-backdrop"></div>

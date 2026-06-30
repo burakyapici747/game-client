@@ -14,6 +14,10 @@ const config = {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  // 3 simultaneous touch points: one for the on-screen joystick, one for the
+  // boost button, plus a spare. Required for the Phaser-GameObject mobile
+  // controls (MobileControls.js) to track both at once.
+  input: { activePointers: 3 },
   physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
   scene: [Boot, Preloader, MainMenu, MainGame]
 };

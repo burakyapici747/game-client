@@ -9,11 +9,6 @@ window.mobileInput = {
     boostActive:       false,
 };
 
-// Touch devices: pointer media query is more reliable than user-agent sniffing
-function isTouchDevice() {
-    return window.matchMedia('(pointer: coarse)').matches;
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     const uiLayer        = document.getElementById('ui-layer');
     const playBtn        = document.getElementById('play-btn');
@@ -68,10 +63,10 @@ document.addEventListener('DOMContentLoaded', () => {
         StartGame('game-container');
         gameStarted = true;
 
-        // Activate in-game mobile controls on touch devices
-        if (isTouchDevice()) {
-            initMobileOverlay();
-        }
+        // In-game joystick/boost controls are now rendered inside the Phaser
+        // scene itself (see src/game/ui/MobileControls.js), which detects touch
+        // support via this.sys.game.device.input.touch and builds itself with
+        // this.add.circle()/this.add.zone() — no DOM activation needed here.
     }
 });
 
@@ -120,6 +115,7 @@ function initSettingsPanel() {
             sideBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             localStorage.setItem('mc_joystickSide', btn.dataset.side);
+            dispatchMobileControlsSettings();
         });
     });
 
@@ -127,6 +123,7 @@ function initSettingsPanel() {
     scaleSlider.addEventListener('input', () => {
         scaleDisplay.textContent = scaleSlider.value + '%';
         localStorage.setItem('mc_scale', scaleSlider.value);
+        dispatchMobileControlsSettings();
     });
 
     // ── Opacity slider ────────────────────────────────────────────────────────
@@ -135,166 +132,21 @@ function initSettingsPanel() {
         opacityDisplay.textContent = val + '%';
         localStorage.setItem('mc_opacity', val);
         document.documentElement.style.setProperty('--mc-opacity', val / 100);
+        dispatchMobileControlsSettings();
     });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// IN-GAME MOBILE OVERLAY
-// ─────────────────────────────────────────────────────────────────────────────
-function initMobileOverlay() {
-    const overlay     = document.getElementById('mobile-overlay');
-    const joystickZone = document.getElementById('joystick-zone');
-    const boostZone    = document.getElementById('boost-zone');
-    const joystickOuter = document.getElementById('joystick-outer');
-    const boostBtn     = document.getElementById('boost-btn');
-
-    // Apply saved layout
-    const joystickSide = localStorage.getItem('mc_joystickSide') || 'left';
-    const scaleVal     = parseFloat(localStorage.getItem('mc_scale') || '100') / 100;
-
-    if (joystickSide === 'left') {
-        joystickZone.className = 'mc-move-zone mc-left';
-        boostZone.className    = 'mc-zone mc-right';
-    } else {
-        joystickZone.className = 'mc-move-zone mc-right';
-        boostZone.className    = 'mc-zone mc-left';
-    }
-
-    // Joystick scale is applied via the --mc-scale CSS variable (the joystick's
-    // own transform also has to center it on the touch point, see style.css).
-    joystickOuter.style.setProperty('--mc-scale', scaleVal);
-    boostBtn.style.transform       = `scale(${scaleVal})`;
-    boostBtn.style.transformOrigin = 'bottom center';
-
-    overlay.classList.remove('hidden');
-    window.mobileInput.enabled = true;
-
-    setupJoystick(joystickZone, joystickOuter, scaleVal);
-    setupBoostButton(boostBtn);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// VIRTUAL JOYSTICK — dynamic: invisible at rest, spawns at the touch point
-// ─────────────────────────────────────────────────────────────────────────────
-// `zone` is a large invisible touch-capture area (half the screen); `outer` is
-// the visual joystick ring, teleported via left/top to wherever the touch
-// lands inside the zone, then faded in. This avoids forcing the player to
-// land their thumb on a small fixed-position circle.
-function setupJoystick(zone, outer, scale) {
-    const knob = document.getElementById('joystick-knob');
-
-    // Radius from center to knob edge in BASE px (outer=140, knob=52 → margin=44)
-    const BASE_RADIUS = (140 - 52) / 2; // 44 px
-    const BASE_OUTER_SIZE = 140;
-
-    let activeTouchId = null;
-    let centerX = 0;
-    let centerY = 0;
-
-    // Moves the joystick ring so it's centered exactly on (x, y), clamped so
-    // the scaled ring stays fully on-screen near viewport edges.
-    function spawnAt(x, y) {
-        const halfSize = (BASE_OUTER_SIZE * scale) / 2;
-        const margin   = 10;
-        const minX = halfSize + margin;
-        const maxX = window.innerWidth  - halfSize - margin;
-        const minY = halfSize + margin;
-        const maxY = window.innerHeight - halfSize - margin;
-
-        centerX = Math.min(Math.max(x, minX), maxX);
-        centerY = Math.min(Math.max(y, minY), maxY);
-
-        outer.style.left = `${centerX}px`;
-        outer.style.top  = `${centerY}px`;
-    }
-
-    // touchstart anywhere inside the (invisible) capture zone spawns the joystick
-    zone.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        if (activeTouchId !== null) return; // already tracking one finger
-        const t = e.changedTouches[0];
-        activeTouchId = t.identifier;
-
-        spawnAt(t.clientX, t.clientY);
-        knob.style.transform = 'translate(-50%, -50%)';
-        outer.classList.add('active');
-        applyJoystick(t.clientX, t.clientY);
-    }, { passive: false });
-
-    // Global touchmove so the finger can drift outside the ring's visual radius
-    document.addEventListener('touchmove', (e) => {
-        for (const t of e.changedTouches) {
-            if (t.identifier === activeTouchId) {
-                e.preventDefault();
-                applyJoystick(t.clientX, t.clientY);
-                break;
-            }
+// In-game joystick/boost controls (src/game/ui/MobileControls.js) read their
+// side/scale/opacity from localStorage once at construction time. This event
+// lets them pick up settings-panel changes live, mid-game, without a reload —
+// matching the old DOM overlay's behaviour where opacity updated immediately
+// via a CSS variable.
+function dispatchMobileControlsSettings() {
+    window.dispatchEvent(new CustomEvent('mobilecontrols:settings', {
+        detail: {
+            side: localStorage.getItem('mc_joystickSide') || 'left',
+            scale: parseFloat(localStorage.getItem('mc_scale') || '100') / 100,
+            opacity: parseFloat(localStorage.getItem('mc_opacity') || '70') / 100,
         }
-    }, { passive: false });
-
-    function releaseJoystick(e) {
-        for (const t of e.changedTouches) {
-            if (t.identifier === activeTouchId) {
-                activeTouchId = null;
-                outer.classList.remove('active');
-                // Return knob to center
-                knob.style.transform = 'translate(-50%, -50%)';
-                window.mobileInput.joystickActive    = false;
-                window.mobileInput.joystickMagnitude = 0;
-                break;
-            }
-        }
-    }
-    document.addEventListener('touchend',    releaseJoystick);
-    document.addEventListener('touchcancel', releaseJoystick);
-
-    function applyJoystick(cx, cy) {
-        const dx   = cx - centerX;
-        const dy   = cy - centerY;
-        const dist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-
-        // Max screen-pixel offset: BASE_RADIUS * scale (because outer is scaled)
-        const maxScreenPx  = BASE_RADIUS * scale;
-        const clampedDist  = Math.min(dist, maxScreenPx);
-
-        // Convert back to CSS-base-px for the knob transform (divide by scale)
-        const kx = Math.cos(angle) * clampedDist / scale;
-        const ky = Math.sin(angle) * clampedDist / scale;
-        knob.style.transform = `translate(calc(-50% + ${kx}px), calc(-50% + ${ky}px))`;
-
-        // Dead-band: ignore tiny jitter at rest
-        const DEAD_PX = 8;
-        window.mobileInput.joystickActive    = dist > DEAD_PX;
-        window.mobileInput.joystickAngle     = angle;
-        window.mobileInput.joystickMagnitude = Math.min(dist / maxScreenPx, 1);
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BOOST BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
-function setupBoostButton(btn) {
-    let activeTouchId = null;
-
-    btn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        if (activeTouchId !== null) return;
-        activeTouchId = e.changedTouches[0].identifier;
-        window.mobileInput.boostActive = true;
-        btn.classList.add('active');
-    }, { passive: false });
-
-    function releaseBoost(e) {
-        for (const t of e.changedTouches) {
-            if (t.identifier === activeTouchId) {
-                activeTouchId = null;
-                window.mobileInput.boostActive = false;
-                btn.classList.remove('active');
-                break;
-            }
-        }
-    }
-    btn.addEventListener('touchend',    releaseBoost);
-    btn.addEventListener('touchcancel', releaseBoost);
+    }));
 }

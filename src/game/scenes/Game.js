@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Snake } from './Snake';
 import { NetworkManager } from './../../network/NetWorkManager';
+import { MobileControls } from './../ui/MobileControls';
 
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
@@ -67,6 +68,20 @@ export class Game extends Phaser.Scene {
         this.scale.on('resize', this.handleResize, this);
         this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
 
+        // ── Mobile controls (Phaser GameObjects — no DOM) ───────────────────
+        // Built directly in the scene so it has zero dependency on src/main.js
+        // timing/DOM and renders with this.add.circle()/this.add.zone(), as
+        // required. window.mobileInput is populated by MobileControls and read
+        // by this scene's update() loop below — that contract is unchanged.
+        this.mobileControls = null;
+        if (this.sys.game.device.input.touch) {
+            this.mobileControls = new MobileControls(this);
+        }
+        this.events.once('shutdown', () => {
+            this.mobileControls?.destroy();
+            this.mobileControls = null;
+        });
+
         this.fpsText = this.add.text(4, 4, 'FPS: 0', {
             fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
             backgroundColor: '#00000088', padding: { left: 4, right: 4, top: 2, bottom: 2 }
@@ -77,23 +92,25 @@ export class Game extends Phaser.Scene {
         this.createLoadingUI();
     }
 
-    // Derives a base camera zoom from the live screen's pixel area, relative to
-    // a 1280×720 desktop reference. Field of view (world area visible) scales
-    // roughly with width×height/zoom², so this keeps the FOV comparable across
-    // wildly different screen sizes instead of always rendering at zoom = 1.
-    // Capped at 1.0 so desktop/tablet behaviour (already considered correct)
-    // never changes — only smaller mobile viewports zoom out.
+    // Derives a base camera zoom from the live screen's SMALLER dimension,
+    // relative to a 720px desktop-portrait reference. Mobile phones in
+    // landscape have a short dimension (height) far below any desktop
+    // viewport, and that short dimension is what actually limits FOV — an
+    // area-based formula under-corrected for narrow/short mobile screens and
+    // still left the camera noticeably over-zoomed. Using min(width,height)
+    // zooms out aggressively on phones while leaving desktop/tablet (where the
+    // short dimension is already >= the reference) at zoom 1.0, unchanged.
     computeBaseZoom() {
-        const REFERENCE_AREA = 1280 * 720;
-        const MIN_ZOOM = 0.5;
+        const REFERENCE_MIN_DIM = 720;
+        const MIN_ZOOM = 0.45;
         const MAX_ZOOM = 1.0;
 
         const width = this.scale.width;
         const height = this.scale.height;
         if (!width || !height) return 1.0;
 
-        const areaRatio = (width * height) / REFERENCE_AREA;
-        return Phaser.Math.Clamp(Math.sqrt(areaRatio), MIN_ZOOM, MAX_ZOOM);
+        const minDim = Math.min(width, height);
+        return Phaser.Math.Clamp(minDim / REFERENCE_MIN_DIM, MIN_ZOOM, MAX_ZOOM);
     }
 
     // Keeps the camera viewport, background grid, minimap and any still-visible
@@ -111,6 +128,8 @@ export class Game extends Phaser.Scene {
         if (this.grid) {
             this.grid.setSize(width, height);
         }
+
+        this.mobileControls?.resize(width, height);
 
         if (this.loadingContainer) {
             const cx = width / 2;
