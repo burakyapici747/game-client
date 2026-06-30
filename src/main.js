@@ -153,54 +153,75 @@ function initMobileOverlay() {
     const scaleVal     = parseFloat(localStorage.getItem('mc_scale') || '100') / 100;
 
     if (joystickSide === 'left') {
-        joystickZone.className = 'mc-zone mc-left';
+        joystickZone.className = 'mc-move-zone mc-left';
         boostZone.className    = 'mc-zone mc-right';
     } else {
-        joystickZone.className = 'mc-zone mc-right';
+        joystickZone.className = 'mc-move-zone mc-right';
         boostZone.className    = 'mc-zone mc-left';
     }
 
-    // Scale both controls; origin anchored to their outer bottom corner
-    joystickOuter.style.transform       = `scale(${scaleVal})`;
-    joystickOuter.style.transformOrigin = 'bottom center';
-    boostBtn.style.transform            = `scale(${scaleVal})`;
-    boostBtn.style.transformOrigin      = 'bottom center';
+    // Joystick scale is applied via the --mc-scale CSS variable (the joystick's
+    // own transform also has to center it on the touch point, see style.css).
+    joystickOuter.style.setProperty('--mc-scale', scaleVal);
+    boostBtn.style.transform       = `scale(${scaleVal})`;
+    boostBtn.style.transformOrigin = 'bottom center';
 
     overlay.classList.remove('hidden');
     window.mobileInput.enabled = true;
 
-    setupJoystick(joystickOuter, scaleVal);
+    setupJoystick(joystickZone, joystickOuter, scaleVal);
     setupBoostButton(boostBtn);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VIRTUAL JOYSTICK
+// VIRTUAL JOYSTICK — dynamic: invisible at rest, spawns at the touch point
 // ─────────────────────────────────────────────────────────────────────────────
-function setupJoystick(outer, scale) {
+// `zone` is a large invisible touch-capture area (half the screen); `outer` is
+// the visual joystick ring, teleported via left/top to wherever the touch
+// lands inside the zone, then faded in. This avoids forcing the player to
+// land their thumb on a small fixed-position circle.
+function setupJoystick(zone, outer, scale) {
     const knob = document.getElementById('joystick-knob');
 
     // Radius from center to knob edge in BASE px (outer=140, knob=52 → margin=44)
     const BASE_RADIUS = (140 - 52) / 2; // 44 px
+    const BASE_OUTER_SIZE = 140;
 
     let activeTouchId = null;
     let centerX = 0;
     let centerY = 0;
 
-    // touchstart anywhere inside the outer circle starts the joystick
-    outer.addEventListener('touchstart', (e) => {
+    // Moves the joystick ring so it's centered exactly on (x, y), clamped so
+    // the scaled ring stays fully on-screen near viewport edges.
+    function spawnAt(x, y) {
+        const halfSize = (BASE_OUTER_SIZE * scale) / 2;
+        const margin   = 10;
+        const minX = halfSize + margin;
+        const maxX = window.innerWidth  - halfSize - margin;
+        const minY = halfSize + margin;
+        const maxY = window.innerHeight - halfSize - margin;
+
+        centerX = Math.min(Math.max(x, minX), maxX);
+        centerY = Math.min(Math.max(y, minY), maxY);
+
+        outer.style.left = `${centerX}px`;
+        outer.style.top  = `${centerY}px`;
+    }
+
+    // touchstart anywhere inside the (invisible) capture zone spawns the joystick
+    zone.addEventListener('touchstart', (e) => {
         e.preventDefault();
         if (activeTouchId !== null) return; // already tracking one finger
         const t = e.changedTouches[0];
         activeTouchId = t.identifier;
+
+        spawnAt(t.clientX, t.clientY);
+        knob.style.transform = 'translate(-50%, -50%)';
         outer.classList.add('active');
-        // getBoundingClientRect returns visual (scaled) coordinates
-        const rect = outer.getBoundingClientRect();
-        centerX = rect.left + rect.width  / 2;
-        centerY = rect.top  + rect.height / 2;
         applyJoystick(t.clientX, t.clientY);
     }, { passive: false });
 
-    // Global touchmove so the finger can drift outside the circle
+    // Global touchmove so the finger can drift outside the ring's visual radius
     document.addEventListener('touchmove', (e) => {
         for (const t of e.changedTouches) {
             if (t.identifier === activeTouchId) {

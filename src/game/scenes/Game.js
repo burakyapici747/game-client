@@ -50,7 +50,22 @@ export class Game extends Phaser.Scene {
 
         this.networkManager.connect();
 
-        this.cameras.main.setZoom(1).setRoundPixels(false);
+        // ── Responsive camera setup ─────────────────────────────────────────
+        // Phaser's Scale.RESIZE mode resizes the canvas/game size to fill the
+        // parent element, but it does NOT automatically resize the main camera's
+        // viewport — leaving it at the size it was created with. On mobile this
+        // produced the "heavily zoomed-in" bug: the camera kept a desktop-sized
+        // viewport while the actual screen (and HUD: joystick/boost/minimap) was
+        // much smaller, drastically shrinking the player's effective field of view.
+        // We keep the camera viewport in sync with the live game size, and derive
+        // a base zoom factor from the screen's pixel area so smaller (mobile)
+        // screens zoom OUT to preserve a comparable field of view to desktop.
+        this.cameras.main.setSize(this.scale.width, this.scale.height);
+        this.baseZoom = this.computeBaseZoom();
+        this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
+
+        this.scale.on('resize', this.handleResize, this);
+        this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
 
         this.fpsText = this.add.text(4, 4, 'FPS: 0', {
             fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
@@ -60,6 +75,51 @@ export class Game extends Phaser.Scene {
         this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(2000);
 
         this.createLoadingUI();
+    }
+
+    // Derives a base camera zoom from the live screen's pixel area, relative to
+    // a 1280×720 desktop reference. Field of view (world area visible) scales
+    // roughly with width×height/zoom², so this keeps the FOV comparable across
+    // wildly different screen sizes instead of always rendering at zoom = 1.
+    // Capped at 1.0 so desktop/tablet behaviour (already considered correct)
+    // never changes — only smaller mobile viewports zoom out.
+    computeBaseZoom() {
+        const REFERENCE_AREA = 1280 * 720;
+        const MIN_ZOOM = 0.5;
+        const MAX_ZOOM = 1.0;
+
+        const width = this.scale.width;
+        const height = this.scale.height;
+        if (!width || !height) return 1.0;
+
+        const areaRatio = (width * height) / REFERENCE_AREA;
+        return Phaser.Math.Clamp(Math.sqrt(areaRatio), MIN_ZOOM, MAX_ZOOM);
+    }
+
+    // Keeps the camera viewport, background grid, minimap and any still-visible
+    // loading UI in sync whenever the game/canvas size changes — e.g. mobile
+    // orientation changes or the browser address bar showing/hiding (which
+    // changes window.innerHeight after the page has already loaded).
+    handleResize(gameSize) {
+        const width = gameSize.width;
+        const height = gameSize.height;
+        if (!width || !height) return;
+
+        this.cameras.main.setSize(width, height);
+        this.baseZoom = this.computeBaseZoom();
+
+        if (this.grid) {
+            this.grid.setSize(width, height);
+        }
+
+        if (this.loadingContainer) {
+            const cx = width / 2;
+            const cy = height / 2;
+            const [bg, text, spinner] = this.loadingContainer.list;
+            if (bg) { bg.setPosition(cx, cy); bg.setSize(width, height); }
+            if (text) text.setPosition(cx, cy - 30);
+            if (spinner) { spinner.x = cx; spinner.y = cy + 30; }
+        }
     }
 
     createLoadingUI() {
@@ -671,7 +731,8 @@ export class Game extends Phaser.Scene {
                 mySnake.updateFromInput(targetAngleRad, isBoosting, delta, this.networkManager.nextSequenceId);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
-                const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);
+                // baseZoom: ekran boyutuna göre belirlenen taban zoom (bkz. computeBaseZoom)
+                const targetZoom = this.baseZoom / (1.0 + (mySnake.scale - 1.0) * 0.12);
                 const currentZoom = this.cameras.main.zoom;
                 const zoomLerp = 0.05;
                 this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
@@ -685,8 +746,20 @@ export class Game extends Phaser.Scene {
         });
 
         if (this.grid) {
-            this.grid.tilePositionX = this.cameras.main.scrollX;
-            this.grid.tilePositionY = this.cameras.main.scrollY;
+            // The background tileSprite uses setScrollFactor(0) (screen-locked) so it
+            // must be scaled/shifted manually to track the camera. Without matching
+            // the camera's zoom here, the grid's on-screen cell size stays constant
+            // while every other world object scales with zoom — on desktop the base
+            // zoom stays close to 1 so this was barely visible, but on mobile (where
+            // baseZoom can dip to ~0.5) the mismatch became obvious: the checker
+            // pattern looked like it was "breaking apart" from the rest of the scene.
+            const zoom = this.cameras.main.zoom;
+            this.grid.setTileScale(zoom, zoom);
+            // Rounding to whole pixels avoids sub-pixel sampling of the repeating
+            // grid texture, which otherwise shows up as shimmering/broken seams
+            // on high-devicePixelRatio mobile screens (NEAREST-filtered texture).
+            this.grid.tilePositionX = Math.round(this.cameras.main.scrollX);
+            this.grid.tilePositionY = Math.round(this.cameras.main.scrollY);
         }
 
         // İstemci tarafı görsel mıknatıs çekim efekti + anında yeme tahmini (Client-side food magnet + eat prediction)

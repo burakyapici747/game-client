@@ -105,6 +105,14 @@ body {
     align-items: center;
     justify-content: center;
     padding-bottom: 10vh;
+    min-height: 0;
+    overflow-y: auto;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.main-menu-content::-webkit-scrollbar {
+    display: none;
 }
 
 /* Logo */
@@ -570,6 +578,21 @@ button {
 .mc-zone.mc-left  { left:  28px; }
 .mc-zone.mc-right { right: 28px; }
 
+/* Large invisible touch-capture area for the dynamic joystick — covers half
+   the screen (whichever side it's assigned to) so the player can plant their
+   thumb anywhere in that half rather than hunting for a fixed circle. */
+.mc-move-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 55%;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.mc-move-zone.mc-left  { left:  0; }
+.mc-move-zone.mc-right { right: 0; }
+
 .mc-hint {
     font-size: 0.6rem;
     color: rgba(255, 255, 255, 0.28);
@@ -579,29 +602,38 @@ button {
     user-select: none;
 }
 
-/* ─── Virtual Joystick ─── */
+/* ─── Virtual Joystick (dynamic) ───────────────────────────────────────────
+   Positioned with `left`/`top` set in JS to the exact touch point, then
+   centered + scaled via transform. Sits nearly invisible at rest and only
+   becomes visible once a touch lands inside its capture zone (.active). */
 .joystick-outer {
     width: 140px;
     height: 140px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.07);
     border: 2px solid rgba(255, 255, 255, 0.18);
-    position: relative;
+    position: fixed;
+    left: 0;
+    top: 0;
     touch-action: none;
     user-select: none;
+    pointer-events: none; /* purely visual — the move-zone captures touch */
     backdrop-filter: blur(6px);
     box-shadow:
         0 0 0 1px rgba(255,255,255,0.04) inset,
         0 8px 32px rgba(0,0,0,0.35);
     transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
-    /* Scale origin: bottom of whichever side it's placed on */
-    transform-origin: bottom center;
-    opacity: var(--mc-opacity, 0.7);
+    transform-origin: center center;
+    transform: translate(-50%, -50%) scale(var(--mc-scale, 1));
+    /* Nearly invisible at rest — a faint hint that this is the move zone */
+    opacity: 0.1;
+    z-index: 201;
 }
 
 .joystick-outer.active {
     border-color: rgba(0, 255, 204, 0.45);
     background: rgba(0, 255, 204, 0.04);
+    opacity: var(--mc-opacity, 0.7);
 }
 
 .joystick-knob {
@@ -791,5 +823,62 @@ button {
     .settings-panel {
         width: calc(100vw - 48px);
         right: -8px;
+    }
+}
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE — Mobile landscape / short viewports
+   (covers phones in landscape, e.g. ~360–430px tall)
+   ═══════════════════════════════════════════════ */
+@media (max-height: 500px) {
+    .top-bar {
+        padding: 10px 20px;
+    }
+
+    .icon-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .main-menu-content {
+        padding-bottom: 0;
+        justify-content: center;
+    }
+
+    .logo-container {
+        margin-bottom: 14px;
+    }
+
+    .game-logo {
+        font-size: 2.1rem;
+        letter-spacing: 1px;
+    }
+
+    .logo-subtitle {
+        font-size: 0.7rem;
+        letter-spacing: 3px;
+        margin-top: 4px;
+    }
+
+    .play-section {
+        gap: 12px;
+        max-width: 320px;
+    }
+
+    #nickname-input {
+        padding: 10px 18px;
+        font-size: 0.95rem;
+        border-radius: 10px;
+    }
+
+    .button-group {
+        gap: 10px;
+    }
+
+    .primary-btn,
+    .secondary-btn {
+        padding: 10px;
+        font-size: 0.9rem;
+        border-radius: 10px;
     }
 }

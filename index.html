@@ -101,11 +101,12 @@
 
         <!-- In-game Mobile Controls Overlay (shown after game starts on touch devices) -->
         <div id="mobile-overlay" class="mobile-overlay hidden">
-            <div id="joystick-zone" class="mc-zone mc-left">
-                <div id="joystick-outer" class="joystick-outer">
-                    <div id="joystick-knob" class="joystick-knob"></div>
-                </div>
-                <span class="mc-hint">MOVE</span>
+            <!-- Dynamic joystick: this zone is an invisible touch-capture area covering
+                 half the screen. The joystick itself is nearly transparent at rest and
+                 is teleported to the exact touch point as soon as a touch starts. -->
+            <div id="joystick-zone" class="mc-move-zone mc-left"></div>
+            <div id="joystick-outer" class="joystick-outer">
+                <div id="joystick-knob" class="joystick-knob"></div>
             </div>
             <div id="boost-zone" class="mc-zone mc-right">
                 <div id="boost-btn" class="boost-btn">
