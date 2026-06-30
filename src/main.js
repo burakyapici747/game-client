@@ -46,10 +46,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ── Mobile controls customizer (only on touch devices) ───────────────────
-    if (isTouchDevice()) {
-        initMobileControlsMenu();
-    }
+    // ── Settings panel (always active — gear button in top-right) ────────────
+    initSettingsPanel();
 
     // ── Play ──────────────────────────────────────────────────────────────────
     playBtn.addEventListener('click', startGameLogic);
@@ -78,26 +76,45 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MOBILE CONTROLS CUSTOMIZER (main menu)
+// SETTINGS PANEL (gear button — always active, all devices)
 // ─────────────────────────────────────────────────────────────────────────────
-function initMobileControlsMenu() {
-    const section    = document.getElementById('mobile-controls-section');
-    const sideBtns   = document.querySelectorAll('.mc-side-btn');
-    const scaleSlider = document.getElementById('mc-scale-slider');
-    const scaleDisplay = document.getElementById('mc-scale-display');
+function initSettingsPanel() {
+    const settingsBtn    = document.getElementById('settings-btn');
+    const panel          = document.getElementById('settings-panel');
+    const sideBtns       = document.querySelectorAll('.mc-side-btn');
+    const scaleSlider    = document.getElementById('mc-scale-slider');
+    const scaleDisplay   = document.getElementById('mc-scale-display');
+    const opacitySlider  = document.getElementById('mc-opacity-slider');
+    const opacityDisplay = document.getElementById('mc-opacity-display');
 
-    // Reveal section
-    section.classList.remove('hidden');
-
-    // Load persisted settings
-    const savedSide  = localStorage.getItem('mc_joystickSide') || 'left';
-    const savedScale = parseInt(localStorage.getItem('mc_scale') || '100', 10);
+    // ── Load persisted settings ───────────────────────────────────────────────
+    const savedSide    = localStorage.getItem('mc_joystickSide') || 'left';
+    const savedScale   = parseInt(localStorage.getItem('mc_scale')   || '100', 10);
+    const savedOpacity = parseInt(localStorage.getItem('mc_opacity') || '70',  10);
 
     sideBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.side === savedSide));
-    scaleSlider.value       = savedScale;
+    scaleSlider.value        = savedScale;
     scaleDisplay.textContent = savedScale + '%';
+    opacitySlider.value        = savedOpacity;
+    opacityDisplay.textContent = savedOpacity + '%';
 
-    // Side toggle
+    // Apply opacity CSS variable immediately so controls are correct from first frame
+    document.documentElement.style.setProperty('--mc-opacity', savedOpacity / 100);
+
+    // ── Toggle panel open/closed ──────────────────────────────────────────────
+    settingsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.classList.toggle('open');
+    });
+
+    // Close when clicking anywhere outside the panel
+    document.addEventListener('click', (e) => {
+        if (!panel.contains(e.target) && e.target !== settingsBtn) {
+            panel.classList.remove('open');
+        }
+    });
+
+    // ── Side picker ───────────────────────────────────────────────────────────
     sideBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             sideBtns.forEach(b => b.classList.remove('active'));
@@ -106,10 +123,18 @@ function initMobileControlsMenu() {
         });
     });
 
-    // Scale slider
+    // ── Scale slider ──────────────────────────────────────────────────────────
     scaleSlider.addEventListener('input', () => {
         scaleDisplay.textContent = scaleSlider.value + '%';
         localStorage.setItem('mc_scale', scaleSlider.value);
+    });
+
+    // ── Opacity slider ────────────────────────────────────────────────────────
+    opacitySlider.addEventListener('input', () => {
+        const val = parseInt(opacitySlider.value, 10);
+        opacityDisplay.textContent = val + '%';
+        localStorage.setItem('mc_opacity', val);
+        document.documentElement.style.setProperty('--mc-opacity', val / 100);
     });
 }
 

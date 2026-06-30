@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="stylesheet" href="/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <title>TABUMU GAME</title>
@@ -17,41 +20,17 @@
         <!-- UI Layer Overlay -->
         <div id="ui-layer" class="ui-layer">
             <div class="top-bar">
-                <button id="settings-btn" class="icon-btn" title="Settings">
-                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                </button>
-            </div>
-            
-            <div class="main-menu-content">
-                <div class="logo-container">
-                    <h1 class="game-logo">TABUMU<span class="highlight"> GAME</span></h1>
-                    <div class="logo-subtitle">Multiplayer Snake Game</div>
-                </div>
-                
-                <div class="play-section">
-                    <div class="input-group">
-                        <input type="text" id="nickname-input" placeholder="Enter Nickname" maxlength="16" autocomplete="off" />
-                    </div>
-                    
-                    <div class="button-group">
-                        <button id="play-btn" class="primary-btn">PLAY NOW</button>
-                        <button id="servers-btn" class="secondary-btn">
-                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="22" y1="12" x2="2" y2="12"></line>
-                                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
-                                <line x1="6" y1="16" x2="6.01" y2="16"></line>
-                                <line x1="10" y1="16" x2="10.01" y2="16"></line>
-                            </svg>
-                            Servers
-                        </button>
-                    </div>
+                <div class="settings-wrapper">
+                    <button id="settings-btn" class="icon-btn" title="Settings">
+                        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                    </button>
 
-                    <!-- Mobile Controls Customizer — shown only on touch devices -->
-                    <div id="mobile-controls-section" class="mobile-controls-section hidden">
-                        <div class="mc-section-header">
+                    <!-- Settings Panel (toggled by gear button) -->
+                    <div id="settings-panel" class="settings-panel">
+                        <div class="settings-panel-header">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
                                 <line x1="12" y1="18" x2="12.01" y2="18"></line>
@@ -80,7 +59,42 @@
                                 <input type="range" id="mc-scale-slider" min="70" max="130" value="100" step="5">
                             </div>
                         </div>
+
+                        <div class="mc-row">
+                            <span class="mc-label">Opacity</span>
+                            <div class="mc-size-row">
+                                <span id="mc-opacity-display">70%</span>
+                                <input type="range" id="mc-opacity-slider" min="20" max="100" value="70" step="5">
+                            </div>
+                        </div>
                     </div>
+                </div>
+            </div>
+            
+            <div class="main-menu-content">
+                <div class="logo-container">
+                    <h1 class="game-logo">TABUMU<span class="highlight"> GAME</span></h1>
+                    <div class="logo-subtitle">Multiplayer Snake Game</div>
+                </div>
+                
+                <div class="play-section">
+                    <div class="input-group">
+                        <input type="text" id="nickname-input" placeholder="Enter Nickname" maxlength="16" autocomplete="off" />
+                    </div>
+                    
+                    <div class="button-group">
+                        <button id="play-btn" class="primary-btn">PLAY NOW</button>
+                        <button id="servers-btn" class="secondary-btn">
+                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="12" x2="2" y2="12"></line>
+                                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
+                                <line x1="6" y1="16" x2="6.01" y2="16"></line>
+                                <line x1="10" y1="16" x2="10.01" y2="16"></line>
+                            </svg>
+                            Servers
+                        </button>
+                    </div>
+
                 </div>
             </div>
         </div>
