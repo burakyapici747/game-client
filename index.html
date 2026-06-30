@@ -48,7 +48,59 @@
                             Servers
                         </button>
                     </div>
+
+                    <!-- Mobile Controls Customizer — shown only on touch devices -->
+                    <div id="mobile-controls-section" class="mobile-controls-section hidden">
+                        <div class="mc-section-header">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                                <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                            </svg>
+                            Mobile Controls
+                        </div>
+
+                        <div class="mc-row">
+                            <span class="mc-label">Joystick Side</span>
+                            <div class="mc-side-picker">
+                                <button class="mc-side-btn active" data-side="left">
+                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M10 8H4m0 0l3-3M4 8l3 3"/></svg>
+                                    Left
+                                </button>
+                                <button class="mc-side-btn" data-side="right">
+                                    Right
+                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6 8h6m0 0l-3-3m3 3l-3 3"/></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mc-row">
+                            <span class="mc-label">Control Size</span>
+                            <div class="mc-size-row">
+                                <span id="mc-scale-display">100%</span>
+                                <input type="range" id="mc-scale-slider" min="70" max="130" value="100" step="5">
+                            </div>
+                        </div>
+                    </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- In-game Mobile Controls Overlay (shown after game starts on touch devices) -->
+        <div id="mobile-overlay" class="mobile-overlay hidden">
+            <div id="joystick-zone" class="mc-zone mc-left">
+                <div id="joystick-outer" class="joystick-outer">
+                    <div id="joystick-knob" class="joystick-knob"></div>
+                </div>
+                <span class="mc-hint">MOVE</span>
+            </div>
+            <div id="boost-zone" class="mc-zone mc-right">
+                <div id="boost-btn" class="boost-btn">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    <span class="boost-label">BOOST</span>
+                </div>
+                <span class="mc-hint">HOLD</span>
             </div>
         </div>
         

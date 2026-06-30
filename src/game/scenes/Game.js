@@ -634,27 +634,35 @@ export class Game extends Phaser.Scene {
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
 
         if (mySnake && mySnake.alive) {
-            this.pointer = this.input.activePointer;
-            const isBoosting = this.pointer.isDown;
             const head = mySnake.getHead();
 
             if (head?.active) {
-                const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
+                let targetAngleRad;
+                let isBoosting;
 
-                // --- Mouse Dead Zone ---
-                // Mouse head'e çok yakınsa Angle.Between sayısal kararsızlığa girer;
-                // dead zone içinde mevcut yönü koru.
-                // Blend zone (35-90px ramp) kaldırıldı: maxTurn zaten dönüşü sınırlar,
-                // aradaki lineer blend gereksiz ve "hedef açı = kısmi blend" durumu
-                // sprite'ın hedefi geçmişmiş gibi görünmesine (overshoot) yol açıyordu.
-                const STEER_DEAD_ZONE_PX = 35;
+                const mob = window.mobileInput;
+                if (mob?.enabled) {
+                    // ── Mobile: virtual joystick + boost button ───────────────
+                    // Joystick açısı doğrudan ekran koordinatlarında atan2(dy,dx) olarak
+                    // hesaplanır; kamera döndürme olmadığından world space ile örtüşür.
+                    isBoosting = mob.boostActive;
+                    if (mob.joystickActive && mob.joystickMagnitude > 0.1) {
+                        targetAngleRad = mob.joystickAngle;
+                    } else {
+                        targetAngleRad = head.rotation; // parmak yoksa yönü koru
+                    }
+                } else {
+                    // ── Desktop: mouse ────────────────────────────────────────
+                    this.pointer = this.input.activePointer;
+                    isBoosting   = this.pointer.isDown;
+                    const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
 
-                const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-
-                // Dead zone dışında: doğrudan mouse açısı hedef.
-                // Dead zone içinde: mevcut baş açısını koru (hiç dönme).
-                const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-                const targetAngleRad = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
+                    // Dead zone: mouse head'e çok yakınsa sayısal kararsızlık oluşur.
+                    const STEER_DEAD_ZONE_PX = 35;
+                    const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
+                    const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
+                    targetAngleRad    = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
+                }
 
                 // Ağ gönderimi hâlâ derece tabanlı 0-250 sıkıştırmasını kullanıyor.
                 this.networkManager.updateAndSendInput(Phaser.Math.RadToDeg(targetAngleRad), isBoosting, delta);
