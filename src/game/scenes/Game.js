@@ -641,37 +641,25 @@ export class Game extends Phaser.Scene {
             if (head?.active) {
                 const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
 
-                // --- Mouse Dead Zone & Blend Zone ---
-                // Mouse head'e çok yakınsa Phaser.Math.Angle.Between sayısal kararssızlığa girer:
-                // minicik fare hareketi targetAngle'yı yüz derece değiştirebilir → zigzag / dar kıvrım.
-                // Çözüm: mesafeye göre hedef açıyı mevcut yönle blend ederek yumuşat.
-                const STEER_DEAD_ZONE_PX = 35;   // Bu içinde: hiç dönme
-                const STEER_FULL_ZONE_PX  = 90;   // Bunun ötesinde: tam yönlendirme
+                // --- Mouse Dead Zone ---
+                // Mouse head'e çok yakınsa Angle.Between sayısal kararsızlığa girer;
+                // dead zone içinde mevcut yönü koru.
+                // Blend zone (35-90px ramp) kaldırıldı: maxTurn zaten dönüşü sınırlar,
+                // aradaki lineer blend gereksiz ve "hedef açı = kısmi blend" durumu
+                // sprite'ın hedefi geçmişmiş gibi görünmesine (overshoot) yol açıyordu.
+                const STEER_DEAD_ZONE_PX = 35;
 
                 const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-                const steerFactor = Phaser.Math.Clamp(
-                    (distToMouse - STEER_DEAD_ZONE_PX) / (STEER_FULL_ZONE_PX - STEER_DEAD_ZONE_PX),
-                    0, 1
-                );
 
-                // steerFactor=0 → mouse'a bakılmaz, mevcut açı korunur
-                // steerFactor=1 → tam mouse yönlendirme
-
-                // Tüm açı hesabını radyan cinsinden yapıyoruz — derece↔radyan dönüşüm
-                // zincirleri kayan nokta birikimi ve Angle.Wrap aralık uyumsuzluğuna yol açıyordu.
+                // Dead zone dışında: doğrudan mouse açısı hedef.
+                // Dead zone içinde: mevcut baş açısını koru (hiç dönme).
                 const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-
-                // head.rotation'ı [-π, π]'ye normalize et; Angle.Between da bu aralığı döndürür.
-                const currentAngleRad = Phaser.Math.Angle.Wrap(head.rotation);
-
-                // Açı farkını [-π, π] aralığında tutarak blend yap
-                const angleDiffRad = Phaser.Math.Angle.Wrap(rawAngleRad - currentAngleRad);
-                const targetAngleRad = currentAngleRad + angleDiffRad * steerFactor;
+                const targetAngleRad = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
 
                 // Ağ gönderimi hâlâ derece tabanlı 0-250 sıkıştırmasını kullanıyor.
                 this.networkManager.updateAndSendInput(Phaser.Math.RadToDeg(targetAngleRad), isBoosting, delta);
 
-                // İstemci tarafı tahminleme: radyan değerini doğrudan ilet, dönüşüm yok.
+                // İstemci tarafı tahminleme.
                 mySnake.updateFromInput(targetAngleRad, isBoosting, delta, this.networkManager.nextSequenceId);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
