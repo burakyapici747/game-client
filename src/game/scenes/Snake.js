@@ -330,7 +330,7 @@ export class Snake {
         }
     }
 
-    updateFromInput(targetAngle, isBoosting, delta, sequenceId = 0) {
+    updateFromInput(targetAngleRad, isBoosting, delta, sequenceId = 0) {
         if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
 
         const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
@@ -344,10 +344,15 @@ export class Snake {
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
 
-        const targetRad = Phaser.Math.DegToRad(targetAngle);
-        const diff = Phaser.Math.Angle.Wrap(targetRad - this.head.rotation);
+        // targetAngleRad zaten radyan cinsinden geliyor (Game.js'de derece dönüşümü kaldırıldı).
+        // head.rotation da [-π, π]'de normalize olduğundan Angle.Wrap her zaman doğru yönü seçer.
+        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.head.rotation);
         const maxTurn = this.turnSpeed * (delta / 1000);
         this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+        // Normalize: head.rotation'ı [-π, π]'de tut.
+        // Bu sayede bir sonraki karedeki Angle.Wrap hesabı birikmiş büyük değerlerle
+        // karşılaşmaz ve Angle.Between çıktısıyla ([-π, π]) her zaman senkronda kalır.
+        this.head.rotation = Phaser.Math.Angle.Wrap(this.head.rotation);
 
         this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
     }
@@ -395,6 +400,9 @@ export class Snake {
 
         const wrappedAngle = Phaser.Math.Angle.Wrap(this.networkTarget.angle - this.head.rotation);
         this.head.rotation += wrappedAngle * interpFactor;
+        // Normalize için [-π, π]'de tut — birikimli kayma, Angle.Wrap'ın yanlış yön seçmesine
+        // (beklenmedik 300° dönüş yerine kısa 60° dönüş) neden oluyordu.
+        this.head.rotation = Phaser.Math.Angle.Wrap(this.head.rotation);
     }
 
     _reconcilePlayerWithServer(delta) {

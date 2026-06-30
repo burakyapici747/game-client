@@ -656,19 +656,23 @@ export class Game extends Phaser.Scene {
 
                 // steerFactor=0 → mouse'a bakılmaz, mevcut açı korunur
                 // steerFactor=1 → tam mouse yönlendirme
-                const rawAngleDeg = Phaser.Math.RadToDeg(
-                    Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y)
-                );
-                const currentAngleDeg = Phaser.Math.RadToDeg(head.rotation);
 
-                // Açı farkını [-180, 180] aralığında tutarak blend yap
-                const angleDiff = Phaser.Math.Angle.WrapDegrees(rawAngleDeg - currentAngleDeg);
-                const targetAngle = currentAngleDeg + angleDiff * steerFactor;
+                // Tüm açı hesabını radyan cinsinden yapıyoruz — derece↔radyan dönüşüm
+                // zincirleri kayan nokta birikimi ve Angle.Wrap aralık uyumsuzluğuna yol açıyordu.
+                const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
 
-                this.networkManager.updateAndSendInput(targetAngle, isBoosting, delta);
+                // head.rotation'ı [-π, π]'ye normalize et; Angle.Between da bu aralığı döndürür.
+                const currentAngleRad = Phaser.Math.Angle.Wrap(head.rotation);
 
-                // İstemci tarafı tahminleme (Client-Side Prediction)
-                mySnake.updateFromInput(targetAngle, isBoosting, delta, this.networkManager.nextSequenceId);
+                // Açı farkını [-π, π] aralığında tutarak blend yap
+                const angleDiffRad = Phaser.Math.Angle.Wrap(rawAngleRad - currentAngleRad);
+                const targetAngleRad = currentAngleRad + angleDiffRad * steerFactor;
+
+                // Ağ gönderimi hâlâ derece tabanlı 0-250 sıkıştırmasını kullanıyor.
+                this.networkManager.updateAndSendInput(Phaser.Math.RadToDeg(targetAngleRad), isBoosting, delta);
+
+                // İstemci tarafı tahminleme: radyan değerini doğrudan ilet, dönüşüm yok.
+                mySnake.updateFromInput(targetAngleRad, isBoosting, delta, this.networkManager.nextSequenceId);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);
