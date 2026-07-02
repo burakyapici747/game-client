@@ -75,6 +75,17 @@ export class Game extends Phaser.Scene {
         this.baseZoom = this.computeBaseZoom();
         this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
 
+        // ── Zoom-independent UI camera ──────────────────────────────────────
+        // Camera zoom scales scrollFactor(0) objects too: with mobile baseZoom
+        // ~0.5 the whole HUD (grid background, FPS text, minimap, joystick/
+        // boost touch zones) rendered shrunken into a centered rectangle, and
+        // — because input hit-testing goes through the same camera transform —
+        // touches only registered inside that rectangle. The fix: a second
+        // camera at zoom 1 renders (and hit-tests) HUD objects exclusively.
+        // The zoomed main camera ignores HUD; the UI camera ignores the world.
+        this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        this.uiCamera.setScroll(0, 0);
+
         this.scale.on('resize', this.handleResize, this);
         this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
 
@@ -99,7 +110,23 @@ export class Game extends Phaser.Scene {
 
         this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(2000);
 
+        this.registerHUD(this.fpsText, this.minimapGraphics);
+
         this.createLoadingUI();
+    }
+
+    // ── Camera routing helpers ──────────────────────────────────────────────
+    // Every display object must be claimed by exactly one camera:
+    //   HUD (screen-space)  → rendered/hit-tested by uiCamera only
+    //   World (game-space)  → rendered by the zoomed main camera only
+    registerHUD(...objs) {
+        this.cameras.main.ignore(objs);
+        return objs;
+    }
+
+    registerWorld(obj) {
+        if (this.uiCamera && obj) this.uiCamera.ignore(obj);
+        return obj;
     }
 
     // Derives a base camera zoom from the live screen's SMALLER dimension,
@@ -133,6 +160,7 @@ export class Game extends Phaser.Scene {
         if (!width || !height) return;
 
         this.cameras.main.setSize(width, height);
+        this.uiCamera?.setSize(width, height);
         this.baseZoom = this.computeBaseZoom();
 
         if (this.grid) {
@@ -156,6 +184,7 @@ export class Game extends Phaser.Scene {
         const cy = this.cameras.main.height / 2;
 
         this.loadingContainer = this.add.container(0, 0).setScrollFactor(0).setDepth(9999);
+        this.registerHUD(this.loadingContainer);
 
         // Arkaplan
         const bg = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.85);
@@ -230,7 +259,7 @@ export class Game extends Phaser.Scene {
             if (this.boundaryGraphics) {
                 this.boundaryGraphics.destroy();
             }
-            this.boundaryGraphics = this.add.graphics();
+            this.boundaryGraphics = this.registerWorld(this.add.graphics());
             this.boundaryGraphics.lineStyle(6, 0xff0000, 1.0);
             this.boundaryGraphics.strokeCircle(worldRadius, worldRadius, worldRadius - 3);
             this.boundaryGraphics.setDepth(500);
@@ -650,13 +679,13 @@ export class Game extends Phaser.Scene {
 
     ensureFoodBlitter() {
         if (this.foodBlitter) return this.foodBlitter;
-        this.foodBlitter = this.add.blitter(0, 0, 'food_dot').setDepth(0);
+        this.foodBlitter = this.registerWorld(this.add.blitter(0, 0, 'food_dot').setDepth(0));
         return this.foodBlitter;
     }
 
     ensureFoodBlitterLarge() {
         if (this.foodBlitterLarge) return this.foodBlitterLarge;
-        this.foodBlitterLarge = this.add.blitter(0, 0, 'food_dot_large').setDepth(0);
+        this.foodBlitterLarge = this.registerWorld(this.add.blitter(0, 0, 'food_dot_large').setDepth(0));
         return this.foodBlitterLarge;
     }
 
@@ -675,7 +704,7 @@ export class Game extends Phaser.Scene {
         const cy = this.cameras.main.height / 2;
 
         // Karartma efekti
-        this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
+        const overlay = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
             .setOrigin(0.5).setScrollFactor(0).setDepth(10000);
 
         // Modern Game Over Paneli
@@ -685,21 +714,23 @@ export class Game extends Phaser.Scene {
         panel.lineStyle(2, 0x00ff00, 1);
         panel.strokeRoundedRect(cx - 200, cy - 150, 400, 300, 20);
 
-        this.add.text(cx, cy - 100, 'GAME OVER', {
+        const titleText = this.add.text(cx, cy - 100, 'GAME OVER', {
             fontSize: '48px', fontFamily: 'Outfit, sans-serif', color: '#ff3333', fontStyle: 'bold'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        this.add.text(cx, cy - 10, `Final Score`, {
+        const scoreLabel = this.add.text(cx, cy - 10, `Final Score`, {
             fontSize: '18px', fontFamily: 'Inter, sans-serif', color: '#aaaaaa'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        this.add.text(cx, cy + 30, `${gameOverInfo.score}`, {
+        const scoreText = this.add.text(cx, cy + 30, `${gameOverInfo.score}`, {
             fontSize: '64px', fontFamily: 'Outfit, sans-serif', color: '#00ff00', fontStyle: 'bold'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        this.add.text(cx, cy + 110, 'Press F5 to Play Again', {
+        const retryText = this.add.text(cx, cy + 110, 'Press F5 to Play Again', {
             fontSize: '16px', fontFamily: 'Inter, sans-serif', color: '#ffffff'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
+
+        this.registerHUD(overlay, panel, titleText, scoreLabel, scoreText, retryText);
     }
 
     onDisconnected() {
@@ -710,10 +741,11 @@ export class Game extends Phaser.Scene {
             this.boundaryGraphics.destroy();
             this.boundaryGraphics = null;
         }
-        this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
+        const disconnectText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
             `Sunucu bağlantısı koptu!`,
             { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000' }
         ).setOrigin(0.5, 0.5).setScrollFactor(0);
+        this.registerHUD(disconnectText);
     }
 
 
@@ -984,10 +1016,14 @@ export class Game extends Phaser.Scene {
     }
 
     createTiledBackground() {
+        // Screen-locked background: rendered by the zoom-1 UI camera so it
+        // always spans the full screen. World tracking is faked in update()
+        // via tileScale (= main camera zoom) and tilePosition (= scroll).
         this.grid = this.add.tileSprite(0, 0, this.cameras.main.width, this.cameras.main.height, 'grid32')
             .setOrigin(0, 0)
             .setScrollFactor(0)
             .setDepth(-1);
+        this.registerHUD(this.grid);
     }
 
     // Physics step tamamlandıktan sonra, render öncesi çağrılır.

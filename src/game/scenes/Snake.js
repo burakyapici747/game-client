@@ -99,9 +99,13 @@ export class Snake {
     }
 
     _createSegmentSprite(index, x, y) {
-        return this.scene.add.sprite(x, y, 'snake_body48')
-            .setOrigin(0.5)
-            .setTint(this._getSegmentColor(index));
+        // registerWorld: world-space objects render via the zoomed main camera
+        // only — the zoom-1 UI camera must ignore them (see Game.js).
+        return this.scene.registerWorld(
+            this.scene.add.sprite(x, y, 'snake_body48')
+                .setOrigin(0.5)
+                .setTint(this._getSegmentColor(index))
+        );
     }
 
     _refreshSegmentDepths() {
@@ -265,8 +269,8 @@ export class Snake {
     }
 
     create(x, y, angle) {
-        this.head = this.scene.add.sprite(x, y, 'snake_head48')
-            .setOrigin(0.5);
+        this.head = this.scene.registerWorld(this.scene.add.sprite(x, y, 'snake_head48')
+            .setOrigin(0.5));
         this.head.rotation = angle;
         if (this.isPlayerControlled) {
             this.scene.physics.world.enable(this.head);
@@ -285,10 +289,11 @@ export class Snake {
             blendMode: Phaser.BlendModes.ADD, frequency: -1
         });
         this.trail.startFollow(this.head);
-        this.eyeL = this.scene.add.image(x, y, 'eye10').setOrigin(0.5).setDepth(this.head.depth + 2);
-        this.eyeR = this.scene.add.image(x, y, 'eye10').setOrigin(0.5).setDepth(this.head.depth + 2);
-        this.pupilL = this.scene.add.image(x, y, 'pupil4').setOrigin(0.5).setDepth(this.head.depth + 3);
-        this.pupilR = this.scene.add.image(x, y, 'pupil4').setOrigin(0.5).setDepth(this.head.depth + 3);
+        this.scene.registerWorld(this.trail);
+        this.eyeL = this.scene.registerWorld(this.scene.add.image(x, y, 'eye10').setOrigin(0.5).setDepth(this.head.depth + 2));
+        this.eyeR = this.scene.registerWorld(this.scene.add.image(x, y, 'eye10').setOrigin(0.5).setDepth(this.head.depth + 2));
+        this.pupilL = this.scene.registerWorld(this.scene.add.image(x, y, 'pupil4').setOrigin(0.5).setDepth(this.head.depth + 3));
+        this.pupilR = this.scene.registerWorld(this.scene.add.image(x, y, 'pupil4').setOrigin(0.5).setDepth(this.head.depth + 3));
         this._eyeLocalL = new Phaser.Math.Vector2(+15, -6);
         this._eyeLocalR = new Phaser.Math.Vector2(+15, +6);
         this._pupilMax = 3;
@@ -319,14 +324,14 @@ export class Snake {
         if (this.nicknameText) {
             this.nicknameText.setText(nickname);
         } else {
-            this.nicknameText = this.scene.add.text(this.head.x, this.head.y - 35 * this.scale, nickname, {
+            this.nicknameText = this.scene.registerWorld(this.scene.add.text(this.head.x, this.head.y - 35 * this.scale, nickname, {
                 fontFamily: 'Outfit, Inter, Arial, sans-serif',
                 fontSize: '14px',
                 fontStyle: 'bold',
                 fill: '#ffffff',
                 stroke: '#000000',
                 strokeThickness: 3
-            }).setOrigin(0.5).setDepth(2000);
+            }).setOrigin(0.5).setDepth(2000));
         }
     }
 

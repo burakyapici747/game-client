@@ -39,6 +39,17 @@ export class MobileControls {
         scene.input.addPointer(2);
 
         this._buildGameObjects();
+
+        // HUD objects (including the interactive touch zones) must render and
+        // hit-test through the zoom-1 UI camera. Under the zoomed main camera
+        // (baseZoom < 1 on mobile) the zones shrank into a centered rectangle
+        // and touches outside it never reached the joystick/boost handlers.
+        scene.registerHUD?.(
+            this.moveZone, this.boostZone,
+            this.joystickOuter, this.joystickKnob,
+            this.boostButton, this.boostLabel
+        );
+
         this._layout(scene.scale.width, scene.scale.height);
         this._bindInput();
         this._bindSettingsLive();
