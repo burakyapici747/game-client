@@ -163,9 +163,8 @@ export class Game extends Phaser.Scene {
         this.uiCamera?.setSize(width, height);
         this.baseZoom = this.computeBaseZoom();
 
-        if (this.grid) {
-            this.grid.setSize(width, height);
-        }
+        // (grid is world-space now — update() re-fits it to the camera's
+        // worldView every frame, so no screen-size sync is needed here.)
 
         this.mobileControls?.resize(width, height);
 
@@ -807,20 +806,19 @@ export class Game extends Phaser.Scene {
         });
 
         if (this.grid) {
-            // The background tileSprite uses setScrollFactor(0) (screen-locked) so it
-            // must be scaled/shifted manually to track the camera. Without matching
-            // the camera's zoom here, the grid's on-screen cell size stays constant
-            // while every other world object scales with zoom — on desktop the base
-            // zoom stays close to 1 so this was barely visible, but on mobile (where
-            // baseZoom can dip to ~0.5) the mismatch became obvious: the checker
-            // pattern looked like it was "breaking apart" from the rest of the scene.
-            const zoom = this.cameras.main.zoom;
-            this.grid.setTileScale(zoom, zoom);
-            // Rounding to whole pixels avoids sub-pixel sampling of the repeating
-            // grid texture, which otherwise shows up as shimmering/broken seams
-            // on high-devicePixelRatio mobile screens (NEAREST-filtered texture).
-            this.grid.tilePositionX = Math.round(this.cameras.main.scrollX);
-            this.grid.tilePositionY = Math.round(this.cameras.main.scrollY);
+            // World-space background: cover the camera's visible world rect
+            // (worldView already accounts for zoom) and pin the repeating
+            // texture to world coordinates via tilePosition, so the pattern
+            // stays put while the sprite itself moves with the camera.
+            const view = this.cameras.main.worldView;
+            if (view.width > 0 && view.height > 0) {
+                const x = Math.floor(view.x);
+                const y = Math.floor(view.y);
+                this.grid.setPosition(x, y);
+                this.grid.setSize(Math.ceil(view.width) + 2, Math.ceil(view.height) + 2);
+                this.grid.tilePositionX = x;
+                this.grid.tilePositionY = y;
+            }
         }
 
         // İstemci tarafı görsel mıknatıs çekim efekti + anında yeme tahmini (Client-side food magnet + eat prediction)
@@ -1016,14 +1014,17 @@ export class Game extends Phaser.Scene {
     }
 
     createTiledBackground() {
-        // Screen-locked background: rendered by the zoom-1 UI camera so it
-        // always spans the full screen. World tracking is faked in update()
-        // via tileScale (= main camera zoom) and tilePosition (= scroll).
-        this.grid = this.add.tileSprite(0, 0, this.cameras.main.width, this.cameras.main.height, 'grid32')
-            .setOrigin(0, 0)
-            .setScrollFactor(0)
-            .setDepth(-1);
-        this.registerHUD(this.grid);
+        // WORLD-space background (not HUD): it must render on the zoomed main
+        // camera so food/snakes (depth >= 0) draw on top of it. On the UI
+        // camera the opaque checker would be composited AFTER the world camera
+        // and cover every world object. Each frame, update() stretches it over
+        // the camera's visible world rectangle and offsets the texture so the
+        // pattern stays fixed in world space (cells scale naturally with zoom).
+        this.grid = this.registerWorld(
+            this.add.tileSprite(0, 0, 32, 32, 'grid32')
+                .setOrigin(0, 0)
+                .setDepth(-1)
+        );
     }
 
     // Physics step tamamlandıktan sonra, render öncesi çağrılır.
