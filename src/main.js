@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function startGameLogic() {
         if (gameStarted) return;
+        gameStarted = true; // set immediately: boot below is deferred, block double-taps
 
         let nickname = nicknameInput.value.trim();
         if (!nickname) nickname = 'Player' + Math.floor(Math.random() * 10000);
@@ -59,9 +60,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
         window.gameSettings = { nickname, serverUrl: selectedServer };
 
+        // Dismiss the mobile on-screen keyboard BEFORE Phaser boots. Phaser's
+        // RESIZE scale mode snapshots the parent's bounds once at boot and only
+        // re-checks on window.resize/orientationchange — if it boots while the
+        // keyboard has the viewport shrunk, the game is stuck at that small size.
+        nicknameInput.blur();
         uiLayer.classList.add('hidden');
-        StartGame('game-container');
-        gameStarted = true;
+
+        // rAF + short delay lets the keyboard dismissal and layout transitions
+        // settle so Phaser measures the real, full-screen parent bounds.
+        requestAnimationFrame(() => setTimeout(() => {
+            const game = StartGame('game-container');
+
+            const refresh = () => game.scale.refresh();
+
+            // Re-measure once boot completes, in case bounds shifted mid-boot.
+            game.events.once('ready', refresh);
+
+            // Phaser only listens to window.resize + orientationchange. On
+            // mobile, keyboard show/hide and browser-chrome (address bar)
+            // changes often fire ONLY visualViewport resize — or no event at
+            // all except the element itself changing size. ResizeObserver on
+            // the parent makes it the single source of truth for game size.
+            new ResizeObserver(refresh)
+                .observe(document.getElementById('game-container'));
+            window.visualViewport?.addEventListener('resize', refresh);
+        }, 150));
 
         // In-game joystick/boost controls are now rendered inside the Phaser
         // scene itself (see src/game/ui/MobileControls.js), which detects touch

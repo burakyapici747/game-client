@@ -61,6 +61,16 @@ export class Game extends Phaser.Scene {
         // We keep the camera viewport in sync with the live game size, and derive
         // a base zoom factor from the screen's pixel area so smaller (mobile)
         // screens zoom OUT to preserve a comparable field of view to desktop.
+        // Self-heal: if the ScaleManager's snapshot has drifted from the real
+        // parent size (e.g. boot raced a keyboard/viewport transition on
+        // mobile), force a re-measure. refresh() emits 'resize', which lands
+        // in handleResize below and re-syncs camera/grid/controls.
+        const ps = this.scale.parentSize;
+        if (ps.width && ps.height &&
+            (this.scale.width !== ps.width || this.scale.height !== ps.height)) {
+            this.scale.refresh();
+        }
+
         this.cameras.main.setSize(this.scale.width, this.scale.height);
         this.baseZoom = this.computeBaseZoom();
         this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
