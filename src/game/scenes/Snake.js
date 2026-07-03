@@ -13,10 +13,24 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
-    RECONCILIATION_POSITION_FACTOR: 0.15,
-    RECONCILIATION_DEAD_ZONE: 3.5,
-    RECONCILIATION_SNAP_DISTANCE: 140,
-    RECONCILIATION_MAX_CORRECTION_SPEED: 480,
+
+    // ── Reconciliation (server ↔ client-prediction) tuning ──────────────────
+    // Tolerances (epsilon): errors below these are treated as normal prediction
+    // noise (10 Hz server + ping ⇒ 5-30 px steady-state discrepancy) and are
+    // NOT corrected at all. Above them, only the EXCESS beyond the tolerance
+    // is corrected — the correction magnitude is therefore continuous (zero at
+    // the boundary), which eliminates the on/off threshold flapping that
+    // previously read as stutter.
+    RECONCILIATION_LATERAL_TOLERANCE: 12,       // px, across the travel direction
+    RECONCILIATION_LONGITUDINAL_TOLERANCE: 24,  // px, ahead of the server position
+    // Blend gains (per-frame lerp factor @60 FPS, frame-rate adjusted).
+    // Gain ramps from SOFT (barely perceptible drift) toward FIRM as the total
+    // discrepancy approaches the hard-snap distance.
+    RECONCILIATION_SOFT_FACTOR: 0.08,
+    RECONCILIATION_FIRM_FACTOR: 0.35,
+    RECONCILIATION_MAX_CORRECTION_SPEED: 480,   // px/s cap on correction drift
+    // Hard snap is a last resort (death/respawn/teleport-level desync only).
+    RECONCILIATION_HARD_SNAP_DISTANCE: 800,
 };
 
 export class Snake {
@@ -407,13 +421,16 @@ export class Snake {
     _reconcilePlayerWithServer(delta) {
         if (!this.hasSelfServerState) return;
 
+        const cfg = this.config;
         const dx = this.selfServerTarget.x - this.head.x;
         const dy = this.selfServerTarget.y - this.head.y;
         const absDistance = Math.hypot(dx, dy);
 
-        // Sunucu 10 FPS çalışırken ping ile birlikte mesafe 200-300 pikseli aşabilir.
-        // O yüzden sadece ÇOK saçma bir farkta (örn. ölüm, yeniden doğma vb.) 800 veriyoruz.
-        if (absDistance > 800) {
+        // ── Hard reconciliation: last resort only ───────────────────────────
+        // Sunucu 10 FPS çalışırken ping ile birlikte mesafe 200-300 pikseli
+        // aşabilir; snap yalnızca ölüm/yeniden doğma/teleport seviyesindeki
+        // desync'te devreye girer.
+        if (absDistance > cfg.RECONCILIATION_HARD_SNAP_DISTANCE) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
             this.head.body?.updateFromGameObject();
             return;
@@ -428,38 +445,54 @@ export class Snake {
         const longitudinal = dx * cos + dy * sin;
         const lateral = dx * -sin + dy * cos;
 
-        let corrX = 0;
-        let corrY = 0;
-        let hasCorrection = false;
-
-        if (Math.abs(lateral) > this.config.RECONCILIATION_DEAD_ZONE) {
-            corrX += lateral * -sin;
-            corrY += lateral * cos;
-            hasCorrection = true;
+        // ── Tolerance thresholds (epsilon): correct only the EXCESS ─────────
+        // Within tolerance the client-side prediction is trusted outright.
+        // Beyond it, the corrected amount is (error - tolerance), so the
+        // correction magnitude is continuous — it grows smoothly from zero
+        // instead of switching on at full strength, which was the source of
+        // the frame-to-frame jitter.
+        let latErr = 0;
+        if (Math.abs(lateral) > cfg.RECONCILIATION_LATERAL_TOLERANCE) {
+            latErr = lateral - Math.sign(lateral) * cfg.RECONCILIATION_LATERAL_TOLERANCE;
         }
 
+        // Being BEHIND the server target up to ~one server tick of travel is
+        // expected latency lag, not error — allow it without correction.
         const maxExpectedLag = (this.speed || 300) * 0.9;
-        if (longitudinal > this.config.RECONCILIATION_DEAD_ZONE || longitudinal < -maxExpectedLag) {
-            corrX += longitudinal * cos;
-            corrY += longitudinal * sin;
-            hasCorrection = true;
+        let lonErr = 0;
+        if (longitudinal > cfg.RECONCILIATION_LONGITUDINAL_TOLERANCE) {
+            lonErr = longitudinal - cfg.RECONCILIATION_LONGITUDINAL_TOLERANCE;
+        } else if (longitudinal < -maxExpectedLag) {
+            lonErr = longitudinal + maxExpectedLag;
         }
 
-        if (hasCorrection) {
-            const corrDist = Math.hypot(corrX, corrY);
-            if (corrDist > 0.1) {
-                const posFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
-                const desiredStep = corrDist * posFactor * 0.55;
-                const maxStep = this.config.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
-                const step = Math.min(desiredStep, maxStep);
+        if (latErr === 0 && lonErr === 0) return; // within tolerance — no correction
 
-                const nx = this.head.x + (corrX / corrDist) * step;
-                const ny = this.head.y + (corrY / corrDist) * step;
+        const corrX = latErr * -sin + lonErr * cos;
+        const corrY = latErr * cos + lonErr * sin;
+        const corrDist = Math.hypot(corrX, corrY);
+        if (corrDist < 0.05) return;
 
-                this.head.setPosition(nx, ny);
-                this.head.body?.updateFromGameObject();
-            }
-        }
+        // ── Severity-scaled error blending ──────────────────────────────────
+        // Small excess errors drift back at SOFT gain (imperceptible); as the
+        // total discrepancy approaches the hard-snap distance the gain ramps
+        // quadratically toward FIRM. Correction speed is capped so it can
+        // never read as a pop.
+        const severity = Phaser.Math.Clamp(absDistance / cfg.RECONCILIATION_HARD_SNAP_DISTANCE, 0, 1);
+        const gain = Phaser.Math.Linear(
+            cfg.RECONCILIATION_SOFT_FACTOR,
+            cfg.RECONCILIATION_FIRM_FACTOR,
+            severity * severity
+        );
+        const posFactor = this._frameAdjustedFactor(gain, delta);
+        const maxStep = cfg.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
+        const step = Math.min(corrDist * posFactor, maxStep);
+
+        this.head.setPosition(
+            this.head.x + (corrX / corrDist) * step,
+            this.head.y + (corrY / corrDist) * step
+        );
+        this.head.body?.updateFromGameObject();
     }
 
     _updateEyes(tx, ty) {
