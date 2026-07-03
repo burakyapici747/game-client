@@ -28,9 +28,15 @@ export class Preloader extends Phaser.Scene {
       this.textures.get(k).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 
-    ['px8', 'px32', 'px64', 'grid32'].forEach(k => {
+    ['px8', 'px32', 'px64'].forEach(k => {
       this.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     });
+
+    // grid32 is rendered as a tileSprite and re-scaled every frame to match
+    // camera zoom (see Game.js). NEAREST filtering on a minified, fractionally
+    // scaled checker pattern produces moire/aliasing artifacts on mobile where
+    // zoom is < 1. LINEAR filtering removes that distortion.
+    this.textures.get('grid32').setFilter(Phaser.Textures.FilterMode.LINEAR);
 
     this.scene.start('Game');
   }

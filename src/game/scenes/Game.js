@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Snake } from './Snake';
 import { NetworkManager } from './../../network/NetWorkManager';
+import { MobileControls } from './../ui/MobileControls';
 
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
@@ -50,7 +51,57 @@ export class Game extends Phaser.Scene {
 
         this.networkManager.connect();
 
-        this.cameras.main.setZoom(1).setRoundPixels(false);
+        // ── Responsive camera setup ─────────────────────────────────────────
+        // Phaser's Scale.RESIZE mode resizes the canvas/game size to fill the
+        // parent element, but it does NOT automatically resize the main camera's
+        // viewport — leaving it at the size it was created with. On mobile this
+        // produced the "heavily zoomed-in" bug: the camera kept a desktop-sized
+        // viewport while the actual screen (and HUD: joystick/boost/minimap) was
+        // much smaller, drastically shrinking the player's effective field of view.
+        // We keep the camera viewport in sync with the live game size, and derive
+        // a base zoom factor from the screen's pixel area so smaller (mobile)
+        // screens zoom OUT to preserve a comparable field of view to desktop.
+        // Self-heal: if the ScaleManager's snapshot has drifted from the real
+        // parent size (e.g. boot raced a keyboard/viewport transition on
+        // mobile), force a re-measure. refresh() emits 'resize', which lands
+        // in handleResize below and re-syncs camera/grid/controls.
+        const ps = this.scale.parentSize;
+        if (ps.width && ps.height &&
+            (this.scale.width !== ps.width || this.scale.height !== ps.height)) {
+            this.scale.refresh();
+        }
+
+        this.cameras.main.setSize(this.scale.width, this.scale.height);
+        this.baseZoom = this.computeBaseZoom();
+        this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
+
+        // ── Zoom-independent UI camera ──────────────────────────────────────
+        // Camera zoom scales scrollFactor(0) objects too: with mobile baseZoom
+        // ~0.5 the whole HUD (grid background, FPS text, minimap, joystick/
+        // boost touch zones) rendered shrunken into a centered rectangle, and
+        // — because input hit-testing goes through the same camera transform —
+        // touches only registered inside that rectangle. The fix: a second
+        // camera at zoom 1 renders (and hit-tests) HUD objects exclusively.
+        // The zoomed main camera ignores HUD; the UI camera ignores the world.
+        this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        this.uiCamera.setScroll(0, 0);
+
+        this.scale.on('resize', this.handleResize, this);
+        this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
+
+        // ── Mobile controls (Phaser GameObjects — no DOM) ───────────────────
+        // Built directly in the scene so it has zero dependency on src/main.js
+        // timing/DOM and renders with this.add.circle()/this.add.zone(), as
+        // required. window.mobileInput is populated by MobileControls and read
+        // by this scene's update() loop below — that contract is unchanged.
+        this.mobileControls = null;
+        if (this.sys.game.device.input.touch) {
+            this.mobileControls = new MobileControls(this);
+        }
+        this.events.once('shutdown', () => {
+            this.mobileControls?.destroy();
+            this.mobileControls = null;
+        });
 
         this.fpsText = this.add.text(4, 4, 'FPS: 0', {
             fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
@@ -59,7 +110,72 @@ export class Game extends Phaser.Scene {
 
         this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(2000);
 
+        this.registerHUD(this.fpsText, this.minimapGraphics);
+
         this.createLoadingUI();
+    }
+
+    // ── Camera routing helpers ──────────────────────────────────────────────
+    // Every display object must be claimed by exactly one camera:
+    //   HUD (screen-space)  → rendered/hit-tested by uiCamera only
+    //   World (game-space)  → rendered by the zoomed main camera only
+    registerHUD(...objs) {
+        this.cameras.main.ignore(objs);
+        return objs;
+    }
+
+    registerWorld(obj) {
+        if (this.uiCamera && obj) this.uiCamera.ignore(obj);
+        return obj;
+    }
+
+    // Derives a base camera zoom from the live screen's SMALLER dimension,
+    // relative to a 720px desktop-portrait reference. Mobile phones in
+    // landscape have a short dimension (height) far below any desktop
+    // viewport, and that short dimension is what actually limits FOV — an
+    // area-based formula under-corrected for narrow/short mobile screens and
+    // still left the camera noticeably over-zoomed. Using min(width,height)
+    // zooms out aggressively on phones while leaving desktop/tablet (where the
+    // short dimension is already >= the reference) at zoom 1.0, unchanged.
+    computeBaseZoom() {
+        const REFERENCE_MIN_DIM = 720;
+        const MIN_ZOOM = 0.45;
+        const MAX_ZOOM = 1.0;
+
+        const width = this.scale.width;
+        const height = this.scale.height;
+        if (!width || !height) return 1.0;
+
+        const minDim = Math.min(width, height);
+        return Phaser.Math.Clamp(minDim / REFERENCE_MIN_DIM, MIN_ZOOM, MAX_ZOOM);
+    }
+
+    // Keeps the camera viewport, background grid, minimap and any still-visible
+    // loading UI in sync whenever the game/canvas size changes — e.g. mobile
+    // orientation changes or the browser address bar showing/hiding (which
+    // changes window.innerHeight after the page has already loaded).
+    handleResize(gameSize) {
+        const width = gameSize.width;
+        const height = gameSize.height;
+        if (!width || !height) return;
+
+        this.cameras.main.setSize(width, height);
+        this.uiCamera?.setSize(width, height);
+        this.baseZoom = this.computeBaseZoom();
+
+        // (grid is world-space now — update() re-fits it to the camera's
+        // worldView every frame, so no screen-size sync is needed here.)
+
+        this.mobileControls?.resize(width, height);
+
+        if (this.loadingContainer) {
+            const cx = width / 2;
+            const cy = height / 2;
+            const [bg, text, spinner] = this.loadingContainer.list;
+            if (bg) { bg.setPosition(cx, cy); bg.setSize(width, height); }
+            if (text) text.setPosition(cx, cy - 30);
+            if (spinner) { spinner.x = cx; spinner.y = cy + 30; }
+        }
     }
 
     createLoadingUI() {
@@ -67,6 +183,7 @@ export class Game extends Phaser.Scene {
         const cy = this.cameras.main.height / 2;
 
         this.loadingContainer = this.add.container(0, 0).setScrollFactor(0).setDepth(9999);
+        this.registerHUD(this.loadingContainer);
 
         // Arkaplan
         const bg = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.85);
@@ -141,7 +258,7 @@ export class Game extends Phaser.Scene {
             if (this.boundaryGraphics) {
                 this.boundaryGraphics.destroy();
             }
-            this.boundaryGraphics = this.add.graphics();
+            this.boundaryGraphics = this.registerWorld(this.add.graphics());
             this.boundaryGraphics.lineStyle(6, 0xff0000, 1.0);
             this.boundaryGraphics.strokeCircle(worldRadius, worldRadius, worldRadius - 3);
             this.boundaryGraphics.setDepth(500);
@@ -561,13 +678,13 @@ export class Game extends Phaser.Scene {
 
     ensureFoodBlitter() {
         if (this.foodBlitter) return this.foodBlitter;
-        this.foodBlitter = this.add.blitter(0, 0, 'food_dot').setDepth(0);
+        this.foodBlitter = this.registerWorld(this.add.blitter(0, 0, 'food_dot').setDepth(0));
         return this.foodBlitter;
     }
 
     ensureFoodBlitterLarge() {
         if (this.foodBlitterLarge) return this.foodBlitterLarge;
-        this.foodBlitterLarge = this.add.blitter(0, 0, 'food_dot_large').setDepth(0);
+        this.foodBlitterLarge = this.registerWorld(this.add.blitter(0, 0, 'food_dot_large').setDepth(0));
         return this.foodBlitterLarge;
     }
 
@@ -586,7 +703,7 @@ export class Game extends Phaser.Scene {
         const cy = this.cameras.main.height / 2;
 
         // Karartma efekti
-        this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
+        const overlay = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
             .setOrigin(0.5).setScrollFactor(0).setDepth(10000);
 
         // Modern Game Over Paneli
@@ -596,21 +713,23 @@ export class Game extends Phaser.Scene {
         panel.lineStyle(2, 0x00ff00, 1);
         panel.strokeRoundedRect(cx - 200, cy - 150, 400, 300, 20);
 
-        this.add.text(cx, cy - 100, 'GAME OVER', {
+        const titleText = this.add.text(cx, cy - 100, 'GAME OVER', {
             fontSize: '48px', fontFamily: 'Outfit, sans-serif', color: '#ff3333', fontStyle: 'bold'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        this.add.text(cx, cy - 10, `Final Score`, {
+        const scoreLabel = this.add.text(cx, cy - 10, `Final Score`, {
             fontSize: '18px', fontFamily: 'Inter, sans-serif', color: '#aaaaaa'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        this.add.text(cx, cy + 30, `${gameOverInfo.score}`, {
+        const scoreText = this.add.text(cx, cy + 30, `${gameOverInfo.score}`, {
             fontSize: '64px', fontFamily: 'Outfit, sans-serif', color: '#00ff00', fontStyle: 'bold'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        this.add.text(cx, cy + 110, 'Press F5 to Play Again', {
+        const retryText = this.add.text(cx, cy + 110, 'Press F5 to Play Again', {
             fontSize: '16px', fontFamily: 'Inter, sans-serif', color: '#ffffff'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
+
+        this.registerHUD(overlay, panel, titleText, scoreLabel, scoreText, retryText);
     }
 
     onDisconnected() {
@@ -621,10 +740,11 @@ export class Game extends Phaser.Scene {
             this.boundaryGraphics.destroy();
             this.boundaryGraphics = null;
         }
-        this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
+        const disconnectText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
             `Sunucu bağlantısı koptu!`,
             { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000' }
         ).setOrigin(0.5, 0.5).setScrollFactor(0);
+        this.registerHUD(disconnectText);
     }
 
 
@@ -634,27 +754,35 @@ export class Game extends Phaser.Scene {
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
 
         if (mySnake && mySnake.alive) {
-            this.pointer = this.input.activePointer;
-            const isBoosting = this.pointer.isDown;
             const head = mySnake.getHead();
 
             if (head?.active) {
-                const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
+                let targetAngleRad;
+                let isBoosting;
 
-                // --- Mouse Dead Zone ---
-                // Mouse head'e çok yakınsa Angle.Between sayısal kararsızlığa girer;
-                // dead zone içinde mevcut yönü koru.
-                // Blend zone (35-90px ramp) kaldırıldı: maxTurn zaten dönüşü sınırlar,
-                // aradaki lineer blend gereksiz ve "hedef açı = kısmi blend" durumu
-                // sprite'ın hedefi geçmişmiş gibi görünmesine (overshoot) yol açıyordu.
-                const STEER_DEAD_ZONE_PX = 35;
+                const mob = window.mobileInput;
+                if (mob?.enabled) {
+                    // ── Mobile: virtual joystick + boost button ───────────────
+                    // Joystick açısı doğrudan ekran koordinatlarında atan2(dy,dx) olarak
+                    // hesaplanır; kamera döndürme olmadığından world space ile örtüşür.
+                    isBoosting = mob.boostActive;
+                    if (mob.joystickActive && mob.joystickMagnitude > 0.1) {
+                        targetAngleRad = mob.joystickAngle;
+                    } else {
+                        targetAngleRad = head.rotation; // parmak yoksa yönü koru
+                    }
+                } else {
+                    // ── Desktop: mouse ────────────────────────────────────────
+                    this.pointer = this.input.activePointer;
+                    isBoosting   = this.pointer.isDown;
+                    const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
 
-                const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-
-                // Dead zone dışında: doğrudan mouse açısı hedef.
-                // Dead zone içinde: mevcut baş açısını koru (hiç dönme).
-                const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-                const targetAngleRad = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
+                    // Dead zone: mouse head'e çok yakınsa sayısal kararsızlık oluşur.
+                    const STEER_DEAD_ZONE_PX = 35;
+                    const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
+                    const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
+                    targetAngleRad    = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
+                }
 
                 // Ağ gönderimi hâlâ derece tabanlı 0-250 sıkıştırmasını kullanıyor.
                 this.networkManager.updateAndSendInput(Phaser.Math.RadToDeg(targetAngleRad), isBoosting, delta);
@@ -663,7 +791,8 @@ export class Game extends Phaser.Scene {
                 mySnake.updateFromInput(targetAngleRad, isBoosting, delta, this.networkManager.nextSequenceId);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
-                const targetZoom = 1.0 / (1.0 + (mySnake.scale - 1.0) * 0.12);
+                // baseZoom: ekran boyutuna göre belirlenen taban zoom (bkz. computeBaseZoom)
+                const targetZoom = this.baseZoom / (1.0 + (mySnake.scale - 1.0) * 0.12);
                 const currentZoom = this.cameras.main.zoom;
                 const zoomLerp = 0.05;
                 this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
@@ -677,8 +806,19 @@ export class Game extends Phaser.Scene {
         });
 
         if (this.grid) {
-            this.grid.tilePositionX = this.cameras.main.scrollX;
-            this.grid.tilePositionY = this.cameras.main.scrollY;
+            // World-space background: cover the camera's visible world rect
+            // (worldView already accounts for zoom) and pin the repeating
+            // texture to world coordinates via tilePosition, so the pattern
+            // stays put while the sprite itself moves with the camera.
+            const view = this.cameras.main.worldView;
+            if (view.width > 0 && view.height > 0) {
+                const x = Math.floor(view.x);
+                const y = Math.floor(view.y);
+                this.grid.setPosition(x, y);
+                this.grid.setSize(Math.ceil(view.width) + 2, Math.ceil(view.height) + 2);
+                this.grid.tilePositionX = x;
+                this.grid.tilePositionY = y;
+            }
         }
 
         // İstemci tarafı görsel mıknatıs çekim efekti + anında yeme tahmini (Client-side food magnet + eat prediction)
@@ -874,10 +1014,17 @@ export class Game extends Phaser.Scene {
     }
 
     createTiledBackground() {
-        this.grid = this.add.tileSprite(0, 0, this.cameras.main.width, this.cameras.main.height, 'grid32')
-            .setOrigin(0, 0)
-            .setScrollFactor(0)
-            .setDepth(-1);
+        // WORLD-space background (not HUD): it must render on the zoomed main
+        // camera so food/snakes (depth >= 0) draw on top of it. On the UI
+        // camera the opaque checker would be composited AFTER the world camera
+        // and cover every world object. Each frame, update() stretches it over
+        // the camera's visible world rectangle and offsets the texture so the
+        // pattern stays fixed in world space (cells scale naturally with zoom).
+        this.grid = this.registerWorld(
+            this.add.tileSprite(0, 0, 32, 32, 'grid32')
+                .setOrigin(0, 0)
+                .setDepth(-1)
+        );
     }
 
     // Physics step tamamlandıktan sonra, render öncesi çağrılır.
