@@ -15,18 +15,20 @@ const SnakeConfig = {
     REMOTE_INTERPOLATION_FACTOR: 0.35,
 
     // ── Reconciliation (server ↔ client-prediction) tuning ──────────────────
-    // TOLERANCE_TIME_S: the server snapshot is ~1 server tick + ping old, so
-    // the predicted head legitimately runs AHEAD of it by speed × that time.
-    // Any discrepancy inside this envelope is latency, not error → ignored.
-    // Speed-scaled, so boosting doesn't shrink the envelope into false errors.
-    RECONCILIATION_TOLERANCE_TIME_S: 0.25,
-    // Per-frame lerp gain (@60 FPS, frame-rate adjusted) applied to the error
-    // EXCESS beyond the tolerance envelope — continuous, zero at the edge.
-    RECONCILIATION_LERP_FACTOR: 0.1,
-    // Correction speed cap as a fraction of the snake's own travel speed:
-    // corrections can bend the trajectory but never stall or reverse it,
-    // which is what read as rubber-banding.
-    RECONCILIATION_MAX_CORRECTION_FRACTION: 0.4,
+    // Tolerances (epsilon): errors below these are treated as normal prediction
+    // noise (10 Hz server + ping ⇒ 5-30 px steady-state discrepancy) and are
+    // NOT corrected at all. Above them, only the EXCESS beyond the tolerance
+    // is corrected — the correction magnitude is therefore continuous (zero at
+    // the boundary), which eliminates the on/off threshold flapping that
+    // previously read as stutter.
+    RECONCILIATION_LATERAL_TOLERANCE: 12,       // px, across the travel direction
+    RECONCILIATION_LONGITUDINAL_TOLERANCE: 24,  // px, ahead of the server position
+    // Blend gains (per-frame lerp factor @60 FPS, frame-rate adjusted).
+    // Gain ramps from SOFT (barely perceptible drift) toward FIRM as the total
+    // discrepancy approaches the hard-snap distance.
+    RECONCILIATION_SOFT_FACTOR: 0.08,
+    RECONCILIATION_FIRM_FACTOR: 0.35,
+    RECONCILIATION_MAX_CORRECTION_SPEED: 480,   // px/s cap on correction drift
     // Hard snap is a last resort (death/respawn/teleport-level desync only).
     RECONCILIATION_HARD_SNAP_DISTANCE: 800,
 };
@@ -416,43 +418,79 @@ export class Snake {
         // Phaser rotation setter'ı WrapAngle uygular; ayrıca normalize gerekmez.
     }
 
-    // Smooth server reconciliation — one isotropic lerp, three rules:
-    //   1. Error inside the latency envelope → trust prediction, do nothing.
-    //   2. Error beyond it → lerp the EXCESS back smoothly (zero force at the
-    //      envelope edge, so corrections fade in continuously — no flapping).
-    //   3. Catastrophic desync → hard snap (death/respawn/teleport only).
     _reconcilePlayerWithServer(delta) {
         if (!this.hasSelfServerState) return;
 
         const cfg = this.config;
         const dx = this.selfServerTarget.x - this.head.x;
         const dy = this.selfServerTarget.y - this.head.y;
-        const dist = Math.hypot(dx, dy);
+        const absDistance = Math.hypot(dx, dy);
 
-        // Rule 3 — hard reconciliation, last resort only.
-        if (dist > cfg.RECONCILIATION_HARD_SNAP_DISTANCE) {
+        // ── Hard reconciliation: last resort only ───────────────────────────
+        // Sunucu 10 FPS çalışırken ping ile birlikte mesafe 200-300 pikseli
+        // aşabilir; snap yalnızca ölüm/yeniden doğma/teleport seviyesindeki
+        // desync'te devreye girer.
+        if (absDistance > cfg.RECONCILIATION_HARD_SNAP_DISTANCE) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
             this.head.body?.updateFromGameObject();
             return;
         }
 
-        // Rule 1 — latency envelope: the snapshot is ~1 server tick + ping
-        // old, so the predicted head is expected to be ahead of it by up to
-        // speed × TOLERANCE_TIME_S. That's lag, not error.
-        const tolerance = (this.speed || 300) * cfg.RECONCILIATION_TOLERANCE_TIME_S;
-        if (dist <= tolerance || dist < 0.5) return;
+        // Use the heading snapshot from when the server packet arrived, not the
+        // current heading. If the client has turned since that packet, the longitudinal
+        // lag would otherwise project onto the lateral axis and trigger false corrections.
+        const cos = Math.cos(this.selfServerTargetHeading);
+        const sin = Math.sin(this.selfServerTargetHeading);
 
-        // Rule 2 — smooth lerp of the excess beyond the envelope.
-        const excess = dist - tolerance;
-        const t = this._frameAdjustedFactor(cfg.RECONCILIATION_LERP_FACTOR, delta);
-        // Cap correction speed relative to travel speed: the correction may
-        // bend the path but never stall/reverse it (prevents rubber-banding).
-        const maxStep = (this.speed || 300) * cfg.RECONCILIATION_MAX_CORRECTION_FRACTION * (delta / 1000);
-        const step = Math.min(excess * t, maxStep);
+        const longitudinal = dx * cos + dy * sin;
+        const lateral = dx * -sin + dy * cos;
+
+        // ── Tolerance thresholds (epsilon): correct only the EXCESS ─────────
+        // Within tolerance the client-side prediction is trusted outright.
+        // Beyond it, the corrected amount is (error - tolerance), so the
+        // correction magnitude is continuous — it grows smoothly from zero
+        // instead of switching on at full strength, which was the source of
+        // the frame-to-frame jitter.
+        let latErr = 0;
+        if (Math.abs(lateral) > cfg.RECONCILIATION_LATERAL_TOLERANCE) {
+            latErr = lateral - Math.sign(lateral) * cfg.RECONCILIATION_LATERAL_TOLERANCE;
+        }
+
+        // Being BEHIND the server target up to ~one server tick of travel is
+        // expected latency lag, not error — allow it without correction.
+        const maxExpectedLag = (this.speed || 300) * 0.9;
+        let lonErr = 0;
+        if (longitudinal > cfg.RECONCILIATION_LONGITUDINAL_TOLERANCE) {
+            lonErr = longitudinal - cfg.RECONCILIATION_LONGITUDINAL_TOLERANCE;
+        } else if (longitudinal < -maxExpectedLag) {
+            lonErr = longitudinal + maxExpectedLag;
+        }
+
+        if (latErr === 0 && lonErr === 0) return; // within tolerance — no correction
+
+        const corrX = latErr * -sin + lonErr * cos;
+        const corrY = latErr * cos + lonErr * sin;
+        const corrDist = Math.hypot(corrX, corrY);
+        if (corrDist < 0.05) return;
+
+        // ── Severity-scaled error blending ──────────────────────────────────
+        // Small excess errors drift back at SOFT gain (imperceptible); as the
+        // total discrepancy approaches the hard-snap distance the gain ramps
+        // quadratically toward FIRM. Correction speed is capped so it can
+        // never read as a pop.
+        const severity = Phaser.Math.Clamp(absDistance / cfg.RECONCILIATION_HARD_SNAP_DISTANCE, 0, 1);
+        const gain = Phaser.Math.Linear(
+            cfg.RECONCILIATION_SOFT_FACTOR,
+            cfg.RECONCILIATION_FIRM_FACTOR,
+            severity * severity
+        );
+        const posFactor = this._frameAdjustedFactor(gain, delta);
+        const maxStep = cfg.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
+        const step = Math.min(corrDist * posFactor, maxStep);
 
         this.head.setPosition(
-            this.head.x + (dx / dist) * step,
-            this.head.y + (dy / dist) * step
+            this.head.x + (corrX / corrDist) * step,
+            this.head.y + (corrY / corrDist) * step
         );
         this.head.body?.updateFromGameObject();
     }
