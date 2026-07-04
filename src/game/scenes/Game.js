@@ -44,6 +44,10 @@ export class Game extends Phaser.Scene {
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
 
+        // NetworkManager'ın pong başına yaydığı yumuşatılmış (EMA) RTT değeri.
+        this.currentPingMs = null;
+        this.events.on('ping_update', (ms) => { this.currentPingMs = ms; }, this);
+
         // Physics step SONRASI, render ÖNCESİ: segmentler ve gözler head'in gerçek
         // fiziksel pozisyonuyla senkronize edilir. update() içinde physics henüz
         // çalışmadığından oradan çağrılmak 1 frame gecikmeye (esniyor hissi) yol açıyordu.
@@ -950,7 +954,12 @@ export class Game extends Phaser.Scene {
         if (mySnake && mySnake.getHead()) {
            coordsText = ` | Koord: ${Math.round(mySnake.getHead().x)}, ${Math.round(mySnake.getHead().y)}`;
         }
-        this.fpsText.setText(`FPS: ${Math.round(fps)} | Yılanlar: ${this.snakes.size} | Yiyecekler: ${this.foods.size}${coordsText}`);
+        // Ping: sabit genişlik (padStart) + monospace font sayesinde değer
+        // değişse de satır kaymaz; ilk pong gelene kadar '---' gösterilir.
+        const pingStr = this.currentPingMs === null
+            ? '---'
+            : String(this.currentPingMs).padStart(3, ' ');
+        this.fpsText.setText(`FPS: ${Math.round(fps)} | Ping: ${pingStr}ms | Yılanlar: ${this.snakes.size} | Yiyecekler: ${this.foods.size}${coordsText}`);
         
         if (this.minimapGraphics) {
             this.drawMinimap(mySnake);

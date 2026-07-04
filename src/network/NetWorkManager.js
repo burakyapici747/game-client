@@ -19,6 +19,17 @@ export class NetworkManager {
         this.angleSendIntervalMoving = 1000 / 30;
         this.angleSendIntervalStill = 250;
         this.nextSequenceId = 0;
+
+        // ── Ping / RTT heartbeat ─────────────────────────────────────────────
+        // Config-driven aralıkla ping atılır; RTT nonce üzerinden LOKAL monoton
+        // saatle ölçülür (performance.now). Sunucunun echo'ladığı uint64
+        // clientTimestamp'e güvenmiyoruz: protobufjs uint64'ü Long objesi
+        // olarak döndürebilir ve Date.now() farkları saat kaymasına açıktır.
+        this.pingIntervalMs = options.pingIntervalMs ?? 2500;
+        this.pingTimer = null;
+        this.pingNonce = 0;
+        this.pendingPings = new Map();   // nonce -> performance.now() @ send
+        this.pingEmaMs = null;           // yumuşatılmış RTT (EMA)
     }
 
     canSend() {
@@ -40,7 +51,7 @@ export class NetworkManager {
             // Nickname bilgisini sunucuya gonder
             const nickname = window.gameSettings?.nickname || '';
             this.sendJoinRequest(nickname);
-            this.sendPing();
+            this._startPingLoop();
         };
 
         this.socket.onmessage = (event) => {
@@ -57,6 +68,7 @@ export class NetworkManager {
         this.socket.onclose = () => {
             console.log('Sunucu bağlantısı kapandı.');
             this.connected = false;
+            this._stopPingLoop();
             this.scene.events.emit('disconnected');
         };
 
@@ -122,13 +134,7 @@ export class NetworkManager {
                 this.scene.events.emit('remove_entity', envelope.removeEntity || envelope.remove_entity);
                 break;
             case 'pong':
-                if (envelope.pong?.clientTimestamp !== undefined) {
-                    const clientTimestamp = Number(envelope.pong.clientTimestamp);
-                    if (Number.isFinite(clientTimestamp) && clientTimestamp > 0) {
-                        const latency = Date.now() - clientTimestamp;
-                        console.log(`Ping: ${latency}ms`);
-                    }
-                }
+                this._handlePong(envelope.pong);
                 break;
             case 'death_notification':
             case 'deathNotification':
@@ -143,15 +149,56 @@ export class NetworkManager {
         console.warn('SetUsername mesajı newproto şemasında yok. Bu istek atlandı.');
     }
 
-    sendPing(nonce = 0) {
+    _startPingLoop() {
+        this._stopPingLoop();
+        this.sendPing(); // ilk örneği bekletmeden al
+        this.pingTimer = setInterval(() => this.sendPing(), this.pingIntervalMs);
+    }
+
+    _stopPingLoop() {
+        if (this.pingTimer !== null) {
+            clearInterval(this.pingTimer);
+            this.pingTimer = null;
+        }
+        this.pendingPings.clear();
+    }
+
+    sendPing() {
         if (!this.canSend()) return;
+
+        // Kaybolan pong'ların birikmesini engelle (paket kaybı / sekme arka planı)
+        if (this.pendingPings.size > 8) this.pendingPings.clear();
+
+        this.pingNonce = (this.pingNonce + 1) >>> 0;
+        if (this.pingNonce === 0) this.pingNonce = 1;
+        const nonce = this.pingNonce;
+        this.pendingPings.set(nonce, performance.now());
+
         const pingMsg = client.Ping.create({
-            clientTimestamp: Date.now(),
-            nonce: Math.floor(Math.random() * 1000000)
+            clientTimestamp: Date.now(), // sunucu tarafı görünürlük için; RTT hesabında kullanılmıyor
+            nonce
         });
         const envelope = client.ClientEnvelope.create({ ping: pingMsg });
         const buffer = client.ClientEnvelope.encode(envelope).finish();
         this.socket.send(buffer);
+    }
+
+    _handlePong(pong) {
+        if (!pong) return;
+        const nonce = Number(pong.nonce);
+        const sentAt = this.pendingPings.get(nonce);
+        if (sentAt === undefined) return; // bilinmeyen/eskimiş pong
+
+        this.pendingPings.delete(nonce);
+        const rtt = Math.max(0, performance.now() - sentAt);
+
+        // EMA (0.3): tekil spike'lar UI'da zıplama yaratmasın, yine de
+        // gerçek değişimlere birkaç örnek içinde yakınsasın.
+        this.pingEmaMs = this.pingEmaMs === null
+            ? rtt
+            : this.pingEmaMs * 0.7 + rtt * 0.3;
+
+        this.scene.events.emit('ping_update', Math.round(this.pingEmaMs));
     }
     
     updateAndSendInput(targetAngle, isBoosting, delta) {
