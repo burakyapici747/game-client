@@ -22,6 +22,11 @@ const SnakeConfig = {
     // 480 → 300 px/s: corrections spread over a few more frames instead of
     // rushing, which softens how a single correction reads on screen.
     RECONCILIATION_MAX_CORRECTION_SPEED: 300,
+
+    // DEBUG: render a ghost marker at the raw server-authoritative head
+    // position (player snake only). Visual overlay only — no effect on
+    // prediction or reconciliation. Set to false to hide.
+    DEBUG_SERVER_POSITION_MARKER: true,
 };
 
 export class Snake {
@@ -302,6 +307,17 @@ export class Snake {
         this._eyeLocalL = new Phaser.Math.Vector2(+15, -6);
         this._eyeLocalR = new Phaser.Math.Vector2(+15, +6);
         this._pupilMax = 3;
+
+        // ── DEBUG: server-authoritative position ghost (player only) ────────
+        // Moves ONLY when a server packet arrives (updateSelfPositionFromServer),
+        // so it shows the exact raw coordinates at the server's tick rate.
+        if (this.isPlayerControlled && this.config.DEBUG_SERVER_POSITION_MARKER) {
+            this.serverDebugMarker = this.scene.add.circle(x, y, 24, 0x00ffcc, 0.08)
+                .setStrokeStyle(2, 0x00ffcc, 0.9)
+                .setDepth(5000);
+            this.serverDebugDot = this.scene.add.circle(x, y, 3, 0x00ffcc, 1)
+                .setDepth(5001);
+        }
         if (this.nickname) {
             this.setNickname(this.nickname);
         }
@@ -320,6 +336,8 @@ export class Snake {
         this.pupilL?.destroy();
         this.pupilR?.destroy();
         this.nicknameText?.destroy();
+        this.serverDebugMarker?.destroy();
+        this.serverDebugDot?.destroy();
         this.segments = [];
     }
 
@@ -629,6 +647,10 @@ export class Snake {
         if (Number.isFinite(x) && Number.isFinite(y)) {
             this.selfServerTarget.x = x;
             this.selfServerTarget.y = y;
+
+            // DEBUG overlay: place the ghost at the raw server coordinates.
+            this.serverDebugMarker?.setPosition(x, y);
+            this.serverDebugDot?.setPosition(x, y);
             // Snapshot the heading at the moment this server packet arrives.
             // Reconciliation uses this fixed heading for lateral/longitudinal decomposition
             // so that a client turn between server updates does not rotate the expected
