@@ -26,7 +26,7 @@ const SnakeConfig = {
     // DEBUG: render a ghost marker at the raw server-authoritative head
     // position (player snake only). Visual overlay only — no effect on
     // prediction or reconciliation. Set to false to hide.
-    DEBUG_SERVER_POSITION_MARKER: true,
+    DEBUG_SERVER_POSITION_MARKER: false,
 };
 
 export class Snake {
