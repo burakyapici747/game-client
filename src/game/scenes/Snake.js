@@ -13,10 +13,15 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
-    RECONCILIATION_POSITION_FACTOR: 0.15,
-    RECONCILIATION_DEAD_ZONE: 3.5,
+    // Gentler pull per frame: 0.15 → 0.10 (~33% softer correction lerp).
+    RECONCILIATION_POSITION_FACTOR: 0.10,
+    // 3.5 → 8 px: lifted above the typical 10 Hz-server noise floor so tiny,
+    // frequent discrepancies no longer trigger corrections every frame.
+    RECONCILIATION_DEAD_ZONE: 8,
     RECONCILIATION_SNAP_DISTANCE: 140,
-    RECONCILIATION_MAX_CORRECTION_SPEED: 480,
+    // 480 → 300 px/s: corrections spread over a few more frames instead of
+    // rushing, which softens how a single correction reads on screen.
+    RECONCILIATION_MAX_CORRECTION_SPEED: 300,
 };
 
 export class Snake {
@@ -447,7 +452,9 @@ export class Snake {
 
         if (hasCorrection) {
             const corrDist = Math.hypot(corrX, corrY);
-            if (corrDist > 0.1) {
+            // 0.1 → 2 px: skip sub-2px micro-corrections outright — they're
+            // measurement noise and were only visible as shimmer.
+            if (corrDist > 2) {
                 const posFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
                 const desiredStep = corrDist * posFactor * 0.55;
                 const maxStep = this.config.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
