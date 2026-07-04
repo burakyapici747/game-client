@@ -4,8 +4,8 @@ package server;
 
 message SelfPosition {
   uint32 entity_id = 1;
-  uint32 x = 2;
-  uint32 y = 3;
+  float x = 2;
+  float y = 3;
   float scale = 4;
   uint32 last_processed_sequence_id = 5;
 }
