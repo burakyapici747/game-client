@@ -108,8 +108,117 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.target.classList.contains('servers-modal-backdrop')) closeServersModal();
     });
 
-    // ── Settings panel (always active — gear button in top-right) ────────────
-    initSettingsPanel();
+    // ── Settings modal (new comprehensive settings) ────────────────────────────
+    const settingsModal = document.getElementById('settings-modal');
+    const settingsModalCloseBtn = document.getElementById('settings-modal-close-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+
+    const closeSettingsModal = () => settingsModal.classList.add('hidden');
+
+    settingsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        settingsModal.classList.remove('hidden');
+    });
+
+    settingsModalCloseBtn.addEventListener('click', closeSettingsModal);
+    settingsModal.addEventListener('click', (e) => {
+        if (e.target.classList.contains('settings-modal-backdrop')) closeSettingsModal();
+    });
+
+    // Settings modal controls
+    const showFpsToggle = document.getElementById('show-fps-toggle');
+    const showPingToggle = document.getElementById('show-ping-toggle');
+    const masterVolumeSlider = document.getElementById('master-volume-slider');
+    const masterVolumeDisplay = document.getElementById('master-volume-display');
+    const sfxVolumeSlider = document.getElementById('sfx-volume-slider');
+    const sfxVolumeDisplay = document.getElementById('sfx-volume-display');
+    const controlSizeSlider = document.getElementById('control-size-slider');
+    const controlSizeDisplay = document.getElementById('control-size-display');
+    const opacitySlider = document.getElementById('opacity-slider');
+    const opacityDisplay = document.getElementById('opacity-display');
+    const joystickBtns = document.querySelectorAll('.settings-group-btn');
+    const settingsSaveBtn = document.getElementById('settings-save-btn');
+    const settingsResetBtn = document.getElementById('settings-reset-btn');
+
+    // Load persisted settings
+    const loadSettings = () => {
+        showFpsToggle.checked = localStorage.getItem('show_fps') === 'true';
+        showPingToggle.checked = localStorage.getItem('show_ping') === 'true';
+        masterVolumeSlider.value = localStorage.getItem('master_volume') || '85';
+        masterVolumeDisplay.textContent = masterVolumeSlider.value + '%';
+        sfxVolumeSlider.value = localStorage.getItem('sfx_volume') || '60';
+        sfxVolumeDisplay.textContent = sfxVolumeSlider.value + '%';
+        controlSizeSlider.value = localStorage.getItem('mc_scale') || '110';
+        controlSizeDisplay.textContent = controlSizeSlider.value + '%';
+        opacitySlider.value = localStorage.getItem('mc_opacity') || '75';
+        opacityDisplay.textContent = opacitySlider.value + '%';
+
+        const joystickSide = localStorage.getItem('mc_joystickSide') || 'left';
+        joystickBtns.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.side === joystickSide);
+        });
+    };
+
+    loadSettings();
+    // Apply opacity CSS variable immediately so controls are correct from first frame
+    document.documentElement.style.setProperty('--mc-opacity', (localStorage.getItem('mc_opacity') || '75') / 100);
+
+    // Save settings on change
+    showFpsToggle.addEventListener('change', () => {
+        localStorage.setItem('show_fps', showFpsToggle.checked);
+    });
+
+    showPingToggle.addEventListener('change', () => {
+        localStorage.setItem('show_ping', showPingToggle.checked);
+    });
+
+    masterVolumeSlider.addEventListener('input', () => {
+        masterVolumeDisplay.textContent = masterVolumeSlider.value + '%';
+        localStorage.setItem('master_volume', masterVolumeSlider.value);
+    });
+
+    sfxVolumeSlider.addEventListener('input', () => {
+        sfxVolumeDisplay.textContent = sfxVolumeSlider.value + '%';
+        localStorage.setItem('sfx_volume', sfxVolumeSlider.value);
+    });
+
+    controlSizeSlider.addEventListener('input', () => {
+        controlSizeDisplay.textContent = controlSizeSlider.value + '%';
+        localStorage.setItem('mc_scale', controlSizeSlider.value);
+        dispatchMobileControlsSettings();
+    });
+
+    opacitySlider.addEventListener('input', () => {
+        opacityDisplay.textContent = opacitySlider.value + '%';
+        localStorage.setItem('mc_opacity', opacitySlider.value);
+        document.documentElement.style.setProperty('--mc-opacity', opacitySlider.value / 100);
+        dispatchMobileControlsSettings();
+    });
+
+    joystickBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            joystickBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            localStorage.setItem('mc_joystickSide', btn.dataset.side);
+            dispatchMobileControlsSettings();
+        });
+    });
+
+    settingsSaveBtn.addEventListener('click', () => {
+        closeSettingsModal();
+    });
+
+    settingsResetBtn.addEventListener('click', () => {
+        localStorage.removeItem('show_fps');
+        localStorage.removeItem('show_ping');
+        localStorage.removeItem('master_volume');
+        localStorage.removeItem('sfx_volume');
+        localStorage.removeItem('mc_scale');
+        localStorage.removeItem('mc_opacity');
+        localStorage.removeItem('mc_joystickSide');
+        loadSettings();
+        dispatchMobileControlsSettings();
+    });
 
     // ── Connecting overlay Cancel: soketi kapat, Phaser'ı yık, menüye dön ────
     onConnectingCancel(() => {
@@ -276,69 +385,6 @@ function measureServerPings() {
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS PANEL (gear button — always active, all devices)
 // ─────────────────────────────────────────────────────────────────────────────
-function initSettingsPanel() {
-    const settingsBtn    = document.getElementById('settings-btn');
-    const panel          = document.getElementById('settings-panel');
-    const sideBtns       = document.querySelectorAll('.mc-side-btn');
-    const scaleSlider    = document.getElementById('mc-scale-slider');
-    const scaleDisplay   = document.getElementById('mc-scale-display');
-    const opacitySlider  = document.getElementById('mc-opacity-slider');
-    const opacityDisplay = document.getElementById('mc-opacity-display');
-
-    // ── Load persisted settings ───────────────────────────────────────────────
-    const savedSide    = localStorage.getItem('mc_joystickSide') || 'left';
-    const savedScale   = parseInt(localStorage.getItem('mc_scale')   || '100', 10);
-    const savedOpacity = parseInt(localStorage.getItem('mc_opacity') || '70',  10);
-
-    sideBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.side === savedSide));
-    scaleSlider.value        = savedScale;
-    scaleDisplay.textContent = savedScale + '%';
-    opacitySlider.value        = savedOpacity;
-    opacityDisplay.textContent = savedOpacity + '%';
-
-    // Apply opacity CSS variable immediately so controls are correct from first frame
-    document.documentElement.style.setProperty('--mc-opacity', savedOpacity / 100);
-
-    // ── Toggle panel open/closed ──────────────────────────────────────────────
-    settingsBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        panel.classList.toggle('open');
-    });
-
-    // Close when clicking anywhere outside the panel
-    document.addEventListener('click', (e) => {
-        if (!panel.contains(e.target) && e.target !== settingsBtn) {
-            panel.classList.remove('open');
-        }
-    });
-
-    // ── Side picker ───────────────────────────────────────────────────────────
-    sideBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            sideBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            localStorage.setItem('mc_joystickSide', btn.dataset.side);
-            dispatchMobileControlsSettings();
-        });
-    });
-
-    // ── Scale slider ──────────────────────────────────────────────────────────
-    scaleSlider.addEventListener('input', () => {
-        scaleDisplay.textContent = scaleSlider.value + '%';
-        localStorage.setItem('mc_scale', scaleSlider.value);
-        dispatchMobileControlsSettings();
-    });
-
-    // ── Opacity slider ────────────────────────────────────────────────────────
-    opacitySlider.addEventListener('input', () => {
-        const val = parseInt(opacitySlider.value, 10);
-        opacityDisplay.textContent = val + '%';
-        localStorage.setItem('mc_opacity', val);
-        document.documentElement.style.setProperty('--mc-opacity', val / 100);
-        dispatchMobileControlsSettings();
-    });
-}
-
 // In-game joystick/boost controls (src/game/ui/MobileControls.js) read their
 // side/scale/opacity from localStorage once at construction time. This event
 // lets them pick up settings-panel changes live, mid-game, without a reload —

@@ -8,7 +8,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="stylesheet" href="/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&family=Quicksand:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet">
     <title>TABUMU GAME</title>
 </head>
 
@@ -27,47 +28,6 @@
                             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                         </svg>
                     </button>
-
-                    <!-- Settings Panel (toggled by gear button) -->
-                    <div id="settings-panel" class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-                                <line x1="12" y1="18" x2="12.01" y2="18"></line>
-                            </svg>
-                            Mobile Controls
-                        </div>
-
-                        <div class="mc-row">
-                            <span class="mc-label">Joystick Side</span>
-                            <div class="mc-side-picker">
-                                <button class="mc-side-btn active" data-side="left">
-                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M10 8H4m0 0l3-3M4 8l3 3"/></svg>
-                                    Left
-                                </button>
-                                <button class="mc-side-btn" data-side="right">
-                                    Right
-                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6 8h6m0 0l-3-3m3 3l-3 3"/></svg>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="mc-row">
-                            <span class="mc-label">Control Size</span>
-                            <div class="mc-size-row">
-                                <span id="mc-scale-display">100%</span>
-                                <input type="range" id="mc-scale-slider" min="70" max="130" value="100" step="5">
-                            </div>
-                        </div>
-
-                        <div class="mc-row">
-                            <span class="mc-label">Opacity</span>
-                            <div class="mc-size-row">
-                                <span id="mc-opacity-display">70%</span>
-                                <input type="range" id="mc-opacity-slider" min="20" max="100" value="70" step="5">
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
             
@@ -214,6 +174,105 @@
 
                 <div class="servers-card-footer">
                     <button id="confirm-server-btn" class="servers-confirm-btn">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="settings-modal hidden">
+            <div class="settings-modal-backdrop"></div>
+            <div class="settings-card">
+                <!-- Header -->
+                <div class="settings-header">
+                    <div class="settings-header-title">
+                        <span class="material-symbols-outlined">tune</span>
+                        <h2>GAME SETTINGS</h2>
+                    </div>
+                    <button id="settings-modal-close-btn" class="settings-close-btn" aria-label="Close">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Scrollable Body -->
+                <div class="settings-body">
+                    <!-- DISPLAY Section -->
+                    <section>
+                        <h3 class="settings-section-title">Display Settings</h3>
+                        <div class="settings-options">
+                            <div class="settings-option">
+                                <div class="settings-option-label">Show FPS</div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="show-fps-toggle" />
+                                    <span class="settings-slider"></span>
+                                </label>
+                            </div>
+                            <div class="settings-option">
+                                <div class="settings-option-label">Show Ping</div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="show-ping-toggle" />
+                                    <span class="settings-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- AUDIO Section -->
+                    <section>
+                        <h3 class="settings-section-title">Audio Settings</h3>
+                        <div class="settings-options">
+                            <div class="settings-slider-group">
+                                <div class="settings-slider-header">
+                                    <span>Master Volume</span>
+                                    <span id="master-volume-display" class="settings-value">85%</span>
+                                </div>
+                                <input id="master-volume-slider" class="settings-range" type="range" min="0" max="100" value="85" />
+                            </div>
+                            <div class="settings-slider-group">
+                                <div class="settings-slider-header">
+                                    <span>SFX Volume</span>
+                                    <span id="sfx-volume-display" class="settings-value">60%</span>
+                                </div>
+                                <input id="sfx-volume-slider" class="settings-range" type="range" min="0" max="100" value="60" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- MOBILE CONTROLS Section -->
+                    <section>
+                        <h3 class="settings-section-title">Mobile Controls</h3>
+                        <div class="settings-options">
+                            <div class="settings-joystick">
+                                <div class="settings-option-label">Joystick Side</div>
+                                <div class="settings-button-group">
+                                    <button class="settings-group-btn active" data-side="left">Left</button>
+                                    <button class="settings-group-btn" data-side="right">Right</button>
+                                </div>
+                            </div>
+                            <div class="settings-slider-group">
+                                <div class="settings-slider-header">
+                                    <span>Control Size</span>
+                                    <span id="control-size-display" class="settings-value">110%</span>
+                                </div>
+                                <input id="control-size-slider" class="settings-range" type="range" min="50" max="150" value="110" />
+                            </div>
+                            <div class="settings-slider-group">
+                                <div class="settings-slider-header">
+                                    <span>Opacity</span>
+                                    <span id="opacity-display" class="settings-value">75%</span>
+                                </div>
+                                <input id="opacity-slider" class="settings-range" type="range" min="10" max="100" value="75" />
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Footer -->
+                <div class="settings-footer">
+                    <button id="settings-save-btn" class="settings-save-btn">Save Changes</button>
+                    <button id="settings-reset-btn" class="settings-reset-btn">Reset</button>
                 </div>
             </div>
         </div>
