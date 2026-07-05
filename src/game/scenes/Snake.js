@@ -487,6 +487,29 @@ export class Snake {
         }
     }
 
+    // Sekme değişimi sonrası tek seferlik sert resync (bkz. Game._resyncAfterTabReturn):
+    // kafayı bilinen son otoriter konuma taşır ve segment path'ini o noktadan
+    // yeniden kurar — böylece birikmiş fark, kademeli düzeltme sarsıntısı yerine
+    // görünmez tek bir hizalamayla kapanır (sekme zaten gizliyken gerçekleşir).
+    hardResync() {
+        if (!this.alive || !this.head?.active) return;
+
+        const hasTarget = this.isPlayerControlled ? this.hasSelfServerState : this.hasServerState;
+        if (hasTarget) {
+            const target = this.isPlayerControlled ? this.selfServerTarget : this.networkTarget;
+            this.head.setPosition(target.x, target.y);
+            if (!this.isPlayerControlled && Number.isFinite(target.angle)) {
+                this.head.rotation = target.angle;
+            }
+            this.head.body?.updateFromGameObject();
+        }
+
+        // Path geçmişi artık bayat — kafanın güncel konumundan yeniden kur ve
+        // segmentleri hemen yerine oturt.
+        this._initPathWarmup(this.head.x, this.head.y);
+        this._positionSegmentsByPath();
+    }
+
     _updateEyes(tx, ty) {
         if (!this.head.active) return;
         const dir = new Phaser.Math.Vector2(tx - this.head.x, ty - this.head.y);

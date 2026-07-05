@@ -149,6 +149,21 @@ export class NetworkManager {
         console.warn('SetUsername mesajı newproto şemasında yok. Bu istek atlandı.');
     }
 
+    // Kasıtlı kapanış (ör. Play Again → scene.restart): soketi sessizce kapat.
+    // onclose null'lanır ki yeni tura sahte bir 'disconnected' event'i sızmasın.
+    disconnect() {
+        this._stopPingLoop();
+        this.connected = false;
+        if (this.socket) {
+            this.socket.onopen = null;
+            this.socket.onmessage = null;
+            this.socket.onclose = null;
+            this.socket.onerror = null;
+            try { this.socket.close(); } catch (_) { /* zaten kapalı */ }
+            this.socket = null;
+        }
+    }
+
     _startPingLoop() {
         this._stopPingLoop();
         this.sendPing(); // ilk örneği bekletmeden al

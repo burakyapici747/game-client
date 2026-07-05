@@ -26,7 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (savedNickname) nicknameInput.value = savedNickname;
 
     // ── Servers modal ─────────────────────────────────────────────────────────
-    serversBtn.addEventListener('click', () => serversModal.classList.remove('hidden'));
+    serversBtn.addEventListener('click', () => {
+        serversModal.classList.remove('hidden');
+        measureServerPings(); // panel her açıldığında değerleri tazele
+    });
+
+    // Sayfa yüklenir yüklenmez arka planda ilk ölçümü yap.
+    measureServerPings();
     closeServersBtn.addEventListener('click', () => serversModal.classList.add('hidden'));
     serversModal.addEventListener('click', (e) => {
         if (e.target === serversModal || e.target.classList.contains('modal-backdrop'))
@@ -93,6 +99,59 @@ document.addEventListener('DOMContentLoaded', () => {
         // this.add.circle()/this.add.zone() — no DOM activation needed here.
     }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVER PING MEASUREMENT (pre-login, background)
+// Her sunucuya geçici bir WebSocket açıp handshake süresini ölçer. Handshake
+// ≈ TCP kurulumu (1 RTT) + WS upgrade (1 RTT) olduğundan süre ikiye bölünerek
+// tek yön + dönüş (ping) yaklaşımı elde edilir. Ölçüm bitince soket kapatılır;
+// in-flight guard (dataset.pinging) aynı sunucuya paralel ölçümü engeller.
+// ─────────────────────────────────────────────────────────────────────────────
+function measureServerPings() {
+    document.querySelectorAll('.server-item').forEach(item => {
+        const rawUrl = item.dataset.server;
+        const pingEl = item.querySelector('.server-ping');
+        const statusEl = item.querySelector('.server-status');
+        if (!rawUrl || !pingEl || !statusEl || item.dataset.pinging === '1') return;
+
+        // Sunucu WS endpoint'i /ws path'inde yaşıyor — normalize et.
+        const url = rawUrl.endsWith('/ws') ? rawUrl : rawUrl.replace(/\/+$/, '') + '/ws';
+
+        item.dataset.pinging = '1';
+        pingEl.textContent = '…';
+
+        let ws = null;
+        let settled = false;
+        const t0 = performance.now();
+
+        const finish = (ok) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            item.dataset.pinging = '';
+            try { ws?.close(); } catch (_) { /* önemsiz */ }
+            if (ok) {
+                const rtt = Math.max(1, Math.round((performance.now() - t0) / 2));
+                pingEl.textContent = `${rtt}ms`;
+                statusEl.textContent = 'Online';
+                statusEl.classList.add('active');
+            } else {
+                pingEl.textContent = '--';
+                statusEl.textContent = 'Offline';
+                statusEl.classList.remove('active');
+            }
+        };
+
+        const timeoutId = setTimeout(() => finish(false), 4000);
+        try {
+            ws = new WebSocket(url);
+            ws.onopen = () => finish(true);
+            ws.onerror = () => finish(false);
+        } catch (_) {
+            finish(false);
+        }
+    });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS PANEL (gear button — always active, all devices)

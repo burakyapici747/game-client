@@ -28,9 +28,38 @@ export class Game extends Phaser.Scene {
     }
 
     create() {
+        // scene.restart() (Play Again) constructor'ı YENİDEN ÇALIŞTIRMAZ —
+        // önceki tura ait tüm state burada sıfırlanmalı, yoksa eski (destroy
+        // edilmiş) GameObject referansları yeni tura sızar.
+        this.snakes = new Map();
+        this.foods = new Map();
+        this.eatingFoods = new Map();
+        this.predictedEatenFoodIds = new Set();
+        this.pendingSegmentMutations = new Map();
+        this.myId = null;
+        this.foodBlitter = null;
+        this.foodBlitterLarge = null;
+        this.grid = null;
+        this.boundaryGraphics = null;
+        this.worldRadius = 0;
+
         this.gameStarted = false;
         this.initialDataFlags = { startInfo: false, entities: false };
         this.networkManager = new NetworkManager(this);
+        // Restart/kapanışta eski soketi sessizce kapat (yeni tura 'disconnected' sızmasın)
+        this.events.once('shutdown', () => this.networkManager?.disconnect());
+
+        // ── Tab Visibility (sekme değişimi) resync ──────────────────────────
+        // Sekme gizliyken rAF durur ama sunucu simülasyona devam eder. Geri
+        // dönüşte dev delta + yüzlerce piksellik fark, kademeli reconciliation
+        // düzeltmeleriyle 'sarsılma/titreme' olarak görünüyordu. Görünür olur
+        // olmaz otoriter duruma TEK seferde hizalanıyoruz.
+        this._onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') this._resyncAfterTabReturn();
+        };
+        document.addEventListener('visibilitychange', this._onVisibilityChange);
+        this.events.once('shutdown', () =>
+            document.removeEventListener('visibilitychange', this._onVisibilityChange));
 
         this.events.on('start_game', this.onStartGame, this);
         this.events.on('self_position', this.onSelfPosition, this);
@@ -702,7 +731,18 @@ export class Game extends Phaser.Scene {
         if (!this.gameStarted) return;
         console.log(`Oyun Bitti! Skor: ${gameOverInfo.score}`);
         this.gameStarted = false;
-        
+
+        // ── Post-death freeze ────────────────────────────────────────────────
+        // gameStarted=false update()'i durdurur ama arcade body son hızını
+        // korur: kafa (ve onu takip eden kamera) ölümden sonra kaymaya devam
+        // ediyordu. Ölüm anında fizik tahmini ve kamera takibi anında donar.
+        const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+        if (mySnake) {
+            mySnake.alive = false;
+            mySnake.getHead()?.body?.stop();
+        }
+        this.cameras.main.stopFollow();
+
         const cx = this.cameras.main.width / 2;
         const cy = this.cameras.main.height / 2;
 
@@ -713,27 +753,47 @@ export class Game extends Phaser.Scene {
         // Modern Game Over Paneli
         const panel = this.add.graphics().setScrollFactor(0).setDepth(10001);
         panel.fillStyle(0x1a1a1a, 0.95);
-        panel.fillRoundedRect(cx - 200, cy - 150, 400, 300, 20);
-        panel.lineStyle(2, 0x00ff00, 1);
-        panel.strokeRoundedRect(cx - 200, cy - 150, 400, 300, 20);
+        panel.fillRoundedRect(cx - 200, cy - 160, 400, 320, 20);
+        panel.lineStyle(2, 0x00ffcc, 1);
+        panel.strokeRoundedRect(cx - 200, cy - 160, 400, 320, 20);
 
-        const titleText = this.add.text(cx, cy - 100, 'GAME OVER', {
+        const titleText = this.add.text(cx, cy - 110, 'GAME OVER', {
             fontSize: '48px', fontFamily: 'Outfit, sans-serif', color: '#ff3333', fontStyle: 'bold'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        const scoreLabel = this.add.text(cx, cy - 10, `Final Score`, {
+        const scoreLabel = this.add.text(cx, cy - 40, `Final Score`, {
             fontSize: '18px', fontFamily: 'Inter, sans-serif', color: '#aaaaaa'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        const scoreText = this.add.text(cx, cy + 30, `${gameOverInfo.score}`, {
-            fontSize: '64px', fontFamily: 'Outfit, sans-serif', color: '#00ff00', fontStyle: 'bold'
+        const scoreText = this.add.text(cx, cy + 5, `${gameOverInfo.score}`, {
+            fontSize: '56px', fontFamily: 'Outfit, sans-serif', color: '#00ffcc', fontStyle: 'bold'
         }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
 
-        const retryText = this.add.text(cx, cy + 110, 'Press F5 to Play Again', {
-            fontSize: '16px', fontFamily: 'Inter, sans-serif', color: '#ffffff'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
+        // ── Play Again butonu: sayfa yenilemeden temiz respawn ───────────────
+        // scene.restart() → shutdown (eski soket sessizce kapanır, listener'lar
+        // temizlenir) → create() (state sıfırlanır, yeni NetworkManager
+        // bağlanır) → sunucu yeni bağlantıyı yeni oyuncu olarak spawn eder.
+        const btnY = cy + 95;
+        const btn = this.add.graphics().setScrollFactor(0).setDepth(10002);
+        const drawBtn = (hover) => {
+            btn.clear();
+            btn.fillStyle(hover ? 0x00e6b8 : 0x00ffcc, 1);
+            btn.fillRoundedRect(cx - 110, btnY - 26, 220, 52, 12);
+        };
+        drawBtn(false);
 
-        this.registerHUD(overlay, panel, titleText, scoreLabel, scoreText, retryText);
+        const btnText = this.add.text(cx, btnY, 'PLAY AGAIN', {
+            fontSize: '20px', fontFamily: 'Outfit, sans-serif', color: '#001510', fontStyle: 'bold'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(10003);
+
+        const btnHit = this.add.rectangle(cx, btnY, 220, 52, 0x000000, 0)
+            .setScrollFactor(0).setDepth(10004)
+            .setInteractive({ useHandCursor: true })
+            .on('pointerover', () => drawBtn(true))
+            .on('pointerout', () => drawBtn(false))
+            .once('pointerdown', () => this.scene.restart());
+
+        this.registerHUD(overlay, panel, titleText, scoreLabel, scoreText, btn, btnText, btnHit);
     }
 
     onDisconnected() {
@@ -959,7 +1019,7 @@ export class Game extends Phaser.Scene {
         const pingStr = this.currentPingMs === null
             ? '---'
             : String(this.currentPingMs).padStart(3, ' ');
-        this.fpsText.setText(`FPS: ${Math.round(fps)} | Ping: ${pingStr}ms | Yılanlar: ${this.snakes.size} | Yiyecekler: ${this.foods.size}${coordsText}`);
+        this.fpsText.setText(`FPS: ${Math.round(fps)} | Ping: ${pingStr}ms${coordsText}`);
         
         if (this.minimapGraphics) {
             this.drawMinimap(mySnake);
@@ -1034,6 +1094,28 @@ export class Game extends Phaser.Scene {
                 .setOrigin(0, 0)
                 .setDepth(-1)
         );
+    }
+
+    // Sekme tekrar görünür olduğunda çağrılır (Page Visibility API).
+    // Gizli geçen sürede sunucu simülasyona devam etti; birikmiş farkı
+    // kademeli düzeltmelerle kapatmak yerine tüm yılanları otoriter duruma
+    // TEK seferde hizala ve bayat animasyon state'ini temizle.
+    _resyncAfterTabReturn() {
+        if (!this.gameStarted) return;
+
+        this.snakes.forEach(snake => snake.hardResync());
+
+        // Yarım kalmış yeme animasyonları bayat koordinatlarda titreşir — bitir.
+        this.eatingFoods.forEach(({ bobs }) => bobs.forEach(bob => bob.destroy()));
+        this.eatingFoods.clear();
+        this.predictedEatenFoodIds.clear();
+
+        // Kamerayı yeni kafa konumuna anında taşı (lerp'le sürüklenmesin).
+        const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+        const head = mySnake?.getHead();
+        if (head?.active) {
+            this.cameras.main.centerOn(head.x, head.y);
+        }
     }
 
     // Physics step tamamlandıktan sonra, render öncesi çağrılır.

@@ -113,26 +113,28 @@
                 </div>
                 <div class="modal-body">
                     <ul class="server-list" id="server-list">
+                        <!-- Ping values are measured live by measureServerPings()
+                             in src/main.js — the spans below are placeholders. -->
                         <li class="server-item selected" data-server="ws://localhost:8080">
                             <div class="server-info">
                                 <span class="server-region">Local Server</span>
-                                <span class="server-status active">Online</span>
+                                <span class="server-status">Checking…</span>
                             </div>
-                            <span class="server-ping">12ms</span>
+                            <span class="server-ping">--</span>
                         </li>
                         <li class="server-item" data-server="wss://eu.example.com">
                             <div class="server-info">
-                                <span class="server-region">EU Central</span>
-                                <span class="server-status active">Online</span>
+                                <span class="server-region">Europe</span>
+                                <span class="server-status">Checking…</span>
                             </div>
-                            <span class="server-ping">45ms</span>
+                            <span class="server-ping">--</span>
                         </li>
                         <li class="server-item" data-server="wss://us.example.com">
                             <div class="server-info">
-                                <span class="server-region">US East</span>
-                                <span class="server-status active">Online</span>
+                                <span class="server-region">North America</span>
+                                <span class="server-status">Checking…</span>
                             </div>
-                            <span class="server-ping">120ms</span>
+                            <span class="server-ping">--</span>
                         </li>
                     </ul>
                 </div>
