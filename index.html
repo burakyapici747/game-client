@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="stylesheet" href="/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
     <title>TABUMU GAME</title>
 </head>
 
@@ -71,32 +71,54 @@
                 </div>
             </div>
             
-            <div class="main-menu-content">
-                <div class="logo-container">
-                    <h1 class="game-logo">TABUMU<span class="highlight"> GAME</span></h1>
-                    <div class="logo-subtitle">Multiplayer Snake Game</div>
+            <main class="main-menu-content">
+                <!-- Logo & Branding -->
+                <div class="brand float-anim">
+                    <div class="brand-logo-ring">
+                        <img src="/assets/logo_image.jpeg" alt="TABUMU GAME mascot logo" />
+                    </div>
+                    <h1 class="brand-title">TABUMU GAME</h1>
                 </div>
-                
-                <div class="play-section">
-                    <div class="input-group">
+
+                <!-- Login Card -->
+                <div class="login-card">
+                    <div class="login-input-wrap">
+                        <svg class="login-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                            <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                            <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                        </svg>
                         <input type="text" id="nickname-input" placeholder="Enter Nickname" maxlength="16" autocomplete="off" />
                     </div>
-                    
-                    <div class="button-group">
-                        <button id="play-btn" class="primary-btn">PLAY NOW</button>
-                        <button id="servers-btn" class="secondary-btn">
-                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="22" y1="12" x2="2" y2="12"></line>
-                                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
-                                <line x1="6" y1="16" x2="6.01" y2="16"></line>
-                                <line x1="10" y1="16" x2="10.01" y2="16"></line>
-                            </svg>
-                            Servers
-                        </button>
-                    </div>
 
+                    <button id="play-btn" class="play-btn">
+                        <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"></path>
+                        </svg>
+                        PLAY
+                    </button>
+
+                    <button id="servers-btn" class="servers-btn">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path d="M4 5h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM4 13h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"></path>
+                        </svg>
+                        Servers
+                    </button>
                 </div>
-            </div>
+            </main>
+
+            <!-- Footer -->
+            <footer class="menu-footer">
+                <div class="menu-footer-brand">TABUMU GAME</div>
+                <nav class="menu-footer-links">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Help Center</a>
+                    <a href="#">Community Guidelines</a>
+                </nav>
+                <div class="menu-footer-copy">© 2026 TABUMU GAME. Stay Slithery!</div>
+            </footer>
         </div>
 
         <!-- In-game joystick/boost controls are rendered as native Phaser
@@ -109,24 +131,56 @@
              ══════════════════════════════════════════════════════════════ -->
 
         <!-- Connecting Screen -->
-        <div id="connecting-overlay" class="game-overlay hidden">
-            <div class="overlay-card">
-                <div class="spinner" aria-hidden="true"></div>
-                <h2 class="overlay-title">CONNECTING</h2>
-                <div class="conn-grid">
-                    <div class="conn-cell">
-                        <span class="conn-label">Server</span>
-                        <span id="conn-server-name" class="conn-value">--</span>
-                    </div>
-                    <div class="conn-cell">
-                        <span class="conn-label">Ping</span>
-                        <span class="conn-value">
-                            <span class="status-dot" aria-hidden="true"></span>
-                            <span id="conn-ping-value">--</span>
-                        </span>
+        <div id="connecting-overlay" class="connecting-overlay hidden">
+            <!-- Decorative Background Elements -->
+            <div class="connecting-overlay-blob connecting-overlay-blob-1"></div>
+            <div class="connecting-overlay-blob connecting-overlay-blob-2"></div>
+
+            <div class="connecting-card">
+                <!-- Loading Animation Container (Rolling Egg) -->
+                <div class="egg-loader-container">
+                    <div class="egg-loader-ring"></div>
+                    <div class="egg-loader">
+                        <div class="egg-eye egg-eye-left"></div>
+                        <div class="egg-eye egg-eye-right"></div>
+                        <div class="egg-blush egg-blush-left"></div>
+                        <div class="egg-blush egg-blush-right"></div>
                     </div>
                 </div>
-                <button id="conn-cancel-btn" class="overlay-btn overlay-btn-secondary">Cancel</button>
+
+                <!-- Status Text -->
+                <div class="connecting-status">
+                    <h2 class="connecting-title">Waiting For Server...</h2>
+                    <div class="connecting-info">
+                        <span class="info-label">Server:</span>
+                        <span id="conn-server-name" class="info-value">--</span>
+                        <span class="info-separator">|</span>
+                        <span class="info-label">Ping:</span>
+                        <span id="conn-ping-value" class="info-value">--</span>
+                    </div>
+                </div>
+
+                <!-- Progress Bar with Snake Animation -->
+                <div class="connecting-progress-bar">
+                    <div class="snake-animation">
+                        <div class="snake-segment snake-segment-1"></div>
+                        <div class="snake-segment snake-segment-2"></div>
+                        <div class="snake-segment snake-segment-3"></div>
+                        <div class="snake-segment snake-segment-4"></div>
+                        <div class="snake-head">
+                            <div class="snake-eye snake-eye-1"></div>
+                            <div class="snake-eye snake-eye-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cancel Button -->
+                <button id="conn-cancel-btn" class="connecting-cancel-btn">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path>
+                    </svg>
+                    Cancel Connection
+                </button>
             </div>
         </div>
 
@@ -140,19 +194,26 @@
             </div>
         </div>
 
-        <!-- Servers Modal -->
-        <div id="servers-modal" class="modal hidden">
-            <div class="modal-backdrop"></div>
-            <div class="modal-content">
-                <div class="modal-header">
+        <!-- Server Selection Modal (reference: server_list.html) -->
+        <div id="servers-modal" class="servers-modal hidden">
+            <div class="servers-modal-backdrop"></div>
+            <div class="servers-card">
+                <header class="servers-card-header">
                     <h2>Select Server</h2>
-                    <button class="close-btn" id="close-servers-btn">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <!-- Server entries are rendered dynamically from
-                         public/config.json by renderServerList() in src/main.js.
-                         Ping values are measured live by measureServerPings(). -->
-                    <ul class="server-list" id="server-list"></ul>
+                    <button id="close-servers-btn" class="servers-close-btn" aria-label="Close">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </header>
+
+                <!-- Cards rendered from public/config.json by renderServerList();
+                     ping + latency tier measured live by measureServerPings(). -->
+                <ul id="server-list" class="servers-cards-list" role="listbox"></ul>
+
+                <div class="servers-card-footer">
+                    <button id="confirm-server-btn" class="servers-confirm-btn">Confirm</button>
                 </div>
             </div>
         </div>

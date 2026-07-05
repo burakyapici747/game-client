@@ -15,13 +15,14 @@ window.mobileInput = {
 const menuPingByServerId = new Map();
 
 document.addEventListener('DOMContentLoaded', async () => {
-    const uiLayer        = document.getElementById('ui-layer');
-    const playBtn        = document.getElementById('play-btn');
-    const serversBtn     = document.getElementById('servers-btn');
-    const serversModal   = document.getElementById('servers-modal');
-    const closeServersBtn = document.getElementById('close-servers-btn');
-    const serverList     = document.getElementById('server-list');
-    const nicknameInput  = document.getElementById('nickname-input');
+    const uiLayer          = document.getElementById('ui-layer');
+    const playBtn          = document.getElementById('play-btn');
+    const serversBtn       = document.getElementById('servers-btn');
+    const serversModal     = document.getElementById('servers-modal');
+    const closeServersBtn  = document.getElementById('close-servers-btn');
+    const confirmServerBtn = document.getElementById('confirm-server-btn');
+    const serverList       = document.getElementById('server-list');
+    const nicknameInput    = document.getElementById('nickname-input');
 
     let selectedServer = null;   // config'ten gelen sunucu objesi {id, name, ip, port, wsUrl}
     let gameStarted    = false;
@@ -37,6 +38,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderServerList(config.servers);
     measureServerPings(); // sayfa açılır açılmaz arka planda ilk ölçüm
 
+    // Sunucu kartları (referans: server_list.html) — globe ikonu + bölge adı +
+    // durum alt yazısı solda; latency-tier renkli ping + sinyal ikonu sağda.
     function renderServerList(servers) {
         serverList.innerHTML = '';
         for (const server of servers) {
@@ -44,6 +47,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             li.className = 'server-item' + (server.id === selectedServer?.id ? ' selected' : '');
             li.dataset.server = server.wsUrl;
             li.dataset.serverId = server.id;
+            li.setAttribute('role', 'option');
+
+            const left = document.createElement('div');
+            left.className = 'server-card-left';
+
+            const globe = document.createElement('div');
+            globe.className = 'server-globe';
+            globe.innerHTML =
+                '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+                '<circle cx="12" cy="12" r="10"></circle>' +
+                '<line x1="2" y1="12" x2="22" y2="12"></line>' +
+                '<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>' +
+                '</svg>';
 
             const info = document.createElement('div');
             info.className = 'server-info';
@@ -54,31 +70,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             status.className = 'server-status';
             status.textContent = 'Checking…';
             info.append(region, status);
+            left.append(globe, info);
 
+            const pingWrap = document.createElement('div');
+            pingWrap.className = 'server-ping-wrap';
             const ping = document.createElement('span');
             ping.className = 'server-ping';
             ping.textContent = '--';
+            const signal = document.createElement('span');
+            signal.innerHTML =
+                '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">' +
+                '<rect x="3" y="14" width="4" height="7" rx="1"></rect>' +
+                '<rect x="10" y="9" width="4" height="12" rx="1"></rect>' +
+                '<rect x="17" y="4" width="4" height="17" rx="1"></rect>' +
+                '</svg>';
+            pingWrap.append(ping, signal);
 
-            li.append(info, ping);
+            li.append(left, pingWrap);
             li.addEventListener('click', () => {
                 serverList.querySelectorAll('.server-item').forEach(i => i.classList.remove('selected'));
                 li.classList.add('selected');
                 selectedServer = server;
-                setTimeout(() => serversModal.classList.add('hidden'), 300);
             });
             serverList.appendChild(li);
         }
     }
 
-    // ── Servers modal ─────────────────────────────────────────────────────────
+    // ── Servers modal aç/kapa (referans: login ekranındaki Servers butonu) ───
+    const closeServersModal = () => serversModal.classList.add('hidden');
     serversBtn.addEventListener('click', () => {
         serversModal.classList.remove('hidden');
-        measureServerPings(); // panel her açıldığında değerleri tazele
+        measureServerPings(); // her açılışta ping değerlerini tazele
     });
-    closeServersBtn.addEventListener('click', () => serversModal.classList.add('hidden'));
+    closeServersBtn.addEventListener('click', closeServersModal);
+    confirmServerBtn.addEventListener('click', closeServersModal);
     serversModal.addEventListener('click', (e) => {
-        if (e.target === serversModal || e.target.classList.contains('modal-backdrop'))
-            serversModal.classList.add('hidden');
+        if (e.target.classList.contains('servers-modal-backdrop')) closeServersModal();
     });
 
     // ── Settings panel (always active — gear button in top-right) ────────────
@@ -225,10 +252,13 @@ function measureServerPings() {
                 statusEl.textContent = 'Online';
                 statusEl.classList.add('active');
                 if (item.dataset.serverId) menuPingByServerId.set(item.dataset.serverId, rtt);
+                // Latency tier → kart üzerindeki ping/sinyal rengi (bkz. style.css)
+                item.dataset.tier = rtt < 60 ? 'good' : rtt < 120 ? 'ok' : rtt < 200 ? 'high' : 'bad';
             } else {
                 pingEl.textContent = '--';
                 statusEl.textContent = 'Offline';
                 statusEl.classList.remove('active');
+                item.dataset.tier = 'offline';
             }
         };
 
