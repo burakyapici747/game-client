@@ -1,5 +1,5 @@
 import StartGame from './game/main';
-import { hideAllGameOverlays, onConnectingCancel } from './ui/overlays.js';
+import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu } from './ui/overlays.js';
 
 // ─── Mobile input state (read by Game.js every frame) ───────────────────────
 window.mobileInput = {
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ── Connecting overlay Cancel: soketi kapat, Phaser'ı yık, menüye dön ────
-    onConnectingCancel(() => {
+    const teardownGameToMenu = () => {
         hideAllGameOverlays();
         teardownFns.forEach(fn => fn());
         teardownFns = [];
@@ -231,7 +231,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         gameInstance = null;
         gameStarted = false;
         uiLayer.classList.remove('hidden');
-    });
+    };
+    onConnectingCancel(teardownGameToMenu);
+
+    // ── Game Over "BACK TO MENU": aynı teardown akışı ─────────────────────────
+    onGameOverBackToMenu(teardownGameToMenu);
 
     // ── Nickname persistence ──────────────────────────────────────────────────
     const savedNickname = localStorage.getItem('snake_nickname');

@@ -144,13 +144,65 @@
             </div>
         </div>
 
-        <!-- Game Over Screen -->
-        <div id="gameover-overlay" class="game-overlay hidden">
-            <div class="overlay-card">
-                <h2 class="gameover-title">GAME OVER</h2>
-                <div class="gameover-score-label">Final Score</div>
-                <div id="gameover-score" class="gameover-score">0</div>
-                <button id="gameover-play-again" class="overlay-btn overlay-btn-primary">PLAY AGAIN</button>
+        <!-- Game Over Screen (reference: game_over.html) -->
+        <div id="gameover-overlay" class="gameover-overlay hidden">
+            <!-- Animated Background Decor -->
+            <div class="gameover-decor gameover-decor-1"></div>
+            <div class="gameover-decor gameover-decor-2"></div>
+
+            <!-- Game Over Modal Cluster -->
+            <div class="gameover-cluster">
+                <!-- Mascot Section -->
+                <div class="gameover-mascot-wrap gameover-float">
+                    <div class="gameover-mascot-ring">
+                        <img alt="Game Mascot" src="/assets/logo_image.jpeg" />
+                    </div>
+                    <!-- Dizzy stars overlay effect -->
+                    <div class="gameover-star gameover-star-spin">
+                        <span class="material-symbols-outlined">star</span>
+                    </div>
+                    <div class="gameover-star gameover-star-pulse">
+                        <span class="material-symbols-outlined">star</span>
+                    </div>
+                </div>
+
+                <!-- Modal Panel -->
+                <div class="gameover-panel">
+                    <h1 class="gameover-title">GAME OVER</h1>
+
+                    <!-- Stats Bento Grid -->
+                    <div class="gameover-stats-grid">
+                        <div class="gameover-stat gameover-stat-score">
+                            <p class="gameover-stat-label">Final Score</p>
+                            <p id="gameover-score" class="gameover-score-value">0</p>
+                        </div>
+                        <div class="gameover-stat">
+                            <p class="gameover-stat-label">Rank</p>
+                            <p class="gameover-rank-value">#14</p>
+                        </div>
+                        <div class="gameover-stat">
+                            <p class="gameover-stat-label">Food Eaten</p>
+                            <p id="gameover-food-eaten" class="gameover-food-value">0</p>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="gameover-actions">
+                        <button id="gameover-play-again" class="gameover-btn-primary">PLAY AGAIN</button>
+                        <button id="gameover-back-menu" class="gameover-btn-secondary">BACK TO MENU</button>
+                    </div>
+
+                    <div class="gameover-links">
+                        <button class="gameover-link gameover-link-share">
+                            <span class="material-symbols-outlined">share</span>
+                            <span class="gameover-link-label">Share Score</span>
+                        </button>
+                        <button class="gameover-link gameover-link-board">
+                            <span class="material-symbols-outlined">leaderboard</span>
+                            <span class="gameover-link-label">Leaderboard</span>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -176,6 +228,50 @@
                     <button id="confirm-server-btn" class="servers-confirm-btn">Confirm</button>
                 </div>
             </div>
+        </div>
+
+        <!-- Game HUD Overlay -->
+        <div id="game-hud" class="game-hud hidden">
+            <!-- Top HUD Row -->
+            <div class="hud-top-row">
+                <!-- Stats Panel -->
+                <div class="hud-stats-panel hud-bubbly-panel">
+                    <div class="stat-item">
+                        <span class="stat-label">FPS:</span>
+                        <span id="hud-fps" class="stat-value">60</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Ping:</span>
+                        <span id="hud-ping" class="stat-value">--ms</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Coord:</span>
+                        <span id="hud-coord" class="stat-value">0, 0</span>
+                    </div>
+                </div>
+
+                <!-- Score Pod -->
+                <div class="hud-score-pod hud-bubbly-panel">
+                    <div class="score-icon-wrapper">
+                        <span class="material-symbols-outlined score-icon">toll</span>
+                    </div>
+                    <div id="hud-score" class="score-value">0</div>
+                </div>
+
+                <!-- Leaderboard Pod -->
+                <div class="hud-leaderboard-pod hud-bubbly-panel">
+                    <div class="leaderboard-header">
+                        <span class="leaderboard-title">LEADERBOARD</span>
+                        <span class="material-symbols-outlined leaderboard-icon">emoji_events</span>
+                    </div>
+                    <div class="leaderboard-info">Players: <span id="hud-players">0</span></div>
+                    <div id="hud-leaderboard-list" class="leaderboard-entries">
+                        <!-- Entries populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Minimap is rendered by Phaser (Game.js drawMinimap) — no DOM element. -->
         </div>
 
         <!-- Settings Modal -->
