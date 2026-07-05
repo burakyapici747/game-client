@@ -1,4 +1,5 @@
 import StartGame from './game/main';
+import { hideAllGameOverlays, onConnectingCancel } from './ui/overlays.js';
 
 // ─── Mobile input state (read by Game.js every frame) ───────────────────────
 window.mobileInput = {
@@ -9,46 +10,96 @@ window.mobileInput = {
     boostActive:       false,
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+// En son ölçülen menü ping'leri (serverId -> ms). Connecting ekranı, oyun-içi
+// heartbeat kalibre olana kadar bu değeri başlangıç göstergesi olarak kullanır.
+const menuPingByServerId = new Map();
+
+document.addEventListener('DOMContentLoaded', async () => {
     const uiLayer        = document.getElementById('ui-layer');
     const playBtn        = document.getElementById('play-btn');
     const serversBtn     = document.getElementById('servers-btn');
     const serversModal   = document.getElementById('servers-modal');
     const closeServersBtn = document.getElementById('close-servers-btn');
-    const serverItems    = document.querySelectorAll('.server-item');
+    const serverList     = document.getElementById('server-list');
     const nicknameInput  = document.getElementById('nickname-input');
 
-    let selectedServer = 'ws://localhost:8080';
+    let selectedServer = null;   // config'ten gelen sunucu objesi {id, name, ip, port, wsUrl}
     let gameStarted    = false;
+    let gameInstance   = null;
+    let teardownFns    = [];     // boot sırasında takılan observer/listener temizleyicileri
 
-    // ── Nickname persistence ──────────────────────────────────────────────────
-    const savedNickname = localStorage.getItem('snake_nickname');
-    if (savedNickname) nicknameInput.value = savedNickname;
+    // ── Config-driven server list ─────────────────────────────────────────────
+    // Sunucu metadata'sı (id/name/ip/port/wsUrl) artık koda gömülü değil;
+    // public/config.json'dan yüklenir ve DOM'a dinamik enjekte edilir.
+    const config = await loadClientConfig();
+    window.gameConfig = config;
+    selectedServer = config.servers.find(s => s.id === config.defaultServerId) || config.servers[0];
+    renderServerList(config.servers);
+    measureServerPings(); // sayfa açılır açılmaz arka planda ilk ölçüm
+
+    function renderServerList(servers) {
+        serverList.innerHTML = '';
+        for (const server of servers) {
+            const li = document.createElement('li');
+            li.className = 'server-item' + (server.id === selectedServer?.id ? ' selected' : '');
+            li.dataset.server = server.wsUrl;
+            li.dataset.serverId = server.id;
+
+            const info = document.createElement('div');
+            info.className = 'server-info';
+            const region = document.createElement('span');
+            region.className = 'server-region';
+            region.textContent = server.name;
+            const status = document.createElement('span');
+            status.className = 'server-status';
+            status.textContent = 'Checking…';
+            info.append(region, status);
+
+            const ping = document.createElement('span');
+            ping.className = 'server-ping';
+            ping.textContent = '--';
+
+            li.append(info, ping);
+            li.addEventListener('click', () => {
+                serverList.querySelectorAll('.server-item').forEach(i => i.classList.remove('selected'));
+                li.classList.add('selected');
+                selectedServer = server;
+                setTimeout(() => serversModal.classList.add('hidden'), 300);
+            });
+            serverList.appendChild(li);
+        }
+    }
 
     // ── Servers modal ─────────────────────────────────────────────────────────
     serversBtn.addEventListener('click', () => {
         serversModal.classList.remove('hidden');
         measureServerPings(); // panel her açıldığında değerleri tazele
     });
-
-    // Sayfa yüklenir yüklenmez arka planda ilk ölçümü yap.
-    measureServerPings();
     closeServersBtn.addEventListener('click', () => serversModal.classList.add('hidden'));
     serversModal.addEventListener('click', (e) => {
         if (e.target === serversModal || e.target.classList.contains('modal-backdrop'))
             serversModal.classList.add('hidden');
     });
-    serverItems.forEach(item => {
-        item.addEventListener('click', () => {
-            serverItems.forEach(i => i.classList.remove('selected'));
-            item.classList.add('selected');
-            selectedServer = item.dataset.server;
-            setTimeout(() => serversModal.classList.add('hidden'), 300);
-        });
-    });
 
     // ── Settings panel (always active — gear button in top-right) ────────────
     initSettingsPanel();
+
+    // ── Connecting overlay Cancel: soketi kapat, Phaser'ı yık, menüye dön ────
+    onConnectingCancel(() => {
+        hideAllGameOverlays();
+        teardownFns.forEach(fn => fn());
+        teardownFns = [];
+        // destroy(true): sahne shutdown'ı tetiklenir → NetworkManager.disconnect()
+        // soketi sessizce kapatır; canvas DOM'dan kaldırılır.
+        gameInstance?.destroy(true);
+        gameInstance = null;
+        gameStarted = false;
+        uiLayer.classList.remove('hidden');
+    });
+
+    // ── Nickname persistence ──────────────────────────────────────────────────
+    const savedNickname = localStorage.getItem('snake_nickname');
+    if (savedNickname) nicknameInput.value = savedNickname;
 
     // ── Play ──────────────────────────────────────────────────────────────────
     playBtn.addEventListener('click', startGameLogic);
@@ -64,7 +115,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!nickname) nickname = 'Player' + Math.floor(Math.random() * 10000);
         localStorage.setItem('snake_nickname', nickname);
 
-        window.gameSettings = { nickname, serverUrl: selectedServer };
+        window.gameSettings = {
+            nickname,
+            serverUrl: selectedServer?.wsUrl,
+            serverName: selectedServer?.name || 'Unknown',
+            // Connecting ekranının ilk PING göstergesi (heartbeat kalibre olana dek)
+            menuPingMs: menuPingByServerId.get(selectedServer?.id) ?? null,
+        };
 
         // Dismiss the mobile on-screen keyboard BEFORE Phaser boots. Phaser's
         // RESIZE scale mode snapshots the parent's bounds once at boot and only
@@ -76,7 +133,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // rAF + short delay lets the keyboard dismissal and layout transitions
         // settle so Phaser measures the real, full-screen parent bounds.
         requestAnimationFrame(() => setTimeout(() => {
+            if (!gameStarted) return; // Cancel araya girdiyse boot'u iptal et
             const game = StartGame('game-container');
+            gameInstance = game;
 
             const refresh = () => game.scale.refresh();
 
@@ -88,9 +147,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // changes often fire ONLY visualViewport resize — or no event at
             // all except the element itself changing size. ResizeObserver on
             // the parent makes it the single source of truth for game size.
-            new ResizeObserver(refresh)
-                .observe(document.getElementById('game-container'));
+            const observer = new ResizeObserver(refresh);
+            observer.observe(document.getElementById('game-container'));
             window.visualViewport?.addEventListener('resize', refresh);
+            teardownFns.push(() => {
+                observer.disconnect();
+                window.visualViewport?.removeEventListener('resize', refresh);
+            });
         }, 150));
 
         // In-game joystick/boost controls are now rendered inside the Phaser
@@ -99,6 +162,32 @@ document.addEventListener('DOMContentLoaded', () => {
         // this.add.circle()/this.add.zone() — no DOM activation needed here.
     }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENT CONFIG LOADER
+// public/config.json başarısız olursa (dev ortamı, dosya eksik vb.) env
+// tabanlı tek sunuculu bir fallback listesi üretilir — oyun asla config
+// yüzünden açılamaz durumda kalmaz.
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadClientConfig() {
+    try {
+        const res = await fetch('/config.json', { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`config.json HTTP ${res.status}`);
+        const cfg = await res.json();
+        if (!Array.isArray(cfg.servers) || cfg.servers.length === 0) {
+            throw new Error('config.json: servers listesi boş');
+        }
+        return cfg;
+    } catch (err) {
+        console.warn('config.json yüklenemedi, fallback kullanılıyor:', err);
+        const ip = import.meta.env.VITE_SERVER_URL || 'localhost';
+        return {
+            servers: [{ id: 'local', name: 'Local Server', ip, port: 8080, wsUrl: `ws://${ip}:8080/ws` }],
+            defaultServerId: 'local',
+            ping: { heartbeatIntervalMs: 2500, calibration: { discardSamples: 1, minSamples: 3, intervalMs: 500 } },
+        };
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SERVER PING MEASUREMENT (pre-login, background)
@@ -135,6 +224,7 @@ function measureServerPings() {
                 pingEl.textContent = `${rtt}ms`;
                 statusEl.textContent = 'Online';
                 statusEl.classList.add('active');
+                if (item.dataset.serverId) menuPingByServerId.set(item.dataset.serverId, rtt);
             } else {
                 pingEl.textContent = '--';
                 statusEl.textContent = 'Offline';

@@ -2,6 +2,13 @@ import Phaser from 'phaser';
 import { Snake } from './Snake';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
+import {
+    showConnectingOverlay,
+    updateConnectingPing,
+    hideConnectingOverlay,
+    showGameOverOverlay,
+    hideAllGameOverlays,
+} from './../../ui/overlays.js';
 
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
@@ -74,8 +81,15 @@ export class Game extends Phaser.Scene {
         this.events.on('death_notification', this.onDeathNotification, this);
 
         // NetworkManager'ın pong başına yaydığı yumuşatılmış (EMA) RTT değeri.
+        // Connecting overlay'i açıksa oradaki PING metriği de canlı güncellenir.
         this.currentPingMs = null;
-        this.events.on('ping_update', (ms) => { this.currentPingMs = ms; }, this);
+        this.events.on('ping_update', (ms) => {
+            this.currentPingMs = ms;
+            updateConnectingPing(ms);
+        }, this);
+
+        // Restart/kapanışta açık kalan HTML overlay'leri temizle.
+        this.events.once('shutdown', () => hideAllGameOverlays());
 
         // Physics step SONRASI, render ÖNCESİ: segmentler ve gözler head'in gerçek
         // fiziksel pozisyonuyla senkronize edilir. update() içinde physics henüz
@@ -145,7 +159,12 @@ export class Game extends Phaser.Scene {
 
         this.registerHUD(this.fpsText, this.minimapGraphics);
 
-        this.createLoadingUI();
+        // Bağlantı ekranı artık Phaser içinde çizilmiyor — HTML/CSS overlay
+        // (bkz. index.html #connecting-overlay + src/ui/overlays.js).
+        showConnectingOverlay(
+            window.gameSettings?.serverName,
+            window.gameSettings?.menuPingMs ?? null
+        );
     }
 
     // ── Camera routing helpers ──────────────────────────────────────────────
@@ -201,58 +220,12 @@ export class Game extends Phaser.Scene {
 
         this.mobileControls?.resize(width, height);
 
-        if (this.loadingContainer) {
-            const cx = width / 2;
-            const cy = height / 2;
-            const [bg, text, spinner] = this.loadingContainer.list;
-            if (bg) { bg.setPosition(cx, cy); bg.setSize(width, height); }
-            if (text) text.setPosition(cx, cy - 30);
-            if (spinner) { spinner.x = cx; spinner.y = cy + 30; }
-        }
+        // (Connecting/Game Over ekranları HTML/CSS overlay — CSS kendisi
+        // responsive olduğundan burada yeniden konumlandırma gerekmiyor.)
     }
 
-    createLoadingUI() {
-        const cx = this.cameras.main.width / 2;
-        const cy = this.cameras.main.height / 2;
-
-        this.loadingContainer = this.add.container(0, 0).setScrollFactor(0).setDepth(9999);
-        this.registerHUD(this.loadingContainer);
-
-        // Arkaplan
-        const bg = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.85);
-        this.loadingContainer.add(bg);
-
-        // Yazi
-        const text = this.add.text(cx, cy - 30, 'Waiting For Server...', {
-            fontSize: '24px',
-            fontFamily: 'Inter, sans-serif',
-            color: '#FFFFFF',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        this.loadingContainer.add(text);
-
-        // Yukleniyor animasyonu
-        const spinner = this.add.graphics();
-        spinner.x = cx;
-        spinner.y = cy + 30;
-        this.loadingContainer.add(spinner);
-
-        let angle = 0;
-        this.tweens.add({
-            targets: { value: 360 },
-            value: 360,
-            duration: 1000,
-            repeat: -1,
-            onUpdate: (tween) => {
-                angle = Phaser.Math.DegToRad(tween.getValue());
-                spinner.clear();
-                spinner.lineStyle(4, 0x00ff00, 1);
-                spinner.beginPath();
-                spinner.arc(0, 0, 20, angle, angle + Math.PI * 1.5, false);
-                spinner.strokePath();
-            }
-        });
-    }
+    // (createLoadingUI kaldırıldı — bağlantı ekranı artık HTML/CSS overlay,
+    // bkz. index.html #connecting-overlay ve src/ui/overlays.js.)
 
     onStartGame(startInfo) {
         console.log("onStartGame Alındı:", startInfo);
@@ -309,13 +282,7 @@ export class Game extends Phaser.Scene {
     }
 
     hideLoader() {
-        if (!this.loadingContainer) {
-            return;
-        }
-
-        this.loadingContainer.setAlpha(0);
-        this.loadingContainer.destroy();
-        this.loadingContainer = null;
+        hideConnectingOverlay();
     }
 
     onEntityCollection(entityCollection) {
@@ -743,57 +710,12 @@ export class Game extends Phaser.Scene {
         }
         this.cameras.main.stopFollow();
 
-        const cx = this.cameras.main.width / 2;
-        const cy = this.cameras.main.height / 2;
-
-        // Karartma efekti
-        const overlay = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
-            .setOrigin(0.5).setScrollFactor(0).setDepth(10000);
-
-        // Modern Game Over Paneli
-        const panel = this.add.graphics().setScrollFactor(0).setDepth(10001);
-        panel.fillStyle(0x1a1a1a, 0.95);
-        panel.fillRoundedRect(cx - 200, cy - 160, 400, 320, 20);
-        panel.lineStyle(2, 0x00ffcc, 1);
-        panel.strokeRoundedRect(cx - 200, cy - 160, 400, 320, 20);
-
-        const titleText = this.add.text(cx, cy - 110, 'GAME OVER', {
-            fontSize: '48px', fontFamily: 'Outfit, sans-serif', color: '#ff3333', fontStyle: 'bold'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
-
-        const scoreLabel = this.add.text(cx, cy - 40, `Final Score`, {
-            fontSize: '18px', fontFamily: 'Inter, sans-serif', color: '#aaaaaa'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
-
-        const scoreText = this.add.text(cx, cy + 5, `${gameOverInfo.score}`, {
-            fontSize: '56px', fontFamily: 'Outfit, sans-serif', color: '#00ffcc', fontStyle: 'bold'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
-
-        // ── Play Again butonu: sayfa yenilemeden temiz respawn ───────────────
-        // scene.restart() → shutdown (eski soket sessizce kapanır, listener'lar
-        // temizlenir) → create() (state sıfırlanır, yeni NetworkManager
-        // bağlanır) → sunucu yeni bağlantıyı yeni oyuncu olarak spawn eder.
-        const btnY = cy + 95;
-        const btn = this.add.graphics().setScrollFactor(0).setDepth(10002);
-        const drawBtn = (hover) => {
-            btn.clear();
-            btn.fillStyle(hover ? 0x00e6b8 : 0x00ffcc, 1);
-            btn.fillRoundedRect(cx - 110, btnY - 26, 220, 52, 12);
-        };
-        drawBtn(false);
-
-        const btnText = this.add.text(cx, btnY, 'PLAY AGAIN', {
-            fontSize: '20px', fontFamily: 'Outfit, sans-serif', color: '#001510', fontStyle: 'bold'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10003);
-
-        const btnHit = this.add.rectangle(cx, btnY, 220, 52, 0x000000, 0)
-            .setScrollFactor(0).setDepth(10004)
-            .setInteractive({ useHandCursor: true })
-            .on('pointerover', () => drawBtn(true))
-            .on('pointerout', () => drawBtn(false))
-            .once('pointerdown', () => this.scene.restart());
-
-        this.registerHUD(overlay, panel, titleText, scoreLabel, scoreText, btn, btnText, btnHit);
+        // ── Game Over: HTML/CSS overlay (unified UI standard) ────────────────
+        // Phaser text/graphics paneli kaldırıldı; ekran artık canvas üzerine
+        // konumlanan DOM katmanı (index.html #gameover-overlay). Play Again →
+        // scene.restart(): shutdown eski soketi sessizce kapatır, create()
+        // state'i sıfırlar, yeni bağlantı sunucuda temiz respawn tetikler.
+        showGameOverOverlay(gameOverInfo.score, () => this.scene.restart());
     }
 
     onDisconnected() {

@@ -103,6 +103,43 @@
              GameObjects (this.add.circle / this.add.zone) by
              src/game/ui/MobileControls.js — no DOM overlay needed here. -->
 
+        <!-- ══════════════════════════════════════════════════════════════
+             UNIFIED HTML/CSS OVERLAYS (managed by src/ui/overlays.js)
+             Intermediate screens live OVER the canvas, not inside Phaser.
+             ══════════════════════════════════════════════════════════════ -->
+
+        <!-- Connecting Screen -->
+        <div id="connecting-overlay" class="game-overlay hidden">
+            <div class="overlay-card">
+                <div class="spinner" aria-hidden="true"></div>
+                <h2 class="overlay-title">CONNECTING</h2>
+                <div class="conn-grid">
+                    <div class="conn-cell">
+                        <span class="conn-label">Server</span>
+                        <span id="conn-server-name" class="conn-value">--</span>
+                    </div>
+                    <div class="conn-cell">
+                        <span class="conn-label">Ping</span>
+                        <span class="conn-value">
+                            <span class="status-dot" aria-hidden="true"></span>
+                            <span id="conn-ping-value">--</span>
+                        </span>
+                    </div>
+                </div>
+                <button id="conn-cancel-btn" class="overlay-btn overlay-btn-secondary">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameover-overlay" class="game-overlay hidden">
+            <div class="overlay-card">
+                <h2 class="gameover-title">GAME OVER</h2>
+                <div class="gameover-score-label">Final Score</div>
+                <div id="gameover-score" class="gameover-score">0</div>
+                <button id="gameover-play-again" class="overlay-btn overlay-btn-primary">PLAY AGAIN</button>
+            </div>
+        </div>
+
         <!-- Servers Modal -->
         <div id="servers-modal" class="modal hidden">
             <div class="modal-backdrop"></div>
@@ -112,31 +149,10 @@
                     <button class="close-btn" id="close-servers-btn">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <ul class="server-list" id="server-list">
-                        <!-- Ping values are measured live by measureServerPings()
-                             in src/main.js — the spans below are placeholders. -->
-                        <li class="server-item selected" data-server="ws://localhost:8080">
-                            <div class="server-info">
-                                <span class="server-region">Local Server</span>
-                                <span class="server-status">Checking…</span>
-                            </div>
-                            <span class="server-ping">--</span>
-                        </li>
-                        <li class="server-item" data-server="wss://eu.example.com">
-                            <div class="server-info">
-                                <span class="server-region">Europe</span>
-                                <span class="server-status">Checking…</span>
-                            </div>
-                            <span class="server-ping">--</span>
-                        </li>
-                        <li class="server-item" data-server="wss://us.example.com">
-                            <div class="server-info">
-                                <span class="server-region">North America</span>
-                                <span class="server-status">Checking…</span>
-                            </div>
-                            <span class="server-ping">--</span>
-                        </li>
-                    </ul>
+                    <!-- Server entries are rendered dynamically from
+                         public/config.json by renderServerList() in src/main.js.
+                         Ping values are measured live by measureServerPings(). -->
+                    <ul class="server-list" id="server-list"></ul>
                 </div>
             </div>
         </div>

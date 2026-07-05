@@ -8,8 +8,10 @@ export class NetworkManager {
         this.connected = false;
 
 
+        // Config-driven sunucu seçimi: kullanıcının menüden seçtiği sunucunun
+        // wsUrl'i (public/config.json) önceliklidir; yoksa env fallback.
         const serverIP = import.meta.env.VITE_SERVER_URL || '127.0.0.1';
-        this.wsUrl = `ws://${serverIP}:8080/ws`;
+        this.wsUrl = window.gameSettings?.serverUrl || `ws://${serverIP}:8080/ws`;
         this.isCurrentlyBoosting = false;
 
         this.lastSentAngleValue = -1;
@@ -25,11 +27,27 @@ export class NetworkManager {
         // saatle ölçülür (performance.now). Sunucunun echo'ladığı uint64
         // clientTimestamp'e güvenmiyoruz: protobufjs uint64'ü Long objesi
         // olarak döndürebilir ve Date.now() farkları saat kaymasına açıktır.
-        this.pingIntervalMs = options.pingIntervalMs ?? 2500;
+        const pingCfg = window.gameConfig?.ping ?? {};
+        const calCfg = pingCfg.calibration ?? {};
+        this.pingIntervalMs = options.pingIntervalMs ?? pingCfg.heartbeatIntervalMs ?? 2500;
         this.pingTimer = null;
         this.pingNonce = 0;
         this.pendingPings = new Map();   // nonce -> performance.now() @ send
         this.pingEmaMs = null;           // yumuşatılmış RTT (EMA)
+
+        // ── Kalibrasyon (ilk ping spike düzeltmesi) ──────────────────────────
+        // İlk pong, bağlantı ısınması yüzünden şişkin ölçülür (~200ms görünüp
+        // ~60ms'e oturuyordu): TCP slow start + WS upgrade artçıları, sunucunun
+        // handshake sırasında yolladığı büyük StartInformation/food payload'ının
+        // arkasında kuyruklanma ve JIT ısınması. Çözüm: ilk discardSamples örnek
+        // tamamen atılır, UI'ya minSamples örnek ORTALANANA kadar değer basılmaz;
+        // kalibrasyon örnekleri hızlandırılmış aralıkla (intervalMs) toplanır ki
+        // gösterge saniyeler içinde doğru değerle açılsın.
+        this.pingCalibDiscard = calCfg.discardSamples ?? 1;
+        this.pingCalibMinSamples = calCfg.minSamples ?? 3;
+        this.pingCalibIntervalMs = calCfg.intervalMs ?? 500;
+        this.pingSamplesSeen = 0;
+        this.pingCalibrated = false;
     }
 
     canSend() {
@@ -166,7 +184,17 @@ export class NetworkManager {
 
     _startPingLoop() {
         this._stopPingLoop();
+        this.pingSamplesSeen = 0;
+        this.pingCalibrated = false;
+        this.pingEmaMs = null;
         this.sendPing(); // ilk örneği bekletmeden al
+        // Kalibrasyon fazı: hızlandırılmış aralık. _handlePong yeterli örnek
+        // toplandığında _switchToSteadyPingInterval() ile normale döndürür.
+        this.pingTimer = setInterval(() => this.sendPing(), this.pingCalibIntervalMs);
+    }
+
+    _switchToSteadyPingInterval() {
+        if (this.pingTimer !== null) clearInterval(this.pingTimer);
         this.pingTimer = setInterval(() => this.sendPing(), this.pingIntervalMs);
     }
 
@@ -207,11 +235,25 @@ export class NetworkManager {
         this.pendingPings.delete(nonce);
         const rtt = Math.max(0, performance.now() - sentAt);
 
+        this.pingSamplesSeen++;
+
+        // Kalibrasyon: ilk örnek(ler) bağlantı ısınması artefaktıdır — EMA'yı
+        // kirletmesin diye tamamen atılır (bkz. constructor'daki açıklama).
+        if (this.pingSamplesSeen <= this.pingCalibDiscard) return;
+
         // EMA (0.3): tekil spike'lar UI'da zıplama yaratmasın, yine de
         // gerçek değişimlere birkaç örnek içinde yakınsasın.
         this.pingEmaMs = this.pingEmaMs === null
             ? rtt
             : this.pingEmaMs * 0.7 + rtt * 0.3;
+
+        // UI'ya ancak minSamples doğru örnek ortalandıktan sonra yayınla.
+        if (this.pingSamplesSeen < this.pingCalibDiscard + this.pingCalibMinSamples) return;
+
+        if (!this.pingCalibrated) {
+            this.pingCalibrated = true;
+            this._switchToSteadyPingInterval();
+        }
 
         this.scene.events.emit('ping_update', Math.round(this.pingEmaMs));
     }

@@ -653,6 +653,180 @@ button {
     cursor: pointer;
 }
 
+/* ═══════════════════════════════════════════════
+   UNIFIED HTML/CSS GAME OVERLAYS
+   (Connecting + Game Over — src/ui/overlays.js)
+   ═══════════════════════════════════════════════ */
+
+.game-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 40; /* canvas'ın (1) üzerinde, modallerin (50) altında */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 5, 10, 0.72);
+    backdrop-filter: blur(6px);
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.25s ease, visibility 0.25s;
+}
+
+.game-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.overlay-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    min-width: 320px;
+    max-width: 90vw;
+    padding: 36px 44px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border-glass);
+    border-radius: 20px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+    text-align: center;
+}
+
+.overlay-title {
+    font-family: var(--font-heading);
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: 4px;
+    color: var(--text-main);
+    margin: 0;
+}
+
+/* Animated loading spinner */
+.spinner {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.12);
+    border-top-color: var(--primary-color);
+    animation: overlay-spin 0.9s linear infinite;
+}
+
+@keyframes overlay-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* SERVER / PING metric grid */
+.conn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+}
+
+.conn-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-glass);
+    border-radius: 12px;
+}
+
+.conn-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.conn-value {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums; /* ping değişince genişlik oynamasın */
+}
+
+.status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    box-shadow: 0 0 8px var(--primary-glow);
+    flex-shrink: 0;
+}
+
+/* Overlay buttons */
+.overlay-btn {
+    padding: 13px 36px;
+    font-size: 1rem;
+    border-radius: 12px;
+    letter-spacing: 1px;
+}
+
+.overlay-btn-primary {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #00b38f 100%);
+    color: #001510;
+    text-transform: uppercase;
+    font-weight: 700;
+    box-shadow: 0 8px 24px var(--primary-glow);
+}
+
+.overlay-btn-primary:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 12px 32px rgba(0, 255, 204, 0.8);
+}
+
+.overlay-btn-primary:active {
+    transform: translateY(1px) scale(0.98);
+}
+
+.overlay-btn-secondary {
+    background: var(--bg-glass);
+    color: var(--text-muted);
+    border: 1px solid var(--border-glass);
+}
+
+.overlay-btn-secondary:hover {
+    background: var(--bg-glass-hover);
+    color: var(--text-main);
+    border-color: var(--secondary-color);
+}
+
+/* Game Over specifics */
+.gameover-title {
+    font-family: var(--font-heading);
+    font-size: 2.6rem;
+    font-weight: 800;
+    letter-spacing: 3px;
+    color: #ff3333;
+    text-shadow: 0 0 24px rgba(255, 51, 51, 0.4);
+    margin: 0;
+}
+
+.gameover-score-label {
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.gameover-score {
+    font-family: var(--font-heading);
+    font-size: 4rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--primary-color);
+    text-shadow: 0 0 32px var(--primary-glow);
+}
+
 /* ─── Responsive: keep panel on-screen on narrow viewports ─── */
 @media (max-width: 380px) {
     .settings-panel {

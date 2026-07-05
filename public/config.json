@@ -1,0 +1,20 @@
+{
+    "servers": [
+        {
+            "id": "eu-central",
+            "name": "Europe",
+            "ip": "http://34.79.227.122:3000",
+            "port": 443,
+            "wsUrl": "ws://34.79.227.122:8080/ws"
+        }
+    ],
+    "defaultServerId": "eu-central",
+    "ping": {
+        "heartbeatIntervalMs": 2500,
+        "calibration": {
+            "discardSamples": 1,
+            "minSamples": 3,
+            "intervalMs": 500
+        }
+    }
+}
