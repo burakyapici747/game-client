@@ -11,7 +11,7 @@ export class Preloader extends Phaser.Scene {
     makeSolid(this, 'px32', 32, 32, 0xffffff);
     makeSolid(this, 'px64', 64, 64, 0xffffff);
 
-    makeCheckerScaled(this, 'grid32', 32, 0x2a2a2a, 0x242424, 4);
+    makeNeonSquareGrid(this, 'grid32', 256);
 
     generateCircleTexture(this, 'snake_body48', 48, 0xffffff, 0x111111, 2.0);
     generateCircleTexture(this, 'snake_head48', 48, 0xffffff, 0x111111, 2.0);
@@ -33,9 +33,8 @@ export class Preloader extends Phaser.Scene {
     });
 
     // grid32 is rendered as a tileSprite and re-scaled every frame to match
-    // camera zoom (see Game.js). NEAREST filtering on a minified, fractionally
-    // scaled checker pattern produces moire/aliasing artifacts on mobile where
-    // zoom is < 1. LINEAR filtering removes that distortion.
+    // camera zoom (see Game.js). LINEAR filtering removes scaling artifacts
+    // on mobile devices where zoom is < 1.
     this.textures.get('grid32').setFilter(Phaser.Textures.FilterMode.LINEAR);
 
     this.scene.start('Game');
@@ -51,17 +50,37 @@ function makeSolid(scene, key, w, h, color) {
   g.destroy();
 }
 
-function makeCheckerScaled(scene, key, baseSize, c1, c2, scale = 1) {
-  const size = baseSize * scale;
-  const cell = (baseSize / 2) * scale;
+function makeNeonSquareGrid(scene, key, size) {
+  const squareLineColor = 0xc2cad5;
+  const backgroundColor = 0x1a063b;
+  const gridCellSize = 64; // 256x256 pixel squares
+  const strokeWidth = 1; // Thin lines
+  const lineOpacity = 0.2; // 40% opacity for rgba(194, 202, 173, 0.4)
+
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
 
-  g.fillStyle(c1, 1);
+  // Dark background
+  g.fillStyle(backgroundColor, 1);
   g.fillRect(0, 0, size, size);
 
-  g.fillStyle(c2, 1);
-  g.fillRect(0, 0, cell, cell);
-  g.fillRect(cell, cell, cell, cell);
+  // Purple grid lines with rgba opacity
+  g.lineStyle(strokeWidth, squareLineColor, lineOpacity);
+
+  // Vertical lines
+  for (let x = 0; x <= size; x += gridCellSize) {
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, size);
+    g.strokePath();
+  }
+
+  // Horizontal lines
+  for (let y = 0; y <= size; y += gridCellSize) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(size, y);
+    g.strokePath();
+  }
 
   g.generateTexture(key, size, size);
   g.destroy();
