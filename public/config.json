@@ -3,9 +3,9 @@
         {
             "id": "eu-central",
             "name": "Europe",
-            "ip": "http://34.79.227.122:3000",
+            "ip": "http://35.242.203.43:3000",
             "port": 443,
-            "wsUrl": "ws://34.79.227.122:8080/ws"
+            "wsUrl": "ws://35.242.203.43:8080/ws"
         }
     ],
     "defaultServerId": "eu-central",
