@@ -258,7 +258,21 @@ export class NetworkManager {
         this.scene.events.emit('ping_update', Math.round(this.pingEmaMs));
     }
     
-    updateAndSendInput(targetAngle, isBoosting, delta) {
+    /**
+     * Dereceyi ağ formatına (0..250 tamsayı) kuantalar. STATİK ve TEK kaynak:
+     * Game.js lokal tahmini de bu değerin geri-çözümüyle (k * 1.44°) besler,
+     * böylece client simülasyonu ile sunucunun gördüğü hedef açı birebir aynıdır.
+     */
+    static quantizeAngleDeg(deg) {
+        let positive = deg % 360;
+        if (positive < 0) positive += 360;
+        const q = Math.round(positive / 1.44);
+        // 250 = 360° ≡ 0°; 251/252 boost aksiyonlarına ayrılmıştır, taşma yok.
+        return Math.min(250, q);
+    }
+
+    // angleValue: quantizeAngleDeg ile önceden kuantalanmış 0..250 değeri.
+    updateAndSendInput(angleValue, isBoosting, delta) {
         if (!this.canSend()) return;
 
         // 1. Boost durumu değiştiğinde anında paket gönder.
@@ -272,17 +286,6 @@ export class NetworkManager {
         // 2. Zamanlayıcıyı, son kareden bu yana geçen gerçek süre (delta) ile artır.
         this.angleSendTimer += delta;
 
-        // 3. Açıyı ağ paketi için optimize et (0-360 aralığını 0-250 aralığına sıkıştır).
-        // a. Açıyı her zaman pozitif yap (0-360 aralığı).
-        let positiveAngle = targetAngle;
-        if (positiveAngle < 0) {
-            positiveAngle += 360;
-        }
-
-        // b. Açıyı 0-250 aralığına haritala ve tam sayıya yuvarla.
-        // Sunucu bu değeri 1.44 ile çarparak orijinal açıya (~360 derece) geri dönecek.
-        const angleValue = Math.round(positiveAngle / 1.44);
-        
         const angleChanged = angleValue !== this.lastSentAngleValue;
 
         // 4. Gönderme koşullarını kontrol et.

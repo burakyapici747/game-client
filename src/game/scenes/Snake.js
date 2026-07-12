@@ -23,6 +23,15 @@ const SnakeConfig = {
     // rushing, which softens how a single correction reads on screen.
     RECONCILIATION_MAX_CORRECTION_SPEED: 300,
 
+    // ── Segment isolation (anti-cascade) ────────────────────────────────
+    // The body path is sampled from a low-pass "follower" of the head, not
+    // the head itself. Reconciliation micro-corrections on the head are
+    // high-frequency signals — the follower filters them out, so the body
+    // no longer magnifies head snapping. 0.5 @60fps ≈ 3-4 px constant
+    // trailing lag (invisible: it only shifts the body back a hair) while
+    // per-frame alternating corrections are attenuated ~3x.
+    PATH_SMOOTHING_FACTOR: 0.5,
+
     // DEBUG: render a ghost marker at the raw server-authoritative head
     // position (player snake only). Visual overlay only — no effect on
     // prediction or reconciliation. Set to false to hide.
@@ -279,6 +288,10 @@ export class Snake {
     }
 
     create(x, y, angle) {
+        // Path follower: the smoothed position that actually feeds the body
+        // path (see _sampleHeadToPath). Initialized on the head; snapped back
+        // to the head in _initPathWarmup (spawn / hard resync).
+        this._pathFollower = { x, y };
         this.head = this.scene.registerWorld(this.scene.add.sprite(x, y, 'snake_head48')
             .setOrigin(0.5));
         this.head.rotation = angle;
@@ -400,6 +413,21 @@ export class Snake {
     // Physics step sonrası segment + göz güncelleme — scene.events 'postupdate' içinde çağrılır
     postPhysicsUpdate() {
         if (!this.alive || !this.head?.active) return;
+
+        // Update the low-pass follower BEFORE sampling the path.
+        // Player snake: exponential smoothing filters reconciliation
+        // micro-corrections out of the body path (anti-cascade).
+        // Remote snakes: their head is already interpolation-smoothed, extra
+        // filtering would only add lag — follow exactly.
+        if (this.isPlayerControlled) {
+            const k = this._frameAdjustedFactor(this.config.PATH_SMOOTHING_FACTOR, this._delta || 16.67);
+            this._pathFollower.x += (this.head.x - this._pathFollower.x) * k;
+            this._pathFollower.y += (this.head.y - this._pathFollower.y) * k;
+        } else {
+            this._pathFollower.x = this.head.x;
+            this._pathFollower.y = this.head.y;
+        }
+
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
@@ -543,6 +571,13 @@ export class Snake {
     }
 
     _initPathWarmup(x, y) {
+        // Hard resets (spawn, tab-return resync, segment-count sync) rebuild
+        // the path from scratch — snap the follower too, so it doesn't drag
+        // stale offset into the fresh path.
+        if (this._pathFollower) {
+            this._pathFollower.x = x;
+            this._pathFollower.y = y;
+        }
         this.path = [new Phaser.Math.Vector2(x, y)];
         this.pathSegLens = [];
         this.totalPathLen = 0;
@@ -561,7 +596,9 @@ export class Snake {
 
     _sampleHeadToPath() {
         if (!this.head.active) return;
-        const hp = new Phaser.Math.Vector2(this.head.x, this.head.y);
+        // Sample the SMOOTHED follower, not the raw head — the raw head
+        // carries reconciliation micro-corrections that the body must not see.
+        const hp = new Phaser.Math.Vector2(this._pathFollower.x, this._pathFollower.y);
         const last = this.path[0];
         if (!last) {
             this.path.unshift(hp.clone());

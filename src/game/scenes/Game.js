@@ -803,11 +803,19 @@ export class Game extends Phaser.Scene {
                     targetAngleRad    = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
                 }
 
-                // Ağ gönderimi hâlâ derece tabanlı 0-250 sıkıştırmasını kullanıyor.
-                this.networkManager.updateAndSendInput(Phaser.Math.RadToDeg(targetAngleRad), isBoosting, delta);
+                // ── Determinizm: açıyı ÖNCE ağ formatına (0-250) kuantala, sonra
+                // hem ağa hem de LOKAL TAHMİNE aynı kuantalanmış değeri ver.
+                // Eski akış tahmine ham pointer açısını veriyordu; sunucu ise
+                // 1.44°'lik adımları görüyordu → iki simülasyon kalıcı olarak
+                // ~0.7°'ye kadar farklı yönlere gidiyor ve düşük ping'de bile
+                // sürekli mikro-düzeltme (micro-lag hissi) üretiyordu.
+                const wireAngle = NetworkManager.quantizeAngleDeg(Phaser.Math.RadToDeg(targetAngleRad));
+                const predictedAngleRad = Phaser.Math.DegToRad(wireAngle * 1.44);
 
-                // İstemci tarafı tahminleme.
-                mySnake.updateFromInput(targetAngleRad, isBoosting, delta, this.networkManager.nextSequenceId);
+                this.networkManager.updateAndSendInput(wireAngle, isBoosting, delta);
+
+                // İstemci tarafı tahminleme — sunucunun göreceği açıyla birebir aynı.
+                mySnake.updateFromInput(predictedAngleRad, isBoosting, delta, this.networkManager.nextSequenceId);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 // baseZoom: ekran boyutuna göre belirlenen taban zoom (bkz. computeBaseZoom)
