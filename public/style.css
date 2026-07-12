@@ -140,9 +140,11 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding-bottom: 10vh;
+    width: 100%;
+    padding: 0 20px 10vh; /* side padding keeps card/logo off the edges */
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;   /* never allow horizontal scroll */
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
@@ -156,6 +158,8 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    width: 100%;
+    max-width: 100%;
     z-index: 1;
 }
 
@@ -169,8 +173,11 @@ body {
 }
 
 .brand-logo-ring {
-    width: 176px;
-    height: 176px;
+    /* Fluid: scales with viewport, never larger than 176px, never overflows */
+    width: clamp(96px, 38vw, 176px);
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    height: auto;
     border-radius: 50%;
     overflow: hidden;
     border: 8px solid var(--menu-surface-highest);
@@ -188,7 +195,8 @@ body {
 
 .brand-title {
     font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 2.6rem;
+    /* Fluid type: shrinks with viewport so the nowrap title always fits */
+    font-size: clamp(1.4rem, 6.5vw, 2.6rem);
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--menu-accent);
@@ -196,8 +204,9 @@ body {
     background: var(--menu-surface-high);
     border-top: 2px solid var(--menu-bright);
     border-radius: 24px;
-    padding: 16px 40px;
+    padding: 14px clamp(20px, 5vw, 40px);
     margin: 0;
+    max-width: 100%;
     box-shadow: 0 8px 20px rgba(26, 15, 46, 0.5);
     white-space: nowrap;
     z-index: 3;
@@ -1816,6 +1825,80 @@ input:checked + .settings-slider:before {
     .settings-panel {
         width: calc(100vw - 48px);
         right: -8px;
+    }
+}
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE — Mobile portrait / narrow viewports
+   (tablets & phones held vertically, ≤768px wide)
+   ═══════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    .top-bar {
+        padding: 16px 20px;
+    }
+
+    .icon-btn {
+        width: 42px;
+        height: 42px;
+    }
+
+    .main-menu-content {
+        padding: 0 16px 6vh;
+    }
+
+    .login-card {
+        max-width: min(400px, 100%);
+        gap: 14px;
+        padding: 20px 18px;
+    }
+
+    #nickname-input {
+        padding: 13px 44px;
+        font-size: 1rem;
+    }
+
+    .play-btn {
+        padding: 14px 24px;
+        font-size: 1.4rem;
+    }
+
+    /* Footer: stack vertically and center on narrow screens */
+    .menu-footer {
+        flex-direction: column;
+        justify-content: center;
+        text-align: center;
+        gap: 8px;
+        padding: 12px 16px;
+    }
+
+    .menu-footer-brand {
+        font-size: 1.1rem;
+    }
+}
+
+/* Very small phones (≤400px wide) */
+@media (max-width: 400px) {
+    .brand-logo-ring {
+        border-width: 5px;
+        margin-bottom: -24px;
+    }
+
+    .login-card {
+        margin-top: 26px;
+        padding: 18px 14px;
+        border-radius: 22px;
+    }
+
+    .play-btn {
+        font-size: 1.25rem;
+    }
+
+    .servers-btn {
+        font-size: 0.95rem;
+    }
+
+    .menu-footer-links {
+        gap: 10px 14px;
     }
 }
 
