@@ -984,9 +984,25 @@ export class Game extends Phaser.Scene {
         }
     }
 
+    // Responsive minimap footprint — single source of truth, also consumed by
+    // MobileControls to keep the boost button clear of the minimap corner.
+    // Mobile (short dimension < 720px): ~24% of the short dimension, 88–120px.
+    // Desktop: the original 160px.
+    minimapMetrics() {
+        const w = this.cameras.main.width;
+        const h = this.cameras.main.height;
+        const minDim = Math.min(w, h);
+        if (minDim < 720) {
+            return {
+                size: Math.round(Phaser.Math.Clamp(minDim * 0.24, 88, 120)),
+                padding: 14
+            };
+        }
+        return { size: 160, padding: 24 };
+    }
+
     drawMinimap(mySnake) {
-        const size = 160;
-        const padding = 24;
+        const { size, padding } = this.minimapMetrics();
         const cx = this.cameras.main.width - size / 2 - padding;
         const cy = this.cameras.main.height - size / 2 - padding;
 

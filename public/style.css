@@ -140,6 +140,9 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    /* "safe" prevents the top of the content being clipped when it's taller
+       than the viewport (flex centering + overflow bug) */
+    justify-content: safe center;
     width: 100%;
     padding: 0 20px 10vh; /* side padding keeps card/logo off the edges */
     min-height: 0;
@@ -1916,28 +1919,44 @@ input:checked + .settings-slider:before {
         height: 36px;
     }
 
+    /* Landscape: put logo and login card SIDE BY SIDE — the vertical stack
+       was taller than the short viewport and flex-centering clipped the logo.
+       A row layout uses the abundant width instead, so nothing gets cut. */
     .main-menu-content {
-        padding-bottom: 0;
+        flex-direction: row;
+        align-items: center;
         justify-content: center;
+        justify-content: safe center;
+        gap: 28px;
+        padding: 0 16px;
+    }
+
+    .brand {
+        width: auto;
+        flex-shrink: 0;
+    }
+
+    /* Disable the ±10px float so the logo can't bob out of a tight viewport */
+    .float-anim {
+        animation: none;
     }
 
     .brand-logo-ring {
-        width: 84px;
-        height: 84px;
+        width: 96px;
         border-width: 4px;
         margin-bottom: -18px;
     }
 
     .brand-title {
-        font-size: 1.5rem;
-        padding: 8px 24px;
+        font-size: clamp(1.1rem, 3.2vw, 1.5rem);
+        padding: 8px 20px;
         border-radius: 14px;
     }
 
     .login-card {
         gap: 10px;
-        max-width: 340px;
-        margin-top: 20px;
+        max-width: min(340px, 48vw);
+        margin-top: 0;
         padding: 16px;
         border-radius: 20px;
     }
@@ -2208,4 +2227,239 @@ input:checked + .settings-slider:before {
 }
 
 /* Minimap: Phaser tarafında çizilir (Game.js drawMinimap) — DOM elemanı yok. */
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE — In-game HUD on mobile
+   (portrait phones OR short landscape viewports)
+   ═══════════════════════════════════════════════ */
+@media (max-width: 768px), (max-height: 500px) {
+    .game-hud {
+        padding: 10px 12px;
+    }
+
+    .hud-top-row {
+        gap: 10px;
+    }
+
+    /* Stats pill: smaller type, tighter spacing */
+    .hud-stats-panel {
+        gap: 12px;
+        padding: 5px 12px;
+        font-size: 10px;
+        line-height: 14px;
+    }
+
+    /* Score pod: was blocking the view — roughly half size */
+    .hud-score-pod {
+        gap: 8px;
+        padding: 5px 10px 5px 5px;
+        border-radius: 12px;
+    }
+
+    .score-icon-wrapper {
+        width: 24px;
+        height: 24px;
+    }
+
+    .score-icon {
+        font-size: 16px;
+    }
+
+    .score-value {
+        font-size: 20px;
+        line-height: 24px;
+    }
+
+    /* Leaderboard: subtle but readable */
+    .hud-leaderboard-pod {
+        width: 168px;
+        padding: 10px 12px;
+        gap: 4px;
+        border-radius: 12px;
+    }
+
+    .leaderboard-header {
+        margin-bottom: 2px;
+    }
+
+    .leaderboard-title {
+        font-size: 12px;
+        line-height: 16px;
+        letter-spacing: 1px;
+    }
+
+    .leaderboard-icon {
+        font-size: 14px;
+    }
+
+    .leaderboard-info {
+        font-size: 10px;
+        line-height: 14px;
+        margin-bottom: 2px;
+    }
+
+    .leaderboard-entries {
+        gap: 4px;
+    }
+
+    .leaderboard-entry {
+        padding: 4px 6px;
+        font-size: 10px;
+        line-height: 14px;
+    }
+
+    .leaderboard-entry.rank-you {
+        padding-top: 8px;
+        margin-top: 4px;
+    }
+}
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE — Game Over & Connecting overlays
+   Overlays must NEVER clip: switch from rigid centering to
+   scrollable + margin:auto (keeps centered when it fits,
+   scrolls when it doesn't), and scale inner elements down.
+   ═══════════════════════════════════════════════ */
+@media (max-width: 768px), (max-height: 640px) {
+    /* ── Game Over ── */
+    .gameover-overlay {
+        padding: 16px;
+        align-items: flex-start;   /* centering handled by margin:auto below */
+        overflow-y: auto;
+    }
+
+    .gameover-cluster {
+        margin: auto;              /* centers when short, scrolls when tall */
+        max-width: 420px;
+    }
+
+    .gameover-mascot-wrap {
+        margin-bottom: -40px;
+    }
+
+    .gameover-mascot-ring {
+        width: 96px;
+        height: 96px;
+        padding: 5px;
+        box-shadow: 0 5px 0 0 #374e00;
+    }
+
+    .gameover-star-spin .material-symbols-outlined { font-size: 24px; }
+    .gameover-star-pulse .material-symbols-outlined { font-size: 20px; }
+
+    .gameover-panel {
+        padding: 52px 20px 24px;
+        border-width: 4px;
+        border-radius: 1.5rem;
+    }
+
+    .gameover-title {
+        font-size: 30px;
+        line-height: 36px;
+        margin-bottom: 16px;
+    }
+
+    .gameover-stats-grid {
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+    .gameover-stat {
+        padding: 10px;
+        border-radius: 1.25rem;
+    }
+
+    .gameover-stat-score {
+        padding: 14px;
+    }
+
+    .gameover-score-value {
+        font-size: 40px;
+    }
+
+    .gameover-rank-value,
+    .gameover-food-value {
+        font-size: 20px;
+        line-height: 26px;
+    }
+
+    .gameover-actions {
+        gap: 10px;
+    }
+
+    .gameover-btn-primary {
+        font-size: 20px;
+        line-height: 26px;
+        padding: 12px 20px;
+        border-radius: 1.25rem;
+    }
+
+    .gameover-btn-secondary {
+        font-size: 15px;
+        line-height: 20px;
+        padding: 10px 20px;
+        border-radius: 1.25rem;
+    }
+
+    .gameover-links {
+        margin-top: 16px;
+        gap: 16px;
+    }
+
+    /* ── Connecting / "Waiting for Server..." ── */
+    .connecting-overlay {
+        padding: 16px;
+        align-items: flex-start;
+        overflow-y: auto;
+    }
+
+    .connecting-card {
+        margin: auto;
+        max-width: 360px;
+        gap: 18px;
+        padding: 24px 20px;
+    }
+
+    .egg-loader-container {
+        width: 64px;
+        height: 64px;
+    }
+
+    .egg-loader {
+        width: 48px;
+        height: 48px;
+    }
+
+    /* Re-align face features to the smaller 48px egg */
+    .egg-eye { width: 6px; height: 6px; }
+    .egg-eye-left  { top: 15px; left: 12px; }
+    .egg-eye-right { top: 15px; right: 12px; }
+    .egg-blush-left  { top: 21px; left: 4px; }
+    .egg-blush-right { top: 21px; right: 4px; }
+
+    .connecting-status {
+        gap: 8px;
+    }
+
+    .connecting-title {
+        font-size: 1.15rem;
+    }
+
+    .connecting-info {
+        font-size: 0.65rem;
+        letter-spacing: 1px;
+    }
+
+    .connecting-progress-bar {
+        height: 12px;
+    }
+
+    .connecting-cancel-btn {
+        padding: 10px 20px;
+        font-size: 0.8rem;
+    }
+}
+
+/* Landscape phones with taller-than-768px width still hit the height limit
+   via (max-height: 640px) above — no separate landscape block needed. */
 
