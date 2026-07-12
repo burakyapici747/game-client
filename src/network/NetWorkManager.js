@@ -8,8 +8,10 @@ export class NetworkManager {
         this.connected = false;
 
 
+        // Config-driven sunucu seçimi: kullanıcının menüden seçtiği sunucunun
+        // wsUrl'i (public/config.json) önceliklidir; yoksa env fallback.
         const serverIP = import.meta.env.VITE_SERVER_URL || '127.0.0.1';
-        this.wsUrl = `ws://${serverIP}:8080/ws`;
+        this.wsUrl = window.gameSettings?.serverUrl || `ws://${serverIP}:8080/ws`;
         this.isCurrentlyBoosting = false;
 
         this.lastSentAngleValue = -1;
@@ -19,6 +21,33 @@ export class NetworkManager {
         this.angleSendIntervalMoving = 1000 / 30;
         this.angleSendIntervalStill = 250;
         this.nextSequenceId = 0;
+
+        // ── Ping / RTT heartbeat ─────────────────────────────────────────────
+        // Config-driven aralıkla ping atılır; RTT nonce üzerinden LOKAL monoton
+        // saatle ölçülür (performance.now). Sunucunun echo'ladığı uint64
+        // clientTimestamp'e güvenmiyoruz: protobufjs uint64'ü Long objesi
+        // olarak döndürebilir ve Date.now() farkları saat kaymasına açıktır.
+        const pingCfg = window.gameConfig?.ping ?? {};
+        const calCfg = pingCfg.calibration ?? {};
+        this.pingIntervalMs = options.pingIntervalMs ?? pingCfg.heartbeatIntervalMs ?? 2500;
+        this.pingTimer = null;
+        this.pingNonce = 0;
+        this.pendingPings = new Map();   // nonce -> performance.now() @ send
+        this.pingEmaMs = null;           // yumuşatılmış RTT (EMA)
+
+        // ── Kalibrasyon (ilk ping spike düzeltmesi) ──────────────────────────
+        // İlk pong, bağlantı ısınması yüzünden şişkin ölçülür (~200ms görünüp
+        // ~60ms'e oturuyordu): TCP slow start + WS upgrade artçıları, sunucunun
+        // handshake sırasında yolladığı büyük StartInformation/food payload'ının
+        // arkasında kuyruklanma ve JIT ısınması. Çözüm: ilk discardSamples örnek
+        // tamamen atılır, UI'ya minSamples örnek ORTALANANA kadar değer basılmaz;
+        // kalibrasyon örnekleri hızlandırılmış aralıkla (intervalMs) toplanır ki
+        // gösterge saniyeler içinde doğru değerle açılsın.
+        this.pingCalibDiscard = calCfg.discardSamples ?? 1;
+        this.pingCalibMinSamples = calCfg.minSamples ?? 3;
+        this.pingCalibIntervalMs = calCfg.intervalMs ?? 500;
+        this.pingSamplesSeen = 0;
+        this.pingCalibrated = false;
     }
 
     canSend() {
@@ -40,7 +69,7 @@ export class NetworkManager {
             // Nickname bilgisini sunucuya gonder
             const nickname = window.gameSettings?.nickname || '';
             this.sendJoinRequest(nickname);
-            this.sendPing();
+            this._startPingLoop();
         };
 
         this.socket.onmessage = (event) => {
@@ -57,6 +86,7 @@ export class NetworkManager {
         this.socket.onclose = () => {
             console.log('Sunucu bağlantısı kapandı.');
             this.connected = false;
+            this._stopPingLoop();
             this.scene.events.emit('disconnected');
         };
 
@@ -122,13 +152,7 @@ export class NetworkManager {
                 this.scene.events.emit('remove_entity', envelope.removeEntity || envelope.remove_entity);
                 break;
             case 'pong':
-                if (envelope.pong?.clientTimestamp !== undefined) {
-                    const clientTimestamp = Number(envelope.pong.clientTimestamp);
-                    if (Number.isFinite(clientTimestamp) && clientTimestamp > 0) {
-                        const latency = Date.now() - clientTimestamp;
-                        console.log(`Ping: ${latency}ms`);
-                    }
-                }
+                this._handlePong(envelope.pong);
                 break;
             case 'death_notification':
             case 'deathNotification':
@@ -143,15 +167,95 @@ export class NetworkManager {
         console.warn('SetUsername mesajı newproto şemasında yok. Bu istek atlandı.');
     }
 
-    sendPing(nonce = 0) {
+    // Kasıtlı kapanış (ör. Play Again → scene.restart): soketi sessizce kapat.
+    // onclose null'lanır ki yeni tura sahte bir 'disconnected' event'i sızmasın.
+    disconnect() {
+        this._stopPingLoop();
+        this.connected = false;
+        if (this.socket) {
+            this.socket.onopen = null;
+            this.socket.onmessage = null;
+            this.socket.onclose = null;
+            this.socket.onerror = null;
+            try { this.socket.close(); } catch (_) { /* zaten kapalı */ }
+            this.socket = null;
+        }
+    }
+
+    _startPingLoop() {
+        this._stopPingLoop();
+        this.pingSamplesSeen = 0;
+        this.pingCalibrated = false;
+        this.pingEmaMs = null;
+        this.sendPing(); // ilk örneği bekletmeden al
+        // Kalibrasyon fazı: hızlandırılmış aralık. _handlePong yeterli örnek
+        // toplandığında _switchToSteadyPingInterval() ile normale döndürür.
+        this.pingTimer = setInterval(() => this.sendPing(), this.pingCalibIntervalMs);
+    }
+
+    _switchToSteadyPingInterval() {
+        if (this.pingTimer !== null) clearInterval(this.pingTimer);
+        this.pingTimer = setInterval(() => this.sendPing(), this.pingIntervalMs);
+    }
+
+    _stopPingLoop() {
+        if (this.pingTimer !== null) {
+            clearInterval(this.pingTimer);
+            this.pingTimer = null;
+        }
+        this.pendingPings.clear();
+    }
+
+    sendPing() {
         if (!this.canSend()) return;
+
+        // Kaybolan pong'ların birikmesini engelle (paket kaybı / sekme arka planı)
+        if (this.pendingPings.size > 8) this.pendingPings.clear();
+
+        this.pingNonce = (this.pingNonce + 1) >>> 0;
+        if (this.pingNonce === 0) this.pingNonce = 1;
+        const nonce = this.pingNonce;
+        this.pendingPings.set(nonce, performance.now());
+
         const pingMsg = client.Ping.create({
-            clientTimestamp: Date.now(),
-            nonce: Math.floor(Math.random() * 1000000)
+            clientTimestamp: Date.now(), // sunucu tarafı görünürlük için; RTT hesabında kullanılmıyor
+            nonce
         });
         const envelope = client.ClientEnvelope.create({ ping: pingMsg });
         const buffer = client.ClientEnvelope.encode(envelope).finish();
         this.socket.send(buffer);
+    }
+
+    _handlePong(pong) {
+        if (!pong) return;
+        const nonce = Number(pong.nonce);
+        const sentAt = this.pendingPings.get(nonce);
+        if (sentAt === undefined) return; // bilinmeyen/eskimiş pong
+
+        this.pendingPings.delete(nonce);
+        const rtt = Math.max(0, performance.now() - sentAt);
+
+        this.pingSamplesSeen++;
+
+        // Kalibrasyon: ilk örnek(ler) bağlantı ısınması artefaktıdır — EMA'yı
+        // kirletmesin diye tamamen atılır (bkz. constructor'daki açıklama).
+        if (this.pingSamplesSeen <= this.pingCalibDiscard) return;
+
+        // EMA (0.3): tekil spike'lar UI'da zıplama yaratmasın, yine de
+        // gerçek değişimlere birkaç örnek içinde yakınsasın.
+        this.pingEmaMs = this.pingEmaMs === null
+            ? rtt
+            : this.pingEmaMs * 0.7 + rtt * 0.3;
+
+        // UI'ya ancak minSamples doğru örnek ortalandıktan sonra yayınla.
+        if (this.pingSamplesSeen < this.pingCalibDiscard + this.pingCalibMinSamples) return;
+
+        if (!this.pingCalibrated) {
+            this.pingCalibrated = true;
+            this._switchToSteadyPingInterval();
+        }
+
+        this.scene.events.emit('ping_update', Math.round(this.pingEmaMs));
     }
     
     updateAndSendInput(targetAngle, isBoosting, delta) {

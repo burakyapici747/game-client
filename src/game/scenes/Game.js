@@ -2,6 +2,21 @@ import Phaser from 'phaser';
 import { Snake } from './Snake';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
+import {
+    showConnectingOverlay,
+    updateConnectingPing,
+    hideConnectingOverlay,
+    showGameOverOverlay,
+    hideAllGameOverlays,
+    showGameHUD,
+    hideGameHUD,
+    updateHUDStats,
+    updateHUDScore,
+    updateHUDLeaderboard,
+} from './../../ui/overlays.js';
+
+// Note: updateHUDLeaderboard is called with empty array [] to trigger
+// the default mockup data initialization in overlays.js
 
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
@@ -25,12 +40,48 @@ export class Game extends Phaser.Scene {
         this.grid = null;
         this.minimapGraphics = null;
         this.worldRadius = 0;
+
+        // Client-side score tracking: her yenen yem grubu +10 puan
+        this.playerScore = 0;
+        this.foodsEaten = 0;
     }
 
     create() {
+        // scene.restart() (Play Again) constructor'ı YENİDEN ÇALIŞTIRMAZ —
+        // önceki tura ait tüm state burada sıfırlanmalı, yoksa eski (destroy
+        // edilmiş) GameObject referansları yeni tura sızar.
+        this.snakes = new Map();
+        this.foods = new Map();
+        this.eatingFoods = new Map();
+        this.predictedEatenFoodIds = new Set();
+        this.pendingSegmentMutations = new Map();
+        this.myId = null;
+        this.foodBlitter = null;
+        this.foodBlitterLarge = null;
+        this.grid = null;
+        this.boundaryGraphics = null;
+        this.worldRadius = 0;
+
+        this.playerScore = 0;
+        this.foodsEaten = 0;
+
         this.gameStarted = false;
         this.initialDataFlags = { startInfo: false, entities: false };
         this.networkManager = new NetworkManager(this);
+        // Restart/kapanışta eski soketi sessizce kapat (yeni tura 'disconnected' sızmasın)
+        this.events.once('shutdown', () => this.networkManager?.disconnect());
+
+        // ── Tab Visibility (sekme değişimi) resync ──────────────────────────
+        // Sekme gizliyken rAF durur ama sunucu simülasyona devam eder. Geri
+        // dönüşte dev delta + yüzlerce piksellik fark, kademeli reconciliation
+        // düzeltmeleriyle 'sarsılma/titreme' olarak görünüyordu. Görünür olur
+        // olmaz otoriter duruma TEK seferde hizalanıyoruz.
+        this._onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') this._resyncAfterTabReturn();
+        };
+        document.addEventListener('visibilitychange', this._onVisibilityChange);
+        this.events.once('shutdown', () =>
+            document.removeEventListener('visibilitychange', this._onVisibilityChange));
 
         this.events.on('start_game', this.onStartGame, this);
         this.events.on('self_position', this.onSelfPosition, this);
@@ -43,6 +94,17 @@ export class Game extends Phaser.Scene {
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
+
+        // NetworkManager'ın pong başına yaydığı yumuşatılmış (EMA) RTT değeri.
+        // Connecting overlay'i açıksa oradaki PING metriği de canlı güncellenir.
+        this.currentPingMs = null;
+        this.events.on('ping_update', (ms) => {
+            this.currentPingMs = ms;
+            updateConnectingPing(ms);
+        }, this);
+
+        // Restart/kapanışta açık kalan HTML overlay'leri temizle.
+        this.events.once('shutdown', () => hideAllGameOverlays());
 
         // Physics step SONRASI, render ÖNCESİ: segmentler ve gözler head'in gerçek
         // fiziksel pozisyonuyla senkronize edilir. update() içinde physics henüz
@@ -103,16 +165,23 @@ export class Game extends Phaser.Scene {
             this.mobileControls = null;
         });
 
-        this.fpsText = this.add.text(4, 4, 'FPS: 0', {
-            fontSize: '12px', fontFamily: 'monospace', color: '#ffffff',
-            backgroundColor: '#00000088', padding: { left: 4, right: 4, top: 2, bottom: 2 }
-        }).setScrollFactor(0).setDepth(1000);
+        // Legacy FPS text removed — HUD now uses HTML/CSS overlay
+        // this.fpsText = this.add.text(4, 4, 'FPS: 0', { ... }).setScrollFactor(0).setDepth(1000);
+        this.fpsText = null;
 
         this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(2000);
 
-        this.registerHUD(this.fpsText, this.minimapGraphics);
+        this.registerHUD(this.minimapGraphics);
 
-        this.createLoadingUI();
+        // Initialize default leaderboard
+        updateHUDLeaderboard([]);
+
+        // Bağlantı ekranı artık Phaser içinde çizilmiyor — HTML/CSS overlay
+        // (bkz. index.html #connecting-overlay + src/ui/overlays.js).
+        showConnectingOverlay(
+            window.gameSettings?.serverName,
+            window.gameSettings?.menuPingMs ?? null
+        );
     }
 
     // ── Camera routing helpers ──────────────────────────────────────────────
@@ -168,58 +237,12 @@ export class Game extends Phaser.Scene {
 
         this.mobileControls?.resize(width, height);
 
-        if (this.loadingContainer) {
-            const cx = width / 2;
-            const cy = height / 2;
-            const [bg, text, spinner] = this.loadingContainer.list;
-            if (bg) { bg.setPosition(cx, cy); bg.setSize(width, height); }
-            if (text) text.setPosition(cx, cy - 30);
-            if (spinner) { spinner.x = cx; spinner.y = cy + 30; }
-        }
+        // (Connecting/Game Over ekranları HTML/CSS overlay — CSS kendisi
+        // responsive olduğundan burada yeniden konumlandırma gerekmiyor.)
     }
 
-    createLoadingUI() {
-        const cx = this.cameras.main.width / 2;
-        const cy = this.cameras.main.height / 2;
-
-        this.loadingContainer = this.add.container(0, 0).setScrollFactor(0).setDepth(9999);
-        this.registerHUD(this.loadingContainer);
-
-        // Arkaplan
-        const bg = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.85);
-        this.loadingContainer.add(bg);
-
-        // Yazi
-        const text = this.add.text(cx, cy - 30, 'Waiting For Server...', {
-            fontSize: '24px',
-            fontFamily: 'Inter, sans-serif',
-            color: '#FFFFFF',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        this.loadingContainer.add(text);
-
-        // Yukleniyor animasyonu
-        const spinner = this.add.graphics();
-        spinner.x = cx;
-        spinner.y = cy + 30;
-        this.loadingContainer.add(spinner);
-
-        let angle = 0;
-        this.tweens.add({
-            targets: { value: 360 },
-            value: 360,
-            duration: 1000,
-            repeat: -1,
-            onUpdate: (tween) => {
-                angle = Phaser.Math.DegToRad(tween.getValue());
-                spinner.clear();
-                spinner.lineStyle(4, 0x00ff00, 1);
-                spinner.beginPath();
-                spinner.arc(0, 0, 20, angle, angle + Math.PI * 1.5, false);
-                spinner.strokePath();
-            }
-        });
-    }
+    // (createLoadingUI kaldırıldı — bağlantı ekranı artık HTML/CSS overlay,
+    // bkz. index.html #connecting-overlay ve src/ui/overlays.js.)
 
     onStartGame(startInfo) {
         console.log("onStartGame Alındı:", startInfo);
@@ -276,13 +299,9 @@ export class Game extends Phaser.Scene {
     }
 
     hideLoader() {
-        if (!this.loadingContainer) {
-            return;
-        }
-
-        this.loadingContainer.setAlpha(0);
-        this.loadingContainer.destroy();
-        this.loadingContainer = null;
+        hideConnectingOverlay();
+        showGameHUD();
+        updateHUDScore(this.playerScore); // restart sonrası HUD 0'dan başlasın
     }
 
     onEntityCollection(entityCollection) {
@@ -655,9 +674,18 @@ export class Game extends Phaser.Scene {
         // 300 px: 45 px yeme yarıçapı + ~200 ms gecikme × 225 px/s ≈ 90 px + güvenlik payı
         if (closestSnake && minDistance < 300 * closestSnake.scale) {
             this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake: closestSnake });
+            // Tahmin edilemeden sunucu onayıyla gelen oyuncu yemesi de puan kazandırır
+            if (closestSnake.isPlayerControlled) this.addPlayerScoreForFood();
         } else {
             bobsArray.forEach(bob => bob.destroy());
         }
+    }
+
+    // Her yenen yem grubu +10 puan; HUD anında güncellenir.
+    addPlayerScoreForFood() {
+        this.playerScore += 10;
+        this.foodsEaten += 1;
+        updateHUDScore(this.playerScore);
     }
 
     clearFoods() {
@@ -689,52 +717,43 @@ export class Game extends Phaser.Scene {
     }
 
 
-    onDeathNotification(data) {
-        const score = data?.score ?? 0;
-        this.onGameOver({ score: score, killedBy: 'Çarpışma' });
+    onDeathNotification() {
+        this.onGameOver();
     }
 
-    onGameOver(gameOverInfo) {
+    onGameOver() {
         if (!this.gameStarted) return;
-        console.log(`Oyun Bitti! Skor: ${gameOverInfo.score}`);
+        console.log(`Oyun Bitti! Skor: ${this.playerScore}`);
         this.gameStarted = false;
-        
-        const cx = this.cameras.main.width / 2;
-        const cy = this.cameras.main.height / 2;
 
-        // Karartma efekti
-        const overlay = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.7)
-            .setOrigin(0.5).setScrollFactor(0).setDepth(10000);
+        // ── Post-death freeze ────────────────────────────────────────────────
+        // gameStarted=false update()'i durdurur ama arcade body son hızını
+        // korur: kafa (ve onu takip eden kamera) ölümden sonra kaymaya devam
+        // ediyordu. Ölüm anında fizik tahmini ve kamera takibi anında donar.
+        const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+        if (mySnake) {
+            mySnake.alive = false;
+            mySnake.getHead()?.body?.stop();
+        }
+        this.cameras.main.stopFollow();
 
-        // Modern Game Over Paneli
-        const panel = this.add.graphics().setScrollFactor(0).setDepth(10001);
-        panel.fillStyle(0x1a1a1a, 0.95);
-        panel.fillRoundedRect(cx - 200, cy - 150, 400, 300, 20);
-        panel.lineStyle(2, 0x00ff00, 1);
-        panel.strokeRoundedRect(cx - 200, cy - 150, 400, 300, 20);
-
-        const titleText = this.add.text(cx, cy - 100, 'GAME OVER', {
-            fontSize: '48px', fontFamily: 'Outfit, sans-serif', color: '#ff3333', fontStyle: 'bold'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
-
-        const scoreLabel = this.add.text(cx, cy - 10, `Final Score`, {
-            fontSize: '18px', fontFamily: 'Inter, sans-serif', color: '#aaaaaa'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
-
-        const scoreText = this.add.text(cx, cy + 30, `${gameOverInfo.score}`, {
-            fontSize: '64px', fontFamily: 'Outfit, sans-serif', color: '#00ff00', fontStyle: 'bold'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
-
-        const retryText = this.add.text(cx, cy + 110, 'Press F5 to Play Again', {
-            fontSize: '16px', fontFamily: 'Inter, sans-serif', color: '#ffffff'
-        }).setOrigin(0.5).setScrollFactor(0).setDepth(10002);
-
-        this.registerHUD(overlay, panel, titleText, scoreLabel, scoreText, retryText);
+        // ── Game Over: HTML/CSS overlay (unified UI standard) ────────────────
+        // Phaser text/graphics paneli kaldırıldı; ekran artık canvas üzerine
+        // konumlanan DOM katmanı (index.html #gameover-overlay). Play Again →
+        // scene.restart(): shutdown eski soketi sessizce kapatır, create()
+        // state'i sıfırlar, yeni bağlantı sunucuda temiz respawn tetikler.
+        // Skor client tarafında takip ediliyor (her yem grubu +10).
+        hideGameHUD();
+        showGameOverOverlay(
+            { score: this.playerScore, foodEaten: this.foodsEaten },
+            () => this.scene.restart()
+        );
     }
 
     onDisconnected() {
         console.log("Bağlantı koptu!");
         this.gameStarted = false;
+        hideGameHUD();
         this.clearFoods();
         if (this.boundaryGraphics) {
             this.boundaryGraphics.destroy();
@@ -903,6 +922,7 @@ export class Game extends Phaser.Scene {
             this.predictedEatenFoodIds.add(foodId);
             this.foods.delete(foodId);
             this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake });
+            this.addPlayerScoreForFood(); // predictedEats her zaman oyuncunun yılanıdır
         }
 
         // Yenen yemlerin yılan kafasına uçarak yok olması animasyonu (Deferred food eat/magnet animation)
@@ -947,29 +967,52 @@ export class Game extends Phaser.Scene {
 
         const fps = this.game.loop.actualFps;
         let coordsText = "";
+        let coordX = 0, coordY = 0;
         if (mySnake && mySnake.getHead()) {
-           coordsText = ` | Koord: ${Math.round(mySnake.getHead().x)}, ${Math.round(mySnake.getHead().y)}`;
+            coordX = Math.round(mySnake.getHead().x);
+            coordY = Math.round(mySnake.getHead().y);
+            coordsText = ` | Koord: ${coordX}, ${coordY}`;
         }
-        this.fpsText.setText(`FPS: ${Math.round(fps)} | Yılanlar: ${this.snakes.size} | Yiyecekler: ${this.foods.size}${coordsText}`);
-        
+        // Update HTML HUD with real-time stats (replaced legacy fpsText)
+        // Skor burada DEĞİL, yem yendiği anda güncellenir (addPlayerScoreForFood).
+        if (this.gameStarted) {
+            updateHUDStats(Math.round(fps), this.currentPingMs, coordX, coordY);
+        }
+
         if (this.minimapGraphics) {
             this.drawMinimap(mySnake);
         }
     }
 
+    // Responsive minimap footprint — single source of truth, also consumed by
+    // MobileControls to keep the boost button clear of the minimap corner.
+    // Mobile (short dimension < 720px): ~24% of the short dimension, 88–120px.
+    // Desktop: the original 160px.
+    minimapMetrics() {
+        const w = this.cameras.main.width;
+        const h = this.cameras.main.height;
+        const minDim = Math.min(w, h);
+        if (minDim < 720) {
+            return {
+                size: Math.round(Phaser.Math.Clamp(minDim * 0.24, 88, 120)),
+                padding: 14
+            };
+        }
+        return { size: 160, padding: 24 };
+    }
+
     drawMinimap(mySnake) {
-        const size = 150;
-        const padding = 20;
+        const { size, padding } = this.minimapMetrics();
         const cx = this.cameras.main.width - size / 2 - padding;
         const cy = this.cameras.main.height - size / 2 - padding;
 
         const g = this.minimapGraphics;
         g.clear();
 
-        // Minimap border and background
-        g.fillStyle(0x0a0a14, 0.7);
+        // Minimap border and background (matching reference design colors)
+        g.fillStyle(0x150136, 1); // surface-container-lowest
         g.fillCircle(cx, cy, size / 2);
-        g.lineStyle(3, 0x00ffcc, 0.5);
+        g.lineStyle(4, 0x322053, 1); // surface-container-high
         g.strokeCircle(cx, cy, size / 2);
 
         if (!this.worldRadius) return;
@@ -978,17 +1021,17 @@ export class Game extends Phaser.Scene {
         const mapScale = (size / 2) / this.worldRadius;
 
         // Draw foods as tiny dots
-        g.fillStyle(0x00ffcc, 0.4); 
+        g.fillStyle(0xc2caad, 0.5); // on-surface-variant
         for (const bobs of this.foods.values()) {
             const bob = Array.isArray(bobs) ? bobs[0] : bobs;
             if (!bob) continue;
-            
+
             const wx = bob.x - this.worldRadius;
             const wy = bob.y - this.worldRadius;
-            
+
             const mx = cx + wx * mapScale;
             const my = cy + wy * mapScale;
-            
+
             // Distances check to keep them inside the minimap circle
             const distSq = wx * wx + wy * wy;
             if (distSq <= this.worldRadius * this.worldRadius) {
@@ -1001,13 +1044,13 @@ export class Game extends Phaser.Scene {
             const head = mySnake.getHead();
             const wx = head.x - this.worldRadius;
             const wy = head.y - this.worldRadius;
-            
+
             const mx = cx + wx * mapScale;
             const my = cy + wy * mapScale;
 
             const distSq = wx * wx + wy * wy;
             if (distSq <= this.worldRadius * this.worldRadius) {
-                g.fillStyle(0xff00cc, 1.0);
+                g.fillStyle(0xb7f700, 1.0); // primary-container
                 g.fillCircle(mx, my, 3);
             }
         }
@@ -1025,6 +1068,28 @@ export class Game extends Phaser.Scene {
                 .setOrigin(0, 0)
                 .setDepth(-1)
         );
+    }
+
+    // Sekme tekrar görünür olduğunda çağrılır (Page Visibility API).
+    // Gizli geçen sürede sunucu simülasyona devam etti; birikmiş farkı
+    // kademeli düzeltmelerle kapatmak yerine tüm yılanları otoriter duruma
+    // TEK seferde hizala ve bayat animasyon state'ini temizle.
+    _resyncAfterTabReturn() {
+        if (!this.gameStarted) return;
+
+        this.snakes.forEach(snake => snake.hardResync());
+
+        // Yarım kalmış yeme animasyonları bayat koordinatlarda titreşir — bitir.
+        this.eatingFoods.forEach(({ bobs }) => bobs.forEach(bob => bob.destroy()));
+        this.eatingFoods.clear();
+        this.predictedEatenFoodIds.clear();
+
+        // Kamerayı yeni kafa konumuna anında taşı (lerp'le sürüklenmesin).
+        const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+        const head = mySnake?.getHead();
+        if (head?.active) {
+            this.cameras.main.centerOn(head.x, head.y);
+        }
     }
 
     // Physics step tamamlandıktan sonra, render öncesi çağrılır.

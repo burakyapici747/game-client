@@ -8,7 +8,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="stylesheet" href="/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&family=Quicksand:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet">
     <title>TABUMU GAME</title>
 </head>
 
@@ -27,114 +28,347 @@
                             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                         </svg>
                     </button>
-
-                    <!-- Settings Panel (toggled by gear button) -->
-                    <div id="settings-panel" class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-                                <line x1="12" y1="18" x2="12.01" y2="18"></line>
-                            </svg>
-                            Mobile Controls
-                        </div>
-
-                        <div class="mc-row">
-                            <span class="mc-label">Joystick Side</span>
-                            <div class="mc-side-picker">
-                                <button class="mc-side-btn active" data-side="left">
-                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M10 8H4m0 0l3-3M4 8l3 3"/></svg>
-                                    Left
-                                </button>
-                                <button class="mc-side-btn" data-side="right">
-                                    Right
-                                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6 8h6m0 0l-3-3m3 3l-3 3"/></svg>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="mc-row">
-                            <span class="mc-label">Control Size</span>
-                            <div class="mc-size-row">
-                                <span id="mc-scale-display">100%</span>
-                                <input type="range" id="mc-scale-slider" min="70" max="130" value="100" step="5">
-                            </div>
-                        </div>
-
-                        <div class="mc-row">
-                            <span class="mc-label">Opacity</span>
-                            <div class="mc-size-row">
-                                <span id="mc-opacity-display">70%</span>
-                                <input type="range" id="mc-opacity-slider" min="20" max="100" value="70" step="5">
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
             
-            <div class="main-menu-content">
-                <div class="logo-container">
-                    <h1 class="game-logo">TABUMU<span class="highlight"> GAME</span></h1>
-                    <div class="logo-subtitle">Multiplayer Snake Game</div>
+            <main class="main-menu-content">
+                <!-- Logo & Branding -->
+                <div class="brand float-anim">
+                    <div class="brand-logo-ring">
+                        <img src="/assets/logo_image.jpeg" alt="TABUMU GAME mascot logo" />
+                    </div>
+                    <h1 class="brand-title">TABUMU GAME</h1>
                 </div>
-                
-                <div class="play-section">
-                    <div class="input-group">
+
+                <!-- Login Card -->
+                <div class="login-card">
+                    <div class="login-input-wrap">
+                        <svg class="login-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                            <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                            <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                        </svg>
                         <input type="text" id="nickname-input" placeholder="Enter Nickname" maxlength="16" autocomplete="off" />
                     </div>
-                    
-                    <div class="button-group">
-                        <button id="play-btn" class="primary-btn">PLAY NOW</button>
-                        <button id="servers-btn" class="secondary-btn">
-                            <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="22" y1="12" x2="2" y2="12"></line>
-                                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
-                                <line x1="6" y1="16" x2="6.01" y2="16"></line>
-                                <line x1="10" y1="16" x2="10.01" y2="16"></line>
-                            </svg>
-                            Servers
-                        </button>
-                    </div>
 
+                    <button id="play-btn" class="play-btn">
+                        <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"></path>
+                        </svg>
+                        PLAY
+                    </button>
+
+                    <button id="servers-btn" class="servers-btn">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path d="M4 5h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM4 13h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"></path>
+                        </svg>
+                        Servers
+                    </button>
                 </div>
-            </div>
+            </main>
+
+            <!-- Footer -->
+            <footer class="menu-footer">
+                <div class="menu-footer-brand">TABUMU GAME</div>
+                <nav class="menu-footer-links">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Help Center</a>
+                    <a href="#">Community Guidelines</a>
+                </nav>
+                <div class="menu-footer-copy">© 2026 TABUMU GAME. Stay Slithery!</div>
+            </footer>
         </div>
 
         <!-- In-game joystick/boost controls are rendered as native Phaser
              GameObjects (this.add.circle / this.add.zone) by
              src/game/ui/MobileControls.js — no DOM overlay needed here. -->
 
-        <!-- Servers Modal -->
-        <div id="servers-modal" class="modal hidden">
-            <div class="modal-backdrop"></div>
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>Select Server</h2>
-                    <button class="close-btn" id="close-servers-btn">&times;</button>
+        <!-- ══════════════════════════════════════════════════════════════
+             UNIFIED HTML/CSS OVERLAYS (managed by src/ui/overlays.js)
+             Intermediate screens live OVER the canvas, not inside Phaser.
+             ══════════════════════════════════════════════════════════════ -->
+
+        <!-- Connecting Screen -->
+        <div id="connecting-overlay" class="connecting-overlay hidden">
+            <!-- Decorative Background Elements -->
+            <div class="connecting-overlay-blob connecting-overlay-blob-1"></div>
+            <div class="connecting-overlay-blob connecting-overlay-blob-2"></div>
+
+            <div class="connecting-card">
+                <!-- Loading Animation Container (Rolling Egg) -->
+                <div class="egg-loader-container">
+                    <div class="egg-loader-ring"></div>
+                    <div class="egg-loader">
+                        <div class="egg-eye egg-eye-left"></div>
+                        <div class="egg-eye egg-eye-right"></div>
+                        <div class="egg-blush egg-blush-left"></div>
+                        <div class="egg-blush egg-blush-right"></div>
+                    </div>
                 </div>
-                <div class="modal-body">
-                    <ul class="server-list" id="server-list">
-                        <li class="server-item selected" data-server="ws://localhost:8080">
-                            <div class="server-info">
-                                <span class="server-region">Local Server</span>
-                                <span class="server-status active">Online</span>
+
+                <!-- Status Text -->
+                <div class="connecting-status">
+                    <h2 class="connecting-title">Waiting For Server...</h2>
+                    <div class="connecting-info">
+                        <span class="info-label">Server:</span>
+                        <span id="conn-server-name" class="info-value">--</span>
+                        <span class="info-separator">|</span>
+                        <span class="info-label">Ping:</span>
+                        <span id="conn-ping-value" class="info-value">--</span>
+                    </div>
+                </div>
+
+                <!-- Progress Bar with Snake Animation -->
+                <div class="connecting-progress-bar">
+                    <div class="snake-animation">
+                        <div class="snake-segment snake-segment-1"></div>
+                        <div class="snake-segment snake-segment-2"></div>
+                        <div class="snake-segment snake-segment-3"></div>
+                        <div class="snake-segment snake-segment-4"></div>
+                        <div class="snake-head">
+                            <div class="snake-eye snake-eye-1"></div>
+                            <div class="snake-eye snake-eye-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cancel Button -->
+                <button id="conn-cancel-btn" class="connecting-cancel-btn">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path>
+                    </svg>
+                    Cancel Connection
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen (reference: game_over.html) -->
+        <div id="gameover-overlay" class="gameover-overlay hidden">
+            <!-- Animated Background Decor -->
+            <div class="gameover-decor gameover-decor-1"></div>
+            <div class="gameover-decor gameover-decor-2"></div>
+
+            <!-- Game Over Modal Cluster -->
+            <div class="gameover-cluster">
+                <!-- Mascot Section -->
+                <div class="gameover-mascot-wrap gameover-float">
+                    <div class="gameover-mascot-ring">
+                        <img alt="Game Mascot" src="/assets/logo_image.jpeg" />
+                    </div>
+                    <!-- Dizzy stars overlay effect -->
+                    <div class="gameover-star gameover-star-spin">
+                        <span class="material-symbols-outlined">star</span>
+                    </div>
+                    <div class="gameover-star gameover-star-pulse">
+                        <span class="material-symbols-outlined">star</span>
+                    </div>
+                </div>
+
+                <!-- Modal Panel -->
+                <div class="gameover-panel">
+                    <h1 class="gameover-title">GAME OVER</h1>
+
+                    <!-- Stats Bento Grid -->
+                    <div class="gameover-stats-grid">
+                        <div class="gameover-stat gameover-stat-score">
+                            <p class="gameover-stat-label">Final Score</p>
+                            <p id="gameover-score" class="gameover-score-value">0</p>
+                        </div>
+                        <div class="gameover-stat">
+                            <p class="gameover-stat-label">Rank</p>
+                            <p class="gameover-rank-value">#14</p>
+                        </div>
+                        <div class="gameover-stat">
+                            <p class="gameover-stat-label">Food Eaten</p>
+                            <p id="gameover-food-eaten" class="gameover-food-value">0</p>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="gameover-actions">
+                        <button id="gameover-play-again" class="gameover-btn-primary">PLAY AGAIN</button>
+                        <button id="gameover-back-menu" class="gameover-btn-secondary">BACK TO MENU</button>
+                    </div>
+
+                    <div class="gameover-links">
+                        <button class="gameover-link gameover-link-share">
+                            <span class="material-symbols-outlined">share</span>
+                            <span class="gameover-link-label">Share Score</span>
+                        </button>
+                        <button class="gameover-link gameover-link-board">
+                            <span class="material-symbols-outlined">leaderboard</span>
+                            <span class="gameover-link-label">Leaderboard</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Server Selection Modal (reference: server_list.html) -->
+        <div id="servers-modal" class="servers-modal hidden">
+            <div class="servers-modal-backdrop"></div>
+            <div class="servers-card">
+                <header class="servers-card-header">
+                    <h2>Select Server</h2>
+                    <button id="close-servers-btn" class="servers-close-btn" aria-label="Close">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </header>
+
+                <!-- Cards rendered from public/config.json by renderServerList();
+                     ping + latency tier measured live by measureServerPings(). -->
+                <ul id="server-list" class="servers-cards-list" role="listbox"></ul>
+
+                <div class="servers-card-footer">
+                    <button id="confirm-server-btn" class="servers-confirm-btn">Confirm</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game HUD Overlay -->
+        <div id="game-hud" class="game-hud hidden">
+            <!-- Top HUD Row -->
+            <div class="hud-top-row">
+                <!-- Stats Panel -->
+                <div class="hud-stats-panel hud-bubbly-panel">
+                    <div class="stat-item">
+                        <span class="stat-label">FPS:</span>
+                        <span id="hud-fps" class="stat-value">60</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Ping:</span>
+                        <span id="hud-ping" class="stat-value">--ms</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Coord:</span>
+                        <span id="hud-coord" class="stat-value">0, 0</span>
+                    </div>
+                </div>
+
+                <!-- Score Pod -->
+                <div class="hud-score-pod hud-bubbly-panel">
+                    <div class="score-icon-wrapper">
+                        <span class="material-symbols-outlined score-icon">toll</span>
+                    </div>
+                    <div id="hud-score" class="score-value">0</div>
+                </div>
+
+                <!-- Leaderboard Pod -->
+                <div class="hud-leaderboard-pod hud-bubbly-panel">
+                    <div class="leaderboard-header">
+                        <span class="leaderboard-title">LEADERBOARD</span>
+                        <span class="material-symbols-outlined leaderboard-icon">emoji_events</span>
+                    </div>
+                    <div class="leaderboard-info">Players: <span id="hud-players">0</span></div>
+                    <div id="hud-leaderboard-list" class="leaderboard-entries">
+                        <!-- Entries populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Minimap is rendered by Phaser (Game.js drawMinimap) — no DOM element. -->
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="settings-modal hidden">
+            <div class="settings-modal-backdrop"></div>
+            <div class="settings-card">
+                <!-- Header -->
+                <div class="settings-header">
+                    <div class="settings-header-title">
+                        <span class="material-symbols-outlined">tune</span>
+                        <h2>GAME SETTINGS</h2>
+                    </div>
+                    <button id="settings-modal-close-btn" class="settings-close-btn" aria-label="Close">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Scrollable Body -->
+                <div class="settings-body">
+                    <!-- DISPLAY Section -->
+                    <section>
+                        <h3 class="settings-section-title">Display Settings</h3>
+                        <div class="settings-options">
+                            <div class="settings-option">
+                                <div class="settings-option-label">Show FPS</div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="show-fps-toggle" />
+                                    <span class="settings-slider"></span>
+                                </label>
                             </div>
-                            <span class="server-ping">12ms</span>
-                        </li>
-                        <li class="server-item" data-server="wss://eu.example.com">
-                            <div class="server-info">
-                                <span class="server-region">EU Central</span>
-                                <span class="server-status active">Online</span>
+                            <div class="settings-option">
+                                <div class="settings-option-label">Show Ping</div>
+                                <label class="settings-switch">
+                                    <input type="checkbox" id="show-ping-toggle" />
+                                    <span class="settings-slider"></span>
+                                </label>
                             </div>
-                            <span class="server-ping">45ms</span>
-                        </li>
-                        <li class="server-item" data-server="wss://us.example.com">
-                            <div class="server-info">
-                                <span class="server-region">US East</span>
-                                <span class="server-status active">Online</span>
+                        </div>
+                    </section>
+
+                    <!-- AUDIO Section -->
+                    <section>
+                        <h3 class="settings-section-title">Audio Settings</h3>
+                        <div class="settings-options">
+                            <div class="settings-slider-group">
+                                <div class="settings-slider-header">
+                                    <span>Master Volume</span>
+                                    <span id="master-volume-display" class="settings-value">85%</span>
+                                </div>
+                                <input id="master-volume-slider" class="settings-range" type="range" min="0" max="100" value="85" />
                             </div>
-                            <span class="server-ping">120ms</span>
-                        </li>
-                    </ul>
+                            <div class="settings-slider-group">
+                                <div class="settings-slider-header">
+                                    <span>SFX Volume</span>
+                                    <span id="sfx-volume-display" class="settings-value">60%</span>
+                                </div>
+                                <input id="sfx-volume-slider" class="settings-range" type="range" min="0" max="100" value="60" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- MOBILE CONTROLS Section -->
+                    <section>
+                        <h3 class="settings-section-title">Mobile Controls</h3>
+                        <div class="settings-options">
+                            <div class="settings-joystick">
+                                <div class="settings-option-label">Joystick Side</div>
+                                <div class="settings-button-group">
+                                    <button class="settings-group-btn active" data-side="left">Left</button>
+                                    <button class="settings-group-btn" data-side="right">Right</button>
+                                </div>
+                            </div>
+                            <div class="settings-slider-group">
+                                <div class="settings-slider-header">
+                                    <span>Control Size</span>
+                                    <span id="control-size-display" class="settings-value">110%</span>
+                                </div>
+                                <input id="control-size-slider" class="settings-range" type="range" min="50" max="150" value="110" />
+                            </div>
+                            <div class="settings-slider-group">
+                                <div class="settings-slider-header">
+                                    <span>Opacity</span>
+                                    <span id="opacity-display" class="settings-value">75%</span>
+                                </div>
+                                <input id="opacity-slider" class="settings-range" type="range" min="10" max="100" value="75" />
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Footer -->
+                <div class="settings-footer">
+                    <button id="settings-save-btn" class="settings-save-btn">Save Changes</button>
+                    <button id="settings-reset-btn" class="settings-reset-btn">Reset</button>
                 </div>
             </div>
         </div>

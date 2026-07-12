@@ -109,32 +109,52 @@ export class MobileControls {
           .setAlpha(IDLE_ALPHA);
     }
 
-    // ── Layout (called on build + every resize) ─────────────────────────────
+    // ── Layout (called on build + every real resize) ─────────────────────────
     _layout(width, height) {
         const moveWidth  = width * MOVE_ZONE_RATIO;
         const boostWidth = width - moveWidth;
         const margin     = 90 * this.controlScale;
 
+        // Keep the boost button clear of the minimap, which lives in the
+        // bottom-RIGHT corner (Game.js drawMinimap). When boost is also on the
+        // right (side === 'left'), shift it left past the minimap's footprint.
+        const mm = this.scene.minimapMetrics?.();
+        const minimapReserve = mm ? mm.size + mm.padding * 2 : 0;
+
         if (this.side === 'left') {
             this.moveZone.setPosition(0, 0).setSize(moveWidth, height);
             this.boostZone.setPosition(moveWidth, 0).setSize(boostWidth, height);
-            this.boostHomeX = width - margin;
+            this.boostHomeX = width - margin - minimapReserve;
         } else {
             this.boostZone.setPosition(0, 0).setSize(boostWidth, height);
             this.moveZone.setPosition(boostWidth, 0).setSize(moveWidth, height);
-            this.boostHomeX = margin;
+            this.boostHomeX = margin; // bottom-left: no minimap conflict
         }
         this.boostHomeY = height - margin;
         this.boostButton.setPosition(this.boostHomeX, this.boostHomeY);
         this.boostLabel.setPosition(this.boostHomeX, this.boostHomeY);
 
-        // If a joystick is mid-touch during a resize, re-clamp it on-screen.
+        // If a joystick is mid-touch during a resize, re-clamp its ORIGIN
+        // on-screen but keep tracking the finger's real position. (The old
+        // code re-spawned the joystick at its origin, which snapped the knob
+        // to center and zeroed the input — the source of the violent jitter
+        // whenever mobile viewport-height changes fired resize events.)
         if (this.joystickPointer) {
-            this._spawnJoystick(this.joystickOrigin.x, this.joystickOrigin.y);
+            const r = JOYSTICK_OUTER_RADIUS * this.controlScale + 16;
+            this.joystickOrigin.x = Phaser.Math.Clamp(this.joystickOrigin.x, r, width - r);
+            this.joystickOrigin.y = Phaser.Math.Clamp(this.joystickOrigin.y, r, height - r);
+            this.joystickOuter.setPosition(this.joystickOrigin.x, this.joystickOrigin.y);
+            this._updateJoystick(this.joystickPointer.x, this.joystickPointer.y);
         }
     }
 
     resize(width, height) {
+        // Mobile browsers fire spurious resize events (address-bar show/hide,
+        // rendering jank re-measures) with unchanged dimensions — ignore them
+        // so the controls are fully isolated from that noise.
+        if (width === this._lastW && height === this._lastH) return;
+        this._lastW = width;
+        this._lastH = height;
         this._layout(width, height);
     }
 
@@ -174,6 +194,19 @@ export class MobileControls {
         scene.input.on('pointermove', this._onPointerMove);
         scene.input.on('pointerup', this._onPointerUp);
         scene.input.on('pointerupoutside', this._onPointerUp);
+
+        // Render smoothing: the knob eases toward its target each frame
+        // instead of teleporting on every pointer event. This decouples the
+        // VISUAL from event-rate/frame-rate jitter; the input values written
+        // to window.mobileInput stay raw so steering remains responsive.
+        this._knobTarget = { x: 0, y: 0 };
+        this._onPreUpdate = () => {
+            if (!this.joystickKnob.visible) return;
+            const k = 0.45; // smoothing factor (1 = instant, lower = smoother)
+            this.joystickKnob.x += (this._knobTarget.x - this.joystickKnob.x) * k;
+            this.joystickKnob.y += (this._knobTarget.y - this.joystickKnob.y) * k;
+        };
+        scene.events.on('preupdate', this._onPreUpdate);
     }
 
     // Live-apply settings-panel changes (side / scale / opacity) without requiring
@@ -222,10 +255,9 @@ export class MobileControls {
 
         const maxPx = (JOYSTICK_OUTER_RADIUS - JOYSTICK_KNOB_RADIUS * 0.5) * this.controlScale;
         const clampedDist = Math.min(dist, maxPx);
-        this.joystickKnob.setPosition(
-            this.joystickOrigin.x + Math.cos(angle) * clampedDist,
-            this.joystickOrigin.y + Math.sin(angle) * clampedDist
-        );
+        // Write the TARGET only — the preupdate lerp moves the knob smoothly.
+        this._knobTarget.x = this.joystickOrigin.x + Math.cos(angle) * clampedDist;
+        this._knobTarget.y = this.joystickOrigin.y + Math.sin(angle) * clampedDist;
 
         window.mobileInput.joystickActive    = dist > DEAD_ZONE_PX;
         window.mobileInput.joystickAngle     = angle;
@@ -262,6 +294,7 @@ export class MobileControls {
         this.scene.input.off('pointermove', this._onPointerMove);
         this.scene.input.off('pointerup', this._onPointerUp);
         this.scene.input.off('pointerupoutside', this._onPointerUp);
+        this.scene.events.off('preupdate', this._onPreUpdate);
         window.removeEventListener('mobilecontrols:settings', this._onSettingsChanged);
 
         [this.moveZone, this.boostZone, this.joystickOuter, this.joystickKnob, this.boostButton, this.boostLabel]
