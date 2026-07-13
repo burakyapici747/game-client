@@ -13,15 +13,35 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
-    // Gentler pull per frame: 0.15 → 0.10 (~33% softer correction lerp).
-    RECONCILIATION_POSITION_FACTOR: 0.10,
-    // 3.5 → 8 px: lifted above the typical 10 Hz-server noise floor so tiny,
-    // frequent discrepancies no longer trigger corrections every frame.
-    RECONCILIATION_DEAD_ZONE: 8,
-    RECONCILIATION_SNAP_DISTANCE: 140,
-    // 480 → 300 px/s: corrections spread over a few more frames instead of
-    // rushing, which softens how a single correction reads on screen.
-    RECONCILIATION_MAX_CORRECTION_SPEED: 300,
+
+    // ── Time-aligned reconciliation (v2) ─────────────────────────────────
+    // The old model compared the head's position NOW against a server sample
+    // that is ~RTT/2 old — the "error" it measured was mostly latency, which
+    // fluctuates with packet timing and produced a permanently noisy
+    // correction signal (the residual micro-stutter). v2 keeps a short ring
+    // buffer of predicted positions and compares each server packet against
+    // where the client thought it was ONE-WAY-DELAY ago: the true prediction
+    // error, time-aligned and stable.
+    RECON_HISTORY_MS: 1500,          // prediction history window
+    RECON_DEFAULT_ONE_WAY_MS: 50,    // fallback before ping is calibrated
+    RECON_ERROR_EMA: 0.45,           // per-packet error smoothing weight
+    RECON_START_THRESHOLD: 3,        // px — begin correcting above this…
+    RECON_STOP_THRESHOLD: 1,         // px — …stop below this (hysteresis)
+    RECON_LATERAL_DEAD_ZONE: 2,      // px — lateral is timing-insensitive
+    RECON_LONGITUDINAL_DEAD_FACTOR: 0.03, // * speed → px (timing noise scales with speed)
+    RECON_IDLE_ERROR_DECAY: 0.06,    // per-frame decay while inside dead zone
+    RECONCILIATION_POSITION_FACTOR: 0.10,  // blend fraction per frame
+    RECONCILIATION_MAX_CORRECTION_SPEED: 300, // px/s cap — corrections stay sub-perceptual
+    RECON_HARD_SNAP_DISTANCE: 800,   // death/respawn/teleport only
+
+    // ── Segment isolation (anti-cascade) ────────────────────────────────
+    // The body path is sampled from a low-pass "follower" of the head, not
+    // the head itself. Reconciliation micro-corrections on the head are
+    // high-frequency signals — the follower filters them out, so the body
+    // no longer magnifies head snapping. 0.5 @60fps ≈ 3-4 px constant
+    // trailing lag (invisible: it only shifts the body back a hair) while
+    // per-frame alternating corrections are attenuated ~3x.
+    PATH_SMOOTHING_FACTOR: 0.5,
 
     // DEBUG: render a ghost marker at the raw server-authoritative head
     // position (player snake only). Visual overlay only — no effect on
@@ -49,6 +69,11 @@ export class Snake {
         this.selfServerTargetHeading = initialAngle;
         this.hasServerState = false;
         this.hasSelfServerState = false;
+
+        // Time-aligned reconciliation state (player-controlled only)
+        this._predHistory = [];               // ring of {t, x, y} (performance.now)
+        this._smoothedError = { x: 0, y: 0 }; // EMA of time-aligned prediction error
+        this._correcting = false;             // hysteresis latch
         this.segments = [];
         this.segmentPrimaryColor = 0xD4AF37;
         this.segmentSecondaryColor = 0x2B2B2B;
@@ -279,6 +304,10 @@ export class Snake {
     }
 
     create(x, y, angle) {
+        // Path follower: the smoothed position that actually feeds the body
+        // path (see _sampleHeadToPath). Initialized on the head; snapped back
+        // to the head in _initPathWarmup (spawn / hard resync).
+        this._pathFollower = { x, y };
         this.head = this.scene.registerWorld(this.scene.add.sprite(x, y, 'snake_head48')
             .setOrigin(0.5));
         this.head.rotation = angle;
@@ -400,6 +429,31 @@ export class Snake {
     // Physics step sonrası segment + göz güncelleme — scene.events 'postupdate' içinde çağrılır
     postPhysicsUpdate() {
         if (!this.alive || !this.head?.active) return;
+
+        // Update the low-pass follower BEFORE sampling the path.
+        // Player snake: exponential smoothing filters reconciliation
+        // micro-corrections out of the body path (anti-cascade).
+        // Remote snakes: their head is already interpolation-smoothed, extra
+        // filtering would only add lag — follow exactly.
+        if (this.isPlayerControlled) {
+            const k = this._frameAdjustedFactor(this.config.PATH_SMOOTHING_FACTOR, this._delta || 16.67);
+            this._pathFollower.x += (this.head.x - this._pathFollower.x) * k;
+            this._pathFollower.y += (this.head.y - this._pathFollower.y) * k;
+
+            // Record the final post-physics position into the prediction
+            // history ring — server packets are compared against this
+            // (time-aligned) instead of against the current position.
+            const now = performance.now();
+            this._predHistory.push({ t: now, x: this.head.x, y: this.head.y });
+            const cutoff = now - this.config.RECON_HISTORY_MS;
+            while (this._predHistory.length > 0 && this._predHistory[0].t < cutoff) {
+                this._predHistory.shift();
+            }
+        } else {
+            this._pathFollower.x = this.head.x;
+            this._pathFollower.y = this.head.y;
+        }
+
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
@@ -427,64 +481,106 @@ export class Snake {
         // Phaser rotation setter'ı WrapAngle uygular; ayrıca normalize gerekmez.
     }
 
+    // ── Time-aligned reconciliation (v2) ─────────────────────────────────
+    // The measured error (this._smoothedError, maintained by
+    // updateSelfPositionFromServer) already compares the server position with
+    // the HISTORICAL predicted position at the packet's simulation time — it
+    // contains no latency component. Here we only dampen that true error into
+    // the head: hysteresis + dead zones + exponential blend + px/s cap.
     _reconcilePlayerWithServer(delta) {
         if (!this.hasSelfServerState) return;
 
-        const dx = this.selfServerTarget.x - this.head.x;
-        const dy = this.selfServerTarget.y - this.head.y;
-        const absDistance = Math.hypot(dx, dy);
-
-        // Sunucu 10 FPS çalışırken ping ile birlikte mesafe 200-300 pikseli aşabilir.
-        // O yüzden sadece ÇOK saçma bir farkta (örn. ölüm, yeniden doğma vb.) 800 veriyoruz.
-        if (absDistance > 800) {
+        // Hard snap only on absurd desync (death, respawn, teleport).
+        const rawDx = this.selfServerTarget.x - this.head.x;
+        const rawDy = this.selfServerTarget.y - this.head.y;
+        if (Math.hypot(rawDx, rawDy) > this.config.RECON_HARD_SNAP_DISTANCE) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
             this.head.body?.updateFromGameObject();
+            this._resetReconciliationState();
             return;
         }
 
-        // Use the heading snapshot from when the server packet arrived, not the
-        // current heading. If the client has turned since that packet, the longitudinal
-        // lag would otherwise project onto the lateral axis and trigger false corrections.
+        // Decompose the smoothed error on the heading captured at packet
+        // arrival: residual time-alignment noise projects almost entirely
+        // longitudinally, so the two axes deserve different dead zones.
         const cos = Math.cos(this.selfServerTargetHeading);
         const sin = Math.sin(this.selfServerTargetHeading);
+        let lon = this._smoothedError.x * cos + this._smoothedError.y * sin;
+        let lat = this._smoothedError.x * -sin + this._smoothedError.y * cos;
 
-        const longitudinal = dx * cos + dy * sin;
-        const lateral = dx * -sin + dy * cos;
+        const lonDead = Math.max(4, (this.speed || 225) * this.config.RECON_LONGITUDINAL_DEAD_FACTOR);
+        if (Math.abs(lon) <= lonDead) lon = 0;
+        if (Math.abs(lat) <= this.config.RECON_LATERAL_DEAD_ZONE) lat = 0;
 
-        let corrX = 0;
-        let corrY = 0;
-        let hasCorrection = false;
+        const cx = lon * cos - lat * sin;
+        const cy = lon * sin + lat * cos;
+        const mag = Math.hypot(cx, cy);
 
-        if (Math.abs(lateral) > this.config.RECONCILIATION_DEAD_ZONE) {
-            corrX += lateral * -sin;
-            corrY += lateral * cos;
-            hasCorrection = true;
+        // Hysteresis: don't chatter on/off around a single threshold.
+        if (!this._correcting && mag > this.config.RECON_START_THRESHOLD) this._correcting = true;
+        if (this._correcting && mag < this.config.RECON_STOP_THRESHOLD) this._correcting = false;
+
+        if (!this._correcting || mag === 0) {
+            // Inside the dead zone: let the accumulated error dissipate
+            // quietly so it can't wind up and fire a burst later.
+            const decay = this._frameAdjustedFactor(this.config.RECON_IDLE_ERROR_DECAY, delta);
+            this._smoothedError.x *= (1 - decay);
+            this._smoothedError.y *= (1 - decay);
+            return;
         }
 
-        const maxExpectedLag = (this.speed || 300) * 0.9;
-        if (longitudinal > this.config.RECONCILIATION_DEAD_ZONE || longitudinal < -maxExpectedLag) {
-            corrX += longitudinal * cos;
-            corrY += longitudinal * sin;
-            hasCorrection = true;
+        const posFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
+        const maxStep = this.config.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
+        const step = Math.min(mag * posFactor, maxStep);
+        const ux = cx / mag;
+        const uy = cy / mag;
+
+        this.head.setPosition(this.head.x + ux * step, this.head.y + uy * step);
+        this.head.body?.updateFromGameObject();
+
+        // Consume the applied portion of the error…
+        this._smoothedError.x -= ux * step;
+        this._smoothedError.y -= uy * step;
+
+        // …and shift the prediction history by the same amount. Server packets
+        // still in flight were computed against the UNCORRECTED trajectory; if
+        // the history isn't shifted, those packets re-report the error we just
+        // fixed and the head over-corrects (classic reconciliation
+        // rubber-banding). Shifting keeps future error measurements
+        // self-consistent with the correction already applied.
+        for (let i = 0; i < this._predHistory.length; i++) {
+            this._predHistory[i].x += ux * step;
+            this._predHistory[i].y += uy * step;
         }
+    }
 
-        if (hasCorrection) {
-            const corrDist = Math.hypot(corrX, corrY);
-            // 0.1 → 2 px: skip sub-2px micro-corrections outright — they're
-            // measurement noise and were only visible as shimmer.
-            if (corrDist > 2) {
-                const posFactor = this._frameAdjustedFactor(this.config.RECONCILIATION_POSITION_FACTOR, delta);
-                const desiredStep = corrDist * posFactor * 0.55;
-                const maxStep = this.config.RECONCILIATION_MAX_CORRECTION_SPEED * (delta / 1000);
-                const step = Math.min(desiredStep, maxStep);
+    _resetReconciliationState() {
+        this._predHistory.length = 0;
+        this._smoothedError.x = 0;
+        this._smoothedError.y = 0;
+        this._correcting = false;
+    }
 
-                const nx = this.head.x + (corrX / corrDist) * step;
-                const ny = this.head.y + (corrY / corrDist) * step;
-
-                this.head.setPosition(nx, ny);
-                this.head.body?.updateFromGameObject();
+    // Linearly interpolate the predicted position at time t from the history
+    // ring. Returns null if history doesn't cover t yet (e.g. right after
+    // spawn/resync) — reconciliation simply skips that packet.
+    _samplePredictionHistory(t) {
+        const h = this._predHistory;
+        if (h.length === 0 || t < h[0].t) return null;
+        if (t >= h[h.length - 1].t) return h[h.length - 1];
+        for (let i = h.length - 2; i >= 0; i--) {
+            if (h[i].t <= t) {
+                const a = h[i];
+                const b = h[i + 1];
+                const span = b.t - a.t;
+                const f = span > 0 ? (t - a.t) / span : 0;
+                return {
+                    x: a.x + (b.x - a.x) * f,
+                    y: a.y + (b.y - a.y) * f
+                };
             }
         }
+        return null;
     }
 
     // Sekme değişimi sonrası tek seferlik sert resync (bkz. Game._resyncAfterTabReturn):
@@ -508,6 +604,10 @@ export class Snake {
         // segmentleri hemen yerine oturt.
         this._initPathWarmup(this.head.x, this.head.y);
         this._positionSegmentsByPath();
+
+        // Tahmin geçmişi ve birikmiş hata da bayat — sıfırla, aksi halde eski
+        // yörüngeye göre ölçülmüş hatalar yeni konuma uygulanır.
+        this._resetReconciliationState();
     }
 
     _updateEyes(tx, ty) {
@@ -543,6 +643,13 @@ export class Snake {
     }
 
     _initPathWarmup(x, y) {
+        // Hard resets (spawn, tab-return resync, segment-count sync) rebuild
+        // the path from scratch — snap the follower too, so it doesn't drag
+        // stale offset into the fresh path.
+        if (this._pathFollower) {
+            this._pathFollower.x = x;
+            this._pathFollower.y = y;
+        }
         this.path = [new Phaser.Math.Vector2(x, y)];
         this.pathSegLens = [];
         this.totalPathLen = 0;
@@ -561,7 +668,9 @@ export class Snake {
 
     _sampleHeadToPath() {
         if (!this.head.active) return;
-        const hp = new Phaser.Math.Vector2(this.head.x, this.head.y);
+        // Sample the SMOOTHED follower, not the raw head — the raw head
+        // carries reconciliation micro-corrections that the body must not see.
+        const hp = new Phaser.Math.Vector2(this._pathFollower.x, this._pathFollower.y);
         const last = this.path[0];
         if (!last) {
             this.path.unshift(hp.clone());
@@ -682,6 +791,26 @@ export class Snake {
 
             if (Number.isFinite(serverSeqId) && serverSeqId > 0) {
                 this.lastReconciledSequenceId = serverSeqId;
+            }
+
+            // ── Time-aligned error measurement ──────────────────────────────
+            // This packet describes the server state ~one-way-delay ago. Compare
+            // it against the HISTORICAL predicted position at that time, not
+            // the current one — otherwise the "error" is dominated by latency
+            // itself and fluctuates with packet timing (the old micro-stutter).
+            const rttMs = this.scene?.networkManager?.pingEmaMs;
+            const oneWayMs = Number.isFinite(rttMs) && rttMs !== null
+                ? rttMs / 2
+                : this.config.RECON_DEFAULT_ONE_WAY_MS;
+            const hist = this._samplePredictionHistory(performance.now() - oneWayMs);
+            if (hist) {
+                const ex = x - hist.x;
+                const ey = y - hist.y;
+                // Per-packet EMA: a single late/early packet cannot yank the
+                // error estimate — it takes a few consistent packets to move it.
+                const a = this.config.RECON_ERROR_EMA;
+                this._smoothedError.x = this._smoothedError.x * (1 - a) + ex * a;
+                this._smoothedError.y = this._smoothedError.y * (1 - a) + ey * a;
             }
         }
 
