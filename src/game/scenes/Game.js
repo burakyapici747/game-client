@@ -788,7 +788,7 @@ export class Game extends Phaser.Scene {
                     if (mob.joystickActive && mob.joystickMagnitude > 0.1) {
                         targetAngleRad = mob.joystickAngle;
                     } else {
-                        targetAngleRad = head.rotation; // parmak yoksa yönü koru
+                        targetAngleRad = mySnake.heading; // parmak yoksa yönü koru (LOJİK yön — görsel rotation smoothing'li)
                     }
                 } else {
                     // ── Desktop: mouse ────────────────────────────────────────
@@ -800,7 +800,7 @@ export class Game extends Phaser.Scene {
                     const STEER_DEAD_ZONE_PX = 35;
                     const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
                     const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-                    targetAngleRad    = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
+                    targetAngleRad    = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : mySnake.heading;
                 }
 
                 // ── Determinizm: açıyı ÖNCE ağ formatına (0-250) kuantala, sonra

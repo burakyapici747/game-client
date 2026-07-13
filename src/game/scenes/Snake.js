@@ -14,6 +14,16 @@ const SnakeConfig = {
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
 
+    // ── Head visual rotation (presentation only) ─────────────────────────
+    // The LOGICAL heading (this.heading — steering + velocity, deterministic,
+    // identical to the server's angle integration) is separated from the
+    // RENDERED sprite rotation. The rendered rotation blends toward the
+    // leading body segment's path direction and is low-pass smoothed, so an
+    // abrupt mouse flip can't visually disconnect the head from the body
+    // curve. Zero input lag: steering/velocity never read these values.
+    HEAD_BODY_ALIGNMENT_WEIGHT: 0.3,      // 0 = pure heading, 1 = pure body direction
+    HEAD_VISUAL_ROTATION_SMOOTHING: 0.35, // per-frame lerp toward the blended target
+
     // ── Time-aligned reconciliation (v2) ─────────────────────────────────
     // The old model compared the head's position NOW against a server sample
     // that is ~RTT/2 old — the "error" it measured was mostly latency, which
@@ -108,7 +118,14 @@ export class Snake {
         return boostSpeed * scaleFactor;
     }
     calculateScaleTurnFactor() { return 0.13 + 0.87 * Math.pow((7.5 - this.scale) / 6, 2); }
-    calculateSpeedTurnFactor() { return Math.min(1, this.speed / this.config.TURN_SPEED_INFLUENCE); }
+    // speed is px/SECOND; TURN_SPEED_INFLUENCE (4.8) was designed for px/FRAME.
+    // The old min(1, 225/4.8) was always 1.0 — dead code that uncapped the turn
+    // rate (turn radius tighter than the body width → kinked, disconnected
+    // neck). Per-frame conversion restores the intended natural scaling.
+    // MUST stay identical to the server (SnakeDynamicsSystem.calculateSpeedTurnFactor).
+    calculateSpeedTurnFactor() {
+        return Math.min(1, (this.speed / this.config.PHYS_CONST) / this.config.TURN_SPEED_INFLUENCE);
+    }
     getSegmentSpacing() {
         const base = this.config.SEGMENT_SPACING_BASE;
         const lenF = Phaser.Math.Clamp((this.sct - 30) / 200, 0, 1);
@@ -311,6 +328,10 @@ export class Snake {
         this.head = this.scene.registerWorld(this.scene.add.sprite(x, y, 'snake_head48')
             .setOrigin(0.5));
         this.head.rotation = angle;
+        // Logical heading: the authoritative steering direction (what velocity
+        // follows and what the server integrates). head.rotation is only the
+        // smoothed VISUAL orientation on the player snake.
+        this.heading = angle;
         if (this.isPlayerControlled) {
             this.scene.physics.world.enable(this.head);
             this.head.body.setSize(40, 40).setOffset(-20, -20);
@@ -401,13 +422,15 @@ export class Snake {
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
 
-        // targetAngleRad radyan cinsinden; Angle.Wrap ile kısa yay seçilir.
-        // Phaser'ın rotation setter'ı zaten WrapAngle uygular, ayrıca normalize etmeye gerek yok.
-        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.head.rotation);
+        // Steer the LOGICAL heading with the deterministic clamped turn rate —
+        // bit-identical math to the server's MovementSystem. The sprite's
+        // visual rotation is smoothed separately in postPhysicsUpdate, so
+        // presentation smoothing can never desync prediction from the server.
+        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.heading);
         const maxTurn = this.turnSpeed * (delta / 1000);
-        this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+        this.heading = Phaser.Math.Angle.Wrap(this.heading + Phaser.Math.Clamp(diff, -maxTurn, maxTurn));
 
-        this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
+        this.scene.physics.velocityFromRotation(this.heading, this.speed, this.head.body.velocity);
     }
 
     // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
@@ -456,6 +479,19 @@ export class Snake {
 
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
+
+        // ── Visual head rotation: bound to the body, smoothed ───────────────
+        // Target = logical heading pulled toward the leading body segment's
+        // path direction, then low-pass filtered. Presentation only — velocity
+        // and the outgoing input angle always use this.heading directly.
+        if (this.isPlayerControlled && this.path.length >= 2) {
+            const bodyAngle = this._pointAndAngleAtDistance(this.getSegmentSpacing() * 0.5).angle;
+            const blendedTarget = this.heading
+                + Phaser.Math.Angle.Wrap(bodyAngle - this.heading) * this.config.HEAD_BODY_ALIGNMENT_WEIGHT;
+            const kr = this._frameAdjustedFactor(this.config.HEAD_VISUAL_ROTATION_SMOOTHING, this._delta || 16.67);
+            this.head.rotation += Phaser.Math.Angle.Wrap(blendedTarget - this.head.rotation) * kr;
+        }
+
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
         this._updateEyes(worldPoint.x, worldPoint.y);
         if (this.nicknameText) {
