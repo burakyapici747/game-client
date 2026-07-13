@@ -14,6 +14,19 @@ const SnakeConfig = {
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
 
+    // ── Remote dead reckoning (anti "ghost collision") ───────────────────
+    // A remote snake's latest packet describes where it was ONE-WAY-DELAY ago,
+    // and the interpolation lerp trails its target by another ~2 frames. Left
+    // uncompensated, enemies render 20-60 px behind their true server position
+    // (worst when boosting toward you) — so the server can rule a real
+    // collision while your screen still shows a gap. We extrapolate the
+    // render target forward by the estimated total lag using a smoothed
+    // velocity derived from consecutive packets.
+    REMOTE_VELOCITY_EMA: 0.4,        // packet-to-packet velocity smoothing
+    REMOTE_INTERP_SETTLE_MS: 30,     // lag added by the interpolation lerp itself
+    REMOTE_EXTRAPOLATION_MAX_MS: 250,// safety cap (high-ping: better late than wrong)
+    REMOTE_TELEPORT_DISTANCE: 300,   // px — respawn/teleport: reset velocity estimate
+
     // ── Time-aligned reconciliation (v2) ─────────────────────────────────
     // The old model compared the head's position NOW against a server sample
     // that is ~RTT/2 old — the "error" it measured was mostly latency, which
@@ -74,6 +87,10 @@ export class Snake {
         this._predHistory = [];               // ring of {t, x, y} (performance.now)
         this._smoothedError = { x: 0, y: 0 }; // EMA of time-aligned prediction error
         this._correcting = false;             // hysteresis latch
+
+        // Remote dead-reckoning state (remote snakes only)
+        this._netVel = { x: 0, y: 0 };        // px/ms, EMA-smoothed
+        this._lastNetSample = null;           // { t, x, y } of previous packet
         this.segments = [];
         this.segmentPrimaryColor = 0xD4AF37;
         this.segmentSecondaryColor = 0x2B2B2B;
@@ -741,11 +758,36 @@ export class Snake {
         const rawAngle = Number(entityData?.angle);
         const scaleVal = Number(entityData?.scale);
 
-        if (Number.isFinite(x)) {
-            this.networkTarget.x = x;
-        }
-        if (Number.isFinite(y)) {
-            this.networkTarget.y = y;
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+            // ── Dead reckoning: estimate velocity from consecutive packets ──
+            const now = performance.now();
+            const last = this._lastNetSample;
+            if (last) {
+                const dtMs = now - last.t;
+                const jump = Math.hypot(x - last.x, y - last.y);
+                if (jump > this.config.REMOTE_TELEPORT_DISTANCE || dtMs > 500) {
+                    // Respawn/teleport or long silence — a stale velocity would
+                    // extrapolate into nonsense.
+                    this._netVel.x = 0;
+                    this._netVel.y = 0;
+                } else if (dtMs > 1) {
+                    const a = this.config.REMOTE_VELOCITY_EMA;
+                    this._netVel.x = this._netVel.x * (1 - a) + ((x - last.x) / dtMs) * a;
+                    this._netVel.y = this._netVel.y * (1 - a) + ((y - last.y) / dtMs) * a;
+                }
+            }
+            this._lastNetSample = { t: now, x, y };
+
+            // Project the render target forward to the snake's estimated
+            // PRESENT position: one-way network delay + interpolation settle.
+            const rttMs = this.scene?.networkManager?.pingEmaMs;
+            const oneWayMs = Number.isFinite(rttMs) ? rttMs / 2 : 50;
+            const leadMs = Math.min(
+                this.config.REMOTE_EXTRAPOLATION_MAX_MS,
+                oneWayMs + this.config.REMOTE_INTERP_SETTLE_MS
+            );
+            this.networkTarget.x = x + this._netVel.x * leadMs;
+            this.networkTarget.y = y + this._netVel.y * leadMs;
         }
         if (Number.isFinite(rawAngle)) {
             this.networkTarget.angle = this._decodeServerAngle(rawAngle);
