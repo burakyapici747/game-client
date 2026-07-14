@@ -64,6 +64,11 @@ export class Snake {
         this.lastReconciledSequenceId = 0;
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
+        // Hareket yönü (radyan) — steering'in TEK otoriter durumu. Her frame
+        // updateFromInput'ta velocity vektöründen atan2(velocity.y, velocity.x)
+        // ile yeniden türetilir ve head.rotation her zaman buna eşitlenir:
+        // görsel açı ≡ gerçek hareket yönü (mouse'a değil, velocity'ye bakar).
+        this.velocityHeading = initialAngle;
         this.networkTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTargetHeading = initialAngle;
@@ -401,13 +406,31 @@ export class Snake {
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
 
-        // targetAngleRad radyan cinsinden; Angle.Wrap ile kısa yay seçilir.
-        // Phaser'ın rotation setter'ı zaten WrapAngle uygular, ayrıca normalize etmeye gerek yok.
-        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.head.rotation);
+        // ── VELOCITY-BOUND HEAD ROTATION ────────────────────────────────────
+        // Mouse hedefi SPRITE'ı değil, VELOCITY VEKTÖRÜNÜ döndürür; head.rotation
+        // aşağıda velocity'den (atan2) türetilir. Sprite'ın baktığı yön böylece
+        // gerçek hareket yolunun önüne geçemez — "yana kayma/drift" görüntüsü
+        // yapısal olarak imkânsızlaşır. Turn-rate matematiği değişmedi, yani
+        // sunucu simülasyonuyla (MovementSystem) üretilen açı dizisi birebir aynı.
+        //
+        // 1) Steering: velocity yönünü hedefe doğru hız-sınırlı döndür.
+        //    (Angle.Wrap kısa yayı seçer; targetAngleRad radyan cinsinden.)
+        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.velocityHeading);
         const maxTurn = this.turnSpeed * (delta / 1000);
-        this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+        const steeredHeading = this.velocityHeading + Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
 
-        this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
+        // 2) ÖNCE FİZİK: velocity vektörünü güncelle.
+        this.scene.physics.velocityFromRotation(steeredHeading, this.speed, this.head.body.velocity);
+
+        // 3) SONRA RENDER: görsel açı GERÇEK velocity vektöründen türetilir.
+        //    atan2 çıktısı (-π, π] aralığında olduğundan heading ayrıca
+        //    normalize edilmez ve sınırsız büyüyemez.
+        const vel = this.head.body.velocity;
+        this.velocityHeading = vel.lengthSq() > 1e-12
+            ? Math.atan2(vel.y, vel.x)
+            : Phaser.Math.Angle.Wrap(steeredHeading); // speed=0 guard (spawn frame'i)
+
+        this.head.rotation = this.velocityHeading;
     }
 
     // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
