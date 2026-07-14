@@ -313,9 +313,6 @@ export class Snake {
         // path (see _sampleHeadToPath). Initialized on the head; snapped back
         // to the head in _initPathWarmup (spawn / hard resync).
         this._pathFollower = { x, y };
-        // Travel-bound rotation için önceki frame'in nihai pozisyonu
-        // (bkz. postPhysicsUpdate — head.rotation'ın tek yazarı).
-        this._prevHeadPos = { x, y };
         this.head = this.scene.registerWorld(this.scene.add.sprite(x, y, 'snake_head48')
             .setOrigin(0.5));
         this.head.rotation = angle;
@@ -425,21 +422,15 @@ export class Snake {
         // 2) ÖNCE FİZİK: velocity vektörünü güncelle.
         this.scene.physics.velocityFromRotation(steeredHeading, this.speed, this.head.body.velocity);
 
-        // 3) Heading state velocity vektöründen türetilir. atan2 çıktısı
-        //    (-π, π] aralığında olduğundan ayrıca normalize gerekmez.
-        //
-        //    DİKKAT: head.rotation BURADA YAZILMAZ. Görsel açının TEK yazarı
-        //    postPhysicsUpdate()'tir: fizik adımı VE reconciliation düzeltmesi
-        //    uygulandıktan sonraki GERÇEK frame yer değiştirmesinden
-        //    (movement delta) atan2 ile türetilir. Velocity tek başına yeterli
-        //    değildir çünkü reconciliation her frame pozisyona küçük düzeltme
-        //    vektörleri ekler — gerçek ekran-üstü hareket yönü velocity +
-        //    düzeltme bileşkesidir. Rotation'ı o bileşkeye bağlamak, kafanın
-        //    gitmediği bir yöne bakmasını yapısal olarak imkânsız kılar.
+        // 3) SONRA RENDER: görsel açı GERÇEK velocity vektöründen türetilir.
+        //    atan2 çıktısı (-π, π] aralığında olduğundan heading ayrıca
+        //    normalize edilmez ve sınırsız büyüyemez.
         const vel = this.head.body.velocity;
         this.velocityHeading = vel.lengthSq() > 1e-12
             ? Math.atan2(vel.y, vel.x)
             : Phaser.Math.Angle.Wrap(steeredHeading); // speed=0 guard (spawn frame'i)
+
+        this.head.rotation = this.velocityHeading;
     }
 
     // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
@@ -468,35 +459,6 @@ export class Snake {
         // Remote snakes: their head is already interpolation-smoothed, extra
         // filtering would only add lag — follow exactly.
         if (this.isPlayerControlled) {
-            // ── TRAVEL-BOUND HEAD ROTATION (görsel açının TEK yazarı) ────────
-            // Bu noktada frame'in NİHAİ pozisyonu bellidir: input → steering →
-            // reconciliation düzeltmesi → physics step hepsi uygulandı. Görsel
-            // açı, kafanın bu frame'de GERÇEKTEN katettiği yer değiştirme
-            // vektöründen türetilir: atan2(dy, dx). Velocity yerine gerçek
-            // movement delta kullanılır çünkü reconciliation pozisyona velocity
-            // dışı düzeltmeler ekler — bakış yönü ile seyahat yolu tanım gereği
-            // paraleldir, ayrışamaz. Pozisyonla AYNI adımda/fazda güncellendiği
-            // için frame-rate'ten bağımsızdır (delta ölçeklemesi gerekmez).
-            const stepX = this.head.x - this._prevHeadPos.x;
-            const stepY = this.head.y - this._prevHeadPos.y;
-            const stepLenSq = stepX * stepX + stepY * stepY;
-
-            // Guard'lar: (a) dejenere adım (< 0.1 px — duruş/ilk frame) ve
-            // (b) teleport/hard-snap (beklenen adımın çok üstü) durumlarında
-            // ölçüm anlamsızdır → steering heading'ine (velocity yönü) düş.
-            const dtSec = (this._delta || 16.67) / 1000;
-            const expectedStep =
-                ((this.speed || 225) + this.config.RECONCILIATION_MAX_CORRECTION_SPEED) * dtSec;
-            const maxStep = Math.max(24, expectedStep * 3);
-
-            if (stepLenSq >= 0.01 && stepLenSq <= maxStep * maxStep) {
-                this.head.rotation = Math.atan2(stepY, stepX);
-            } else {
-                this.head.rotation = this.velocityHeading;
-            }
-            this._prevHeadPos.x = this.head.x;
-            this._prevHeadPos.y = this.head.y;
-
             const k = this._frameAdjustedFactor(this.config.PATH_SMOOTHING_FACTOR, this._delta || 16.67);
             this._pathFollower.x += (this.head.x - this._pathFollower.x) * k;
             this._pathFollower.y += (this.head.y - this._pathFollower.y) * k;
@@ -710,12 +672,6 @@ export class Snake {
         if (this._pathFollower) {
             this._pathFollower.x = x;
             this._pathFollower.y = y;
-        }
-        if (this._prevHeadPos) {
-            // Hard reset sonrası ilk frame'de bayat pozisyondan dev/bozuk bir
-            // movement delta ölçülmesin.
-            this._prevHeadPos.x = x;
-            this._prevHeadPos.y = y;
         }
         this.path = [new Phaser.Math.Vector2(x, y)];
         this.pathSegLens = [];
