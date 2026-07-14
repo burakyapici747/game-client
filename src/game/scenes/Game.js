@@ -310,6 +310,10 @@ export class Game extends Phaser.Scene {
 
     onEntityCollection(entityCollection) {
         const entityIds = entityCollection?.entityIds ?? [];
+        if (entityIds.length === 0) return;
+
+        this.initialDataFlags.entities = true;
+        this.checkInitialDataComplete();
 
         const xs = entityCollection?.xs ?? [];
         const ys = entityCollection?.ys ?? [];
@@ -329,29 +333,6 @@ export class Game extends Phaser.Scene {
                 fullyDataNicknameMap.set(fid, fullyDataNicknames[i]);
             }
         }
-
-        // ── SELF MUTLAK SEGMENT SAYISI RECONCILIATION ────────────────────────
-        // Sunucu artık HER tick self'in mutlak segment sayısını fully_data
-        // alanlarıyla yollar (self, entity_ids listesinde YER ALMAZ — aşağıdaki
-        // döngü onu görmez, burada işlenir). Yerel sayı delta mutasyonlarıyla
-        // anında büyür (handleMessage segment_mutation'ı entity_collection'dan
-        // ÖNCE emit eder), mutlak değer hemen ardından uygulanır: eşitse no-op,
-        // kaymışsa sunucununkine EŞİTLENİR. Böylece self büyümesi %100 sunucu
-        // güdümlüdür — çift uygulama/kaçan delta en geç 1 tick yaşar.
-        if (this.myId !== null && fullyDataMap.has(Number(this.myId))) {
-            const playerSnake = this.snakes.get(this.myId);
-            if (playerSnake?.isPlayerControlled && playerSnake.alive) {
-                playerSnake.syncSegmentCountFromServer(fullyDataMap.get(Number(this.myId)));
-            }
-        }
-
-        // Diğer yılanlar görünürde yoksa (entity_ids boş) yapılacak başka iş yok.
-        // DİKKAT: self reconciliation yukarıda, bu erken çıkıştan ÖNCE yapılır —
-        // sunucu self'in mutlak sayısını boş entity listesiyle de gönderir.
-        if (entityIds.length === 0) return;
-
-        this.initialDataFlags.entities = true;
-        this.checkInitialDataComplete();
 
         for (let i = 0; i < entityIds.length; i++) {
             const rawId = entityIds[i];
@@ -381,7 +362,22 @@ export class Game extends Phaser.Scene {
             }
 
             let snake = this.snakes.get(entityId);
-            const isAbsoluteRefresh = fullyDataMap.has(lookupId);
+
+            // ── RESPAWN / YENIDEN-GORUNURLUK OVERWRITE ───────────────────────
+            // Sunucu FULLY_DATA'yi (segment sayısı dahil) yalnızca görünürlük
+            // GEÇİŞLERİNDE yollar: yeni oyuncu, respawn (entity id geri
+            // dönüştürülmüş olabilir!) veya AOI'ye yeniden giriş. Elimizde aynı
+            // id için cache'lenmiş bir yılan varsa bu ESKİ YAŞAMIN (ya da bayat
+            // görünümün) kalıntısıdır — remove paketi kaçmış/yarışmış olabilir.
+            // Önceki gövdeden TEK BİR görsel segment bile miras almamak için
+            // objeyi tamamen yok edip sıfırdan, sunucunun bildirdiği taze
+            // segment sayısıyla kurarız (merge/append DEĞİL).
+            if (snake && fullyDataMap.has(lookupId)) {
+                this.pendingSegmentMutations.delete(entityId); // önceki yaşamın bekleyen mutasyonları da bayat
+                snake.destroy();
+                this.snakes.delete(entityId);
+                snake = null;
+            }
 
             if (!snake) {
                 const remoteNickname = fullyDataNicknameMap.get(lookupId) || '';
@@ -397,20 +393,8 @@ export class Game extends Phaser.Scene {
                 this.snakes.set(entityId, snake);
             }
 
-            // ── MUTLAK DURUM UYGULAMA (FULLY_DATA) ───────────────────────────
-            // Sunucu FULLY_DATA'yi görünürlük geçişlerinde (yeni oyuncu, respawn
-            // — id geri dönüştürülmüş olabilir! — AOI'ye yeniden giriş) VE artık
-            // periyodik yenilemede (~1 sn'de bir) yollar. segment sayısı MUTLAK
-            // değerdir: syncSegmentCountFromServer merge/append yapmaz, yerel
-            // sayıyı sunucununkine EŞİTLER (fazlaysa yok eder, eksikse tamamlar).
-            // Önceki yaşamdan tek bir görsel segment bile miras kalamaz ve delta
-            // zincirindeki her kayma en geç bir sonraki yenilemede ezilir.
             if (entitySegmentCount !== undefined) {
                 snake.syncSegmentCountFromServer(entitySegmentCount);
-            }
-            if (isAbsoluteRefresh) {
-                // Mutlak sayı geldiğine göre kuyruktaki eski delta'lar bayattır.
-                this.pendingSegmentMutations.delete(entityId);
             }
 
             if (fullyDataNicknameMap.has(lookupId)) {
@@ -418,18 +402,6 @@ export class Game extends Phaser.Scene {
             }
 
             snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
-
-            // Respawn/id-geri-dönüşümü teleport'u: mutlak yenilemede konum
-            // sıçraması büyükse lerp'le sürüklemek yerine anında hizala
-            // (eski yaşamın konumundan yeni spawn noktasına ışınlanma).
-            if (isAbsoluteRefresh) {
-                const head = snake.getHead();
-                if (head?.active && Number.isFinite(initialX) && Number.isFinite(initialY)) {
-                    const jump = Math.hypot(initialX - head.x, initialY - head.y);
-                    if (jump > 600) snake.hardResync();
-                }
-            }
-
             this.flushPendingSegmentMutations(entityId, snake);
         }
     }
