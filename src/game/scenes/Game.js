@@ -363,6 +363,22 @@ export class Game extends Phaser.Scene {
 
             let snake = this.snakes.get(entityId);
 
+            // ── RESPAWN / YENIDEN-GORUNURLUK OVERWRITE ───────────────────────
+            // Sunucu FULLY_DATA'yi (segment sayısı dahil) yalnızca görünürlük
+            // GEÇİŞLERİNDE yollar: yeni oyuncu, respawn (entity id geri
+            // dönüştürülmüş olabilir!) veya AOI'ye yeniden giriş. Elimizde aynı
+            // id için cache'lenmiş bir yılan varsa bu ESKİ YAŞAMIN (ya da bayat
+            // görünümün) kalıntısıdır — remove paketi kaçmış/yarışmış olabilir.
+            // Önceki gövdeden TEK BİR görsel segment bile miras almamak için
+            // objeyi tamamen yok edip sıfırdan, sunucunun bildirdiği taze
+            // segment sayısıyla kurarız (merge/append DEĞİL).
+            if (snake && fullyDataMap.has(lookupId)) {
+                this.pendingSegmentMutations.delete(entityId); // önceki yaşamın bekleyen mutasyonları da bayat
+                snake.destroy();
+                this.snakes.delete(entityId);
+                snake = null;
+            }
+
             if (!snake) {
                 const remoteNickname = fullyDataNicknameMap.get(lookupId) || '';
                 snake = new Snake(
@@ -881,11 +897,21 @@ export class Game extends Phaser.Scene {
         }
 
         // İstemci tarafı görsel mıknatıs çekim efekti + anında yeme tahmini (Client-side food magnet + eat prediction)
-        // Sunucu ile aynı yeme yarıçapı (45 * scale px) kullanılır. Oyuncunun yılanı bu mesafede bir yeme
-        // girince yemi hemen eatingFoods'a taşırız; sunucu onayı (~100ms sonra) gelince sadece seti temizleriz.
+        // Oyuncunun yılanı yeme yarıçapına girince yemi hemen eatingFoods'a taşırız;
+        // sunucu onayı (~100ms sonra) gelince sadece seti temizleriz.
         const dt = delta / 1000;
         const PULL_SPEED_FACTOR = 12.0;
-        const EAT_RADIUS_FACTOR = 45.0; // Sunucunun FoodCollisionResolveSystem'deki değeriyle birebir eşleşir
+        // SUNUCU FORMÜL AYNASI — game-server FoodConfig.eatRadiusPx ile BIREBIR:
+        // min(MAX, BASE * (1 + (scale-1) * GAIN)). Eski lineer "45 * scale"
+        // tavansızdı ve kütle→vakum→kütle geri-beslemesiyle kill sonrası aşırı
+        // büyüme yaratıyordu. Değişiklik sunucuyla BİRLİKTE yapılmalı.
+        const EAT_RADIUS_BASE = 45.0;
+        const EAT_RADIUS_SCALE_GAIN = 0.35;
+        const EAT_RADIUS_MAX = 100.0;
+        const eatRadiusForScale = (scale) => {
+            const s = (Number.isFinite(scale) && scale > 0) ? scale : 1.0;
+            return Math.min(EAT_RADIUS_MAX, EAT_RADIUS_BASE * (1 + (s - 1) * EAT_RADIUS_SCALE_GAIN));
+        };
 
         // Tahmin edilen yemleri döngü dışında işlemek için toparla
         const predictedEats = [];
@@ -905,7 +931,7 @@ export class Game extends Phaser.Scene {
             for (const snake of this.snakes.values()) {
                 if (!snake.alive || !snake.getHead()?.active) continue;
                 const head = snake.getHead();
-                const eatRadius = EAT_RADIUS_FACTOR * snake.scale;
+                const eatRadius = eatRadiusForScale(snake.scale);
 
                 const dx = head.x - origX;
                 const dy = head.y - origY;
