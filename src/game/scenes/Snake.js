@@ -64,6 +64,10 @@ export class Snake {
         this.lastReconciledSequenceId = 0;
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
+        // MANTIKSAL HAREKET AÇISI — yılanın fiilen gittiği yön. Movement
+        // sistemi (updateFromInput) bunu günceller, velocity bundan türetilir
+        // ve head.rotation her frame buna AYNEN eşitlenir (mirror).
+        this.movementAngle = initialAngle;
         this.networkTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTargetHeading = initialAngle;
@@ -401,23 +405,33 @@ export class Snake {
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
 
-        // targetAngleRad radyan cinsinden; Angle.Wrap ile kısa yay seçilir.
-        // Phaser'ın rotation setter'ı zaten WrapAngle uygular, ayrıca normalize etmeye gerek yok.
-        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.head.rotation);
+        // 1) Movement sistemi MANTIKSAL açıyı günceller (hız-sınırlı dönüş).
+        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.movementAngle);
         const maxTurn = this.turnSpeed * (delta / 1000);
-        this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+        this.movementAngle = Phaser.Math.Angle.Wrap(
+            this.movementAngle + Phaser.Math.Clamp(diff, -maxTurn, maxTurn));
 
-        this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
+        // 2) Velocity mantıksal açıdan türetilir — yılan fiilen bu yöne gider.
+        this.scene.physics.velocityFromRotation(this.movementAngle, this.speed, this.head.body.velocity);
+
+        // 3) Görsel açı = mantıksal hareket açısı. Doğrudan ayna; mouse'a
+        //    bakan hiçbir atama yok.
+        this.head.rotation = this.movementAngle;
     }
 
     // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
     postUpdate(delta = 16.67) {
         if (!this.alive || !this.head?.active) return;
-        if (this.isPlayerControlled) {
-            this._reconcilePlayerWithServer(delta);
-        } else {
+        if (!this.isPlayerControlled) {
             this._interpolateRemoteSnake(delta);
         }
+        // _reconcilePlayerWithServer BURADA ÇAĞRILMAZ. Phaser frame sırası:
+        // [fizik adımı] → [scene.update: burası] → [fizik write-back] → render.
+        // Burada düzeltme uygulamak (setPosition + updateFromGameObject) body'yi
+        // adım ÖNCESİ pozisyona sıfırlayıp o frame'in İLERİ hareketini siliyordu:
+        // düzeltme olan her frame'de yılan movementAngle yönünde ilerleyemiyor,
+        // hata yönünde kayıyordu — dönüşlerdeki "kafa yoldan ayrık" görüntüsünün
+        // kök nedeni. Düzeltme artık postPhysicsUpdate'te (write-back SONRASI).
         // _sampleHeadToPath, _positionSegmentsByPath ve _updateEyes artık
         // Phaser'ın postupdate event'inde çağrılıyor (physics step SONRASI, render ÖNCESİ).
         // Bu sayede segmentler ve gözler head'in o frame'deki gerçek fiziksel pozisyonunu
@@ -436,6 +450,10 @@ export class Snake {
         // Remote snakes: their head is already interpolation-smoothed, extra
         // filtering would only add lag — follow exactly.
         if (this.isPlayerControlled) {
+            // Reconciliation doğru fazda: fizik write-back tamamlandı, sprite bu
+            // frame'in ileri hareketini aldı — düzeltme üstüne EKLENİR, onu silmez.
+            this._reconcilePlayerWithServer(this._delta || 16.67);
+
             const k = this._frameAdjustedFactor(this.config.PATH_SMOOTHING_FACTOR, this._delta || 16.67);
             this._pathFollower.x += (this.head.x - this._pathFollower.x) * k;
             this._pathFollower.y += (this.head.y - this._pathFollower.y) * k;
@@ -535,12 +553,27 @@ export class Snake {
         const ux = cx / mag;
         const uy = cy / mag;
 
-        this.head.setPosition(this.head.x + ux * step, this.head.y + uy * step);
+        // ── HIZ KORUMA: düzeltme yılanı FRENLEYEMEZ ─────────────────────────
+        // Dönüşlerde sunucu istemcinin arkını ~½RTT geriden izler; düzeltme
+        // vektörünün hareket yönüne (movementAngle) TERS bileşeni net ekran
+        // hızını düşürüyordu ("dönüşte yavaşlama"). Geri bileşen, frame'in
+        // velocity adımının %15'iyle sınırlanır — hata yanal/ileri bileşenle
+        // ve zamana yayılarak kapanır, skaler hız gözle görülür düşmez.
+        const hx = Math.cos(this.movementAngle);
+        const hy = Math.sin(this.movementAngle);
+        let corrLon = (ux * step) * hx + (uy * step) * hy;
+        const corrLat = -(ux * step) * hy + (uy * step) * hx;
+        const velStepLen = (this.speed || 225) * (delta / 1000);
+        corrLon = Math.max(corrLon, -0.15 * velStepLen);
+        const appliedX = corrLon * hx - corrLat * hy;
+        const appliedY = corrLon * hy + corrLat * hx;
+
+        this.head.setPosition(this.head.x + appliedX, this.head.y + appliedY);
         this.head.body?.updateFromGameObject();
 
         // Consume the applied portion of the error…
-        this._smoothedError.x -= ux * step;
-        this._smoothedError.y -= uy * step;
+        this._smoothedError.x -= appliedX;
+        this._smoothedError.y -= appliedY;
 
         // …and shift the prediction history by the same amount. Server packets
         // still in flight were computed against the UNCORRECTED trajectory; if
@@ -548,9 +581,10 @@ export class Snake {
         // fixed and the head over-corrects (classic reconciliation
         // rubber-banding). Shifting keeps future error measurements
         // self-consistent with the correction already applied.
+        // (GERÇEKTEN uygulanan — geri bileşeni kırpılmış — vektör kadar kaydır.)
         for (let i = 0; i < this._predHistory.length; i++) {
-            this._predHistory[i].x += ux * step;
-            this._predHistory[i].y += uy * step;
+            this._predHistory[i].x += appliedX;
+            this._predHistory[i].y += appliedY;
         }
     }
 

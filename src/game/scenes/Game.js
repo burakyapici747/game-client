@@ -65,6 +65,10 @@ export class Game extends Phaser.Scene {
         this.playerScore = 0;
         this.foodsEaten = 0;
 
+        // Input-delay kuyruğu — restart'ta önceki tura ait girdiler sızmasın.
+        this._inputDelayQueue = [];
+        this._lastDelayedInput = null;
+
         this.gameStarted = false;
         this.initialDataFlags = { startInfo: false, entities: false };
         this.networkManager = new NetworkManager(this);
@@ -812,10 +816,32 @@ export class Game extends Phaser.Scene {
                 const wireAngle = NetworkManager.quantizeAngleDeg(Phaser.Math.RadToDeg(targetAngleRad));
                 const predictedAngleRad = Phaser.Math.DegToRad(wireAngle * 1.44);
 
+                // Ağa HEMEN gönder — gecikme eklenmez.
                 this.networkManager.updateAndSendInput(wireAngle, isBoosting, delta);
 
-                // İstemci tarafı tahminleme — sunucunun göreceği açıyla birebir aynı.
-                mySnake.updateFromInput(predictedAngleRad, isBoosting, delta, this.networkManager.nextSequenceId);
+                // ── INPUT-DELAY ALIGNMENT ─────────────────────────────────────
+                // Lokal tahmine input ~tek-yön gecikme (+18 ms gönderim/tick marjı)
+                // kadar GEÇ uygulanır: client ve server dönüşe aynı simülasyon
+                // anında başlar, dönüş sırasında sunucu arkı geride kalmaz →
+                // reconciliation'ın geri-çekme ihtiyacı (dönüşte yavaşlama hissi)
+                // büyük ölçüde hiç oluşmaz.
+                if (!this._inputDelayQueue) this._inputDelayQueue = [];
+                const oneWayMs = Phaser.Math.Clamp(
+                    (Number.isFinite(this.currentPingMs) ? this.currentPingMs : 100) / 2, 20, 120) + 18;
+                this._inputDelayQueue.push({ t: time + oneWayMs, angle: predictedAngleRad, boost: isBoosting });
+                if (this._inputDelayQueue.length > 240) this._inputDelayQueue.shift();
+
+                let applied = this._lastDelayedInput;
+                while (this._inputDelayQueue.length && this._inputDelayQueue[0].t <= time) {
+                    applied = this._inputDelayQueue.shift();
+                }
+                this._lastDelayedInput = applied;
+                const applyAngle = applied ? applied.angle : (mySnake.movementAngle ?? head.rotation);
+                const applyBoost = applied ? applied.boost : isBoosting;
+
+                // İstemci tarafı tahminleme — sunucunun göreceği açıyla birebir
+                // aynı değer, sunucuyla aynı simülasyon anında.
+                mySnake.updateFromInput(applyAngle, applyBoost, delta, this.networkManager.nextSequenceId);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 // baseZoom: ekran boyutuna göre belirlenen taban zoom (bkz. computeBaseZoom)
