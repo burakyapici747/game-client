@@ -1,6 +1,15 @@
 import Phaser from 'phaser';
 
 const SnakeConfig = {
+    // ── Boyut senkronu (SUNUCU ile BIREBIR) ─────────────────────────────
+    // Sunucu: game-server com/common/SnakeGeometryConfig.java →
+    // HEAD_RADIUS_PX / SEGMENT_RADIUS_PX. Texture'lar 48x48 px daire
+    // (snake_head48 / snake_body48, origin 0.5) → görünen yarıçap =
+    // 24 * scale px. Bu değerler değişirse SUNUCUDAKİ config de değişmeli;
+    // aksi halde görsel temas ile sunucu ölüm anı ayrışır.
+    HEAD_RADIUS: 24,
+    SEGMENT_RADIUS: 24,
+
     PHYS_CONST: 60,
     BASE_SPEED_FACTOR: 3.75,
     SPEED_REDUCTION_PER_SCALE: 0.5 / 106,
@@ -50,13 +59,25 @@ const SnakeConfig = {
 };
 
 export class Snake {
+    // SUNUCU FORMÜLÜNÜN AYNASI — game-server SnakeDynamicsSystem.calculateScale:
+    // Math.min(6.0, 1.0 + (segmentCount - 2) / 106.0). Burada değişiklik
+    // yapılacaksa sunucuyla birlikte yapılmalı.
+    static calculateScaleFromSegmentCount(segmentCount) {
+        return Math.min(6.0, 1.0 + (segmentCount - 2) / 106.0);
+    }
+
     constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT, initialAngleRaw = 0, nickname = '') {
         this.scene = scene;
         this.config = SnakeConfig;
         this.isPlayerControlled = isPlayerControlled;
         this.alive = true;
         this.sct = this._normalizeSegmentCount(initialSegmentCount);
-        this.scale = 0.5;
+        // İlk scale, sunucunun SnakeDynamicsSystem.calculateScale(segmentCount)
+        // formülünün BIREBIR aynısıyla hesaplanır — ilk snapshot gelmeden önce
+        // de görsel boyut sunucu hitbox'ıyla eşittir. (Eski sabit 0.5, sunucu
+        // minimumu ~1.28 iken yılanı yarı boyutta çizip boyut asimetrisi
+        // yaratıyordu; sonraki paketler zaten sunucu scale'ini uygular.)
+        this.scale = Snake.calculateScaleFromSegmentCount(this.sct);
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
@@ -317,13 +338,24 @@ export class Snake {
         this.head.rotation = angle;
         if (this.isPlayerControlled) {
             this.scene.physics.world.enable(this.head);
-            this.head.body.setSize(40, 40).setOffset(-20, -20);
+            // HITBOX HIZALAMA: 48x48 frame içine tam merkezlenmiş, sunucuyla
+            // aynı yarıçaplı (HEAD_RADIUS=24) daire. Eski
+            // setSize(40,40).setOffset(-20,-20) gövde merkezini sprite
+            // merkezinden 24px kaydırıyordu (Arcade offset frame'in SOL-ÜST
+            // köşesinden ölçülür; 48px frame'de 40x40 gövdeyi merkezlemek
+            // için offset (4,4) olmalıydı). setCircle(24) offset'siz olarak
+            // frame'i tam kaplar → collider merkezi = görsel pivot (origin 0.5).
+            this.head.body.setCircle(this.config.HEAD_RADIUS);
             this.head.body.setCollideWorldBounds(false); // Ölüm kontrolü sunucu tarafında — fizik sınırı snake'i bloke etmemeli
         }
         for (let i = 0; i < this.sct; i++) {
             const seg = this._createSegmentSprite(i, x, y);
             this.segments.push(seg);
         }
+        // İlk kare dahil doğru boyut: constructor'da hesaplanan (sunucu
+        // formülüne eş) scale sprite'lara hemen uygulanır — daha önce ilk
+        // snapshot gelene kadar scale=1 texture boyutunda çiziliyordu.
+        this._updateSegmentScaling();
         this._refreshSegmentDepths();
         this._initPathWarmup(x, y);
         this.trail = this.scene.add.particles(this.head.x, this.head.y, 'px32', {
