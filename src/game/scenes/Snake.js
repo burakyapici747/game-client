@@ -64,11 +64,6 @@ export class Snake {
         this.lastReconciledSequenceId = 0;
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
-        // Velocity yönü (radyan) — steering'in TEK otoriter durumu. Sunucudaki
-        // AngleComponent.currentAngle'ın birebir karşılığıdır: her frame
-        // atan2(velocity.y, velocity.x) ile velocity vektöründen türetilir ve
-        // head.rotation her zaman bu değere eşitlenir (görsel açı ≡ hareket yönü).
-        this.velocityHeading = initialAngle;
         this.networkTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTargetHeading = initialAngle;
@@ -406,39 +401,13 @@ export class Snake {
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
 
-        // ── VELOCITY-FIRST STEERING ─────────────────────────────────────────
-        // Mouse hedefi SPRITE'I değil, VELOCITY VEKTÖRÜNÜ döndürür. Görsel açı
-        // (head.rotation) aşağıda doğrudan velocity vektöründen (atan2) türetilir
-        // — böylece kafanın baktığı yön gerçek hareket yolundan asla kopamaz,
-        // öne geçemez; "yana kayma / drift" görüntüsü kökten imkânsızlaşır.
-        // Sunucudaki MovementSystem.process() ile adım adım birebir aynı sıra
-        // ve formüller kullanılır (determinizm).
-        //
-        // 1) Velocity yönünü hedefe doğru hız-sınırlı döndür (steering interpolasyonu).
-        //    _normalizeRadians == server normalizeRadians (atan2(sin, cos)).
-        const diff = this._normalizeRadians(targetAngleRad - this.velocityHeading);
+        // targetAngleRad radyan cinsinden; Angle.Wrap ile kısa yay seçilir.
+        // Phaser'ın rotation setter'ı zaten WrapAngle uygular, ayrıca normalize etmeye gerek yok.
+        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.head.rotation);
         const maxTurn = this.turnSpeed * (delta / 1000);
-        const steeredHeading = this.velocityHeading + Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+        this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
 
-        // 2) ÖNCE FİZİK: velocity vektörünü kur.
-        this.scene.physics.velocityFromRotation(steeredHeading, this.speed, this.head.body.velocity);
-
-        // 3) SONRA RENDER: görsel açı GERÇEK velocity vektöründen türetilir —
-        //    sunucunun Math.atan2(vy, vx) hesabıyla birebir aynı.
-        const vel = this.head.body.velocity;
-        const velocityAngle = vel.lengthSq() > 1e-12
-            ? Math.atan2(vel.y, vel.x)
-            : this._normalizeRadians(steeredHeading);
-
-        this.head.rotation = velocityAngle;
-        this.velocityHeading = velocityAngle;
-    }
-
-    // Sunucu MovementSystem.normalizeRadians ile BIREBIR aynı normalizasyon.
-    // Phaser.Math.Angle.Wrap farklı bir formül kullanır (mod aritmetiği);
-    // determinizm için iki taraf da atan2(sin, cos) kullanmalı.
-    _normalizeRadians(angle) {
-        return Math.atan2(Math.sin(angle), Math.cos(angle));
+        this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
     }
 
     // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
@@ -503,17 +472,13 @@ export class Snake {
     _interpolateRemoteSnake(delta) {
         if (!this.hasServerState) return;
 
-        // networkTarget.angle, sunucunun ATAN2(vy, vx) ile velocity vektöründen
-        // türettiği açıdır (MovementSystem) — yani uzak yılanın GERÇEK hareket
-        // yönü. Pozisyon ve açı AYNI interpFactor ile, aynı frame'de ilerletilir;
-        // görsel dönüş ile görsel yer değiştirme senkron kalır (kafa yolundan
-        // önce dönüp "yana kayıyor" görünemez).
         const interpFactor = this._frameAdjustedFactor(this.config.REMOTE_INTERPOLATION_FACTOR, delta);
         this.head.x = Phaser.Math.Linear(this.head.x, this.networkTarget.x, interpFactor);
         this.head.y = Phaser.Math.Linear(this.head.y, this.networkTarget.y, interpFactor);
 
-        const angleDiff = this._normalizeRadians(this.networkTarget.angle - this.head.rotation);
-        this.head.rotation = this._normalizeRadians(this.head.rotation + angleDiff * interpFactor);
+        const wrappedAngle = Phaser.Math.Angle.Wrap(this.networkTarget.angle - this.head.rotation);
+        this.head.rotation += wrappedAngle * interpFactor;
+        // Phaser rotation setter'ı WrapAngle uygular; ayrıca normalize gerekmez.
     }
 
     // ── Time-aligned reconciliation (v2) ─────────────────────────────────
@@ -530,10 +495,6 @@ export class Snake {
         const rawDy = this.selfServerTarget.y - this.head.y;
         if (Math.hypot(rawDx, rawDy) > this.config.RECON_HARD_SNAP_DISTANCE) {
             this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
-            // NOT: SelfPosition protobuf'unda angle alanı yok — heading client
-            // tarafında kalır ve bir sonraki updateFromInput'ta hedefe doğru
-            // yeniden döner. rotation ≡ velocity yönü invariant'ı yine korunur,
-            // çünkü rotation yalnızca velocity vektöründen türetilerek yazılır.
             this.head.body?.updateFromGameObject();
             this._resetReconciliationState();
             return;
@@ -634,8 +595,7 @@ export class Snake {
             const target = this.isPlayerControlled ? this.selfServerTarget : this.networkTarget;
             this.head.setPosition(target.x, target.y);
             if (!this.isPlayerControlled && Number.isFinite(target.angle)) {
-                // Uzak yılan: networkTarget.angle sunucunun velocity yönüdür.
-                this.head.rotation = this._normalizeRadians(target.angle);
+                this.head.rotation = target.angle;
             }
             this.head.body?.updateFromGameObject();
         }
