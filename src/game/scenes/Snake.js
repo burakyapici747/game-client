@@ -389,6 +389,10 @@ export class Snake {
     }
 
     destroy() {
+        // İdempotent: aynı objeye ikinci destroy çağrısı no-op.
+        if (this._destroyed) return;
+        this._destroyed = true;
+
         this.alive = false;
         if (this.isPlayerControlled && this.head?.body) {
             this.head.body.velocity.set(0, 0);
@@ -422,14 +426,24 @@ export class Snake {
         this.totalPathLen = 0;
         this._pathFollower = null;
 
-        // 3) İnterpolasyon / hız / tahmin buffer'ları — eski yaşamın yörünge
-        // verisi yeni yaşama sızamaz (ileri projeksiyon, reconciliation).
-        this._predHistory.length = 0;
-        this._smoothedError.x = 0;
-        this._smoothedError.y = 0;
+        // 3) İnterpolasyon / tahmin buffer'ları — eski yaşamın yörünge verisi
+        // yeni yaşama sızamaz. TÜM alanlar null-guard'lı: burada korumasız
+        // `this._remoteVel.x = 0` (revert edilmiş ileri-projeksiyon özelliğine
+        // ait, constructor'da artık TANIMSIZ bir alan) TypeError fırlatıyordu.
+        // destroy() yarıda kalınca yılan snakes map'inden silinemiyor ve
+        // ayrılan oyuncular yeniden karşılaşmada KALICI görünmez kalıyordu
+        // (console: "Cannot set properties of undefined (setting 'x')" —
+        // hem RemoveEntity hem EntityFull yolunda).
+        if (this._predHistory) this._predHistory.length = 0;
+        if (this._smoothedError) {
+            this._smoothedError.x = 0;
+            this._smoothedError.y = 0;
+        }
         this._correcting = false;
-        this._remoteVel.x = 0;
-        this._remoteVel.y = 0;
+        if (this._remoteVel) {
+            this._remoteVel.x = 0;
+            this._remoteVel.y = 0;
+        }
         this._remoteLastPacketAt = 0;
         this.hasServerState = false;
         this.hasSelfServerState = false;

@@ -563,15 +563,25 @@ export class Game extends Phaser.Scene {
         const snake = this.snakes.get(entityId);
         if (!snake) return;
 
-        this.eatingFoods.forEach((data, foodId) => {
-            if (data.targetSnake === snake) {
-                data.bobs.forEach(bob => bob?.destroy());
-                this.eatingFoods.delete(foodId);
-            }
-        });
-
-        snake.destroy();
+        // KRİTİK SIRALAMA: kayıt silme ÖNCE, görsel imha SONRA (try/catch).
+        // destroy() içindeki herhangi bir hata artık map silmesini engelleyemez;
+        // id her koşulda kayıtlardan düşer ve bir sonraki EntityFull temiz
+        // "yeni yılan kur" yolundan geçer. (Önceki sıralama, destroy'daki tek
+        // bir TypeError'ın yarı-ölü objeyi map'te bırakıp oyuncuları kalıcı
+        // görünmez yapmasına neden oluyordu.)
         this.snakes.delete(entityId);
+
+        try {
+            this.eatingFoods.forEach((data, foodId) => {
+                if (data.targetSnake === snake) {
+                    data.bobs.forEach(bob => bob?.destroy());
+                    this.eatingFoods.delete(foodId);
+                }
+            });
+            snake.destroy();
+        } catch (err) {
+            console.error(`[NUCLEAR-CLEAN] entity ${entityId} imhasında hata (akış devam ediyor):`, err);
+        }
     }
 
     ensurePlayerSnake(entityId, x, y, segmentCount, scale, angleRaw) {
