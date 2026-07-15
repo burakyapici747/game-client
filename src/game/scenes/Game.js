@@ -382,6 +382,16 @@ export class Game extends Phaser.Scene {
             }
         }
 
+        // GECICI TANI LOGU: sunucunun [FULLY-DATA-TX] loguyla birebir karsilastir.
+        // Ayni entity id icin X (TX) != Y (RX) ise bozulma TELDE/serialize'da,
+        // esitse mismatch client render/merge tarafinda. Test bitince false yap.
+        const DEBUG_LOG_FULLY_DATA_RX = true;
+        if (DEBUG_LOG_FULLY_DATA_RX) {
+            for (const [fid, cnt] of fullyDataMap) {
+                console.log(`[FULLY-DATA-RX] Received FULLY_DATA for entity ${fid} with ${cnt} segments`);
+            }
+        }
+
         for (let i = 0; i < entityIds.length; i++) {
             const rawId = entityIds[i];
             const entityId = this.toId(rawId);
@@ -421,9 +431,18 @@ export class Game extends Phaser.Scene {
             // objeyi tamamen yok edip sıfırdan, sunucunun bildirdiği taze
             // segment sayısıyla kurarız (merge/append DEĞİL).
             if (snake && fullyDataMap.has(lookupId)) {
-                // Geri dönüştürülmüş id / respawn / AOI yeniden girişi:
-                // NÜKLEER temizlik — sprite'lar, buffer'lar, animasyonlar,
-                // bekleyen mutasyonlar dahil sıfır miras (bkz. _nuclearCleanEntity).
+                // ── SERT SINIR KURALI (EntityFull = pazarlıksız yeniden kurulum) ──
+                // EntityFull/FULLY_DATA bir MERGE işlemi DEĞİLDİR ve hiçbir
+                // koşulda merge'e dönüşemez. Bu id için cache'te bir obje varsa
+                // (respawn/geri dönüştürülmüş id, AOI yeniden girişi, kaçmış
+                // RemoveEntity — sebep fark etmez) önce TAM ve BLOKE EDİCİ
+                // nükleer temizlik koşar: kayıt silme + sprite/buffer/animasyon
+                // imhası + bekleyen delta kuyruğunun boşaltılması
+                // (bkz. _nuclearCleanEntity — kayıt silme imhadan ÖNCE gelir,
+                // imha hatası dahi kaydı geri getiremez). Ardından yılan
+                // sunucunun mutlak verisiyle SIFIRDAN inşa edilir. Eski
+                // yaşamdan tek bir segment sprite'ı, path noktası ya da
+                // interpolasyon buffer'ı yeni yaşama taşınamaz.
                 this._nuclearCleanEntity(entityId);
                 snake = null;
             }
