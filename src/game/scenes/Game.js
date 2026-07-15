@@ -20,6 +20,34 @@ import {
 
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
+// ── AOI DEBUG OVERLAY (sunucu görünürlük sınırının görselleştirilmesi) ──────
+// Sunucu algoritması: AOICalculationSystem.fill3x3AOI — AOI, oyuncunun
+// KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 3x3 sektörlük
+// bloktur ve sektör GRID'ine hizalıdır: kafa bir sektör çizgisini geçtiği
+// anda sınır bir sektör kayar (sürekli kayan bir kutu DEĞİLDİR — despawn
+// eşiğini doğrulamak için bunu aynen çizmek gerekir).
+// SENKRON SÖZLEŞMESİ: SECTOR_COUNT_* ve AOI_SECTOR_RADIUS sunucudaki
+// MapConfig.SECTOR_COUNT_X/Y (30) ve fill3x3AOI (±1) ile BIREBIR aynı
+// tutulmalıdır. Sektör boyutu = dünya boyutu / 30 ≈ 666.67px.
+// Y-EKSENİ NOTU: sunucu sektör satırını metre uzayında (Y-yukarı) hesaplar,
+// client piksel uzayında (Y-aşağı) çizer; grid tam 30 satır olduğundan sınır
+// çizgileri çakışır ve "oyuncunun sektörü ± 1" bloğu ayna-değişmezidir —
+// piksel uzayında çizilen dikdörtgen geometrik olarak birebir doğrudur.
+const AOIDebugConfig = {
+    SHOW_AOI_DEBUG: false,     // başlangıç durumu (O tuşu ile aç/kapa)
+    TOGGLE_KEY: 'keydown-O',
+    SECTOR_COUNT_X: 30,        // sunucu: MapConfig.SECTOR_COUNT_X
+    SECTOR_COUNT_Y: 30,        // sunucu: MapConfig.SECTOR_COUNT_Y
+    AOI_SECTOR_RADIUS: 1,      // sunucu: fill3x3AOI → merkez ± 1 sektör
+    OUTLINE_COLOR: 0x39ff14,   // neon yeşil
+    OUTLINE_ALPHA: 0.9,
+    OUTLINE_WIDTH: 2,
+    FILL_ALPHA: 0.03,          // gameplay görsellerini örtmeyecek kadar soluk
+    CURRENT_SECTOR_ALPHA: 0.35, // oyuncunun mevcut sektörü (ince iç çizgi)
+    DASH_LENGTH: 14,
+    GAP_LENGTH: 10,
+};
+
 export class Game extends Phaser.Scene {
     constructor() {
         super('Game');
@@ -44,6 +72,11 @@ export class Game extends Phaser.Scene {
         // Client-side score tracking: her yenen yem grubu +10 puan
         this.playerScore = 0;
         this.foodsEaten = 0;
+
+        // AOI debug overlay durumu
+        this.aoiDebugGraphics = null;
+        this.showAoiDebug = AOIDebugConfig.SHOW_AOI_DEBUG;
+        this._aoiDebugLastSector = { cx: -1, cy: -1 }; // sektör değişmedikçe yeniden çizme
     }
 
     create() {
@@ -154,6 +187,21 @@ export class Game extends Phaser.Scene {
 
         this.scale.on('resize', this.handleResize, this);
         this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
+
+        // ── AOI debug overlay ───────────────────────────────────────────────
+        // Dünya uzayında çizilir (registerWorld → ana kamera render eder,
+        // UI kamerası yok sayar); zoom/scroll ile birlikte hareket eder.
+        this.aoiDebugGraphics = this.registerWorld(
+            this.add.graphics().setDepth(4500).setVisible(this.showAoiDebug)
+        );
+        this.input.keyboard?.on(AOIDebugConfig.TOGGLE_KEY, () => {
+            this.showAoiDebug = !this.showAoiDebug;
+            this.aoiDebugGraphics?.setVisible(this.showAoiDebug);
+            this._aoiDebugLastSector.cx = -1; // yeniden açılışta zorunlu tam çizim
+            this._aoiDebugLastSector.cy = -1;
+            if (!this.showAoiDebug) this.aoiDebugGraphics?.clear();
+            console.log(`[AOI-DEBUG] Overlay ${this.showAoiDebug ? 'AÇIK' : 'KAPALI'}`);
+        });
 
         // ── Mobile controls (Phaser GameObjects — no DOM) ───────────────────
         // Built directly in the scene so it has zero dependency on src/main.js
@@ -373,9 +421,10 @@ export class Game extends Phaser.Scene {
             // objeyi tamamen yok edip sıfırdan, sunucunun bildirdiği taze
             // segment sayısıyla kurarız (merge/append DEĞİL).
             if (snake && fullyDataMap.has(lookupId)) {
-                this.pendingSegmentMutations.delete(entityId); // önceki yaşamın bekleyen mutasyonları da bayat
-                snake.destroy();
-                this.snakes.delete(entityId);
+                // Geri dönüştürülmüş id / respawn / AOI yeniden girişi:
+                // NÜKLEER temizlik — sprite'lar, buffer'lar, animasyonlar,
+                // bekleyen mutasyonlar dahil sıfır miras (bkz. _nuclearCleanEntity).
+                this._nuclearCleanEntity(entityId);
                 snake = null;
             }
 
@@ -489,10 +538,37 @@ export class Game extends Phaser.Scene {
     onRemoveEntity(removeEntity) {
         const entityId = this.toId(removeEntity?.entityId ?? removeEntity?.clientId);
         if (entityId === null) return;
+        this._nuclearCleanEntity(entityId);
+    }
+
+    /**
+     * NÜKLEER TEMİZLİK — bir entity id'sine ait TÜM client-side ayak izini yok
+     * eder. Hem despawn'da (onRemoveEntity: ölüm broadcast'i + AOI-çıkış paketi)
+     * hem de mevcut bir id için yeni EntityFull geldiğinde (respawn/geri
+     * dönüştürülmüş id — onEntityCollection) çağrılır. Sıfır miras garantisi:
+     *  1. Bekleyen delta mutasyon kuyruğu (pendingSegmentMutations) silinir.
+     *  2. Bu yılana uçmakta olan yem animasyonları (eatingFoods) — hedef obje
+     *     yok olacağından bob sprite'ları ANINDA imha edilir; aksi halde bir
+     *     frame boyunca ölü referansa lerp etmeye çalışırlardı.
+     *  3. snake.destroy(): her segment sprite'ı, kafa, gözler, trail particle
+     *     emitter'ı, nickname text'i sahneden sökülür VE yılanın tüm iç
+     *     buffer'ları (path, interpolasyon/velocity/tahmin geçmişi) sıfırlanır
+     *     (bkz. Snake.destroy — hard reset).
+     *  4. snakes map'inden id kaldırılır → aynı id için bir sonraki EntityFull
+     *     tamamen boş tuvalden inşa edilir.
+     */
+    _nuclearCleanEntity(entityId) {
         this.pendingSegmentMutations.delete(entityId);
 
         const snake = this.snakes.get(entityId);
         if (!snake) return;
+
+        this.eatingFoods.forEach((data, foodId) => {
+            if (data.targetSnake === snake) {
+                data.bobs.forEach(bob => bob?.destroy());
+                this.eatingFoods.delete(foodId);
+            }
+        });
 
         snake.destroy();
         this.snakes.delete(entityId);
@@ -793,10 +869,119 @@ export class Game extends Phaser.Scene {
     }
 
 
+    // ── AOI DEBUG OVERLAY ÇİZİMİ ─────────────────────────────────────────────
+    // Sunucunun gerçek AOI'sini çizer: oyuncunun bulunduğu sektöre merkezli,
+    // GRID'e hizalı 3x3 sektör bloğu (dünya kenarlarında sunucu gibi kırpılır).
+    // Kalın kesikli dış çizgi + çok soluk iç dolgu = AOI sınırı; ince düz iç
+    // kutu = oyuncunun mevcut sektörü (kafa bu kutunun kenarını geçtiği anda
+    // AOI bir sektör kayar → uzak yılanların spawn/despawn eşiği).
+    // Sektör değişmedikçe yeniden çizilmez (Graphics her frame ucuz kalır).
+    _updateAoiDebugOverlay(mySnake) {
+        const g = this.aoiDebugGraphics;
+        if (!g || !this.worldRadius) return;
+
+        const head = mySnake?.alive ? mySnake.getHead() : null;
+        if (!head?.active) {
+            g.clear();
+            this._aoiDebugLastSector.cx = -1;
+            this._aoiDebugLastSector.cy = -1;
+            return;
+        }
+
+        const worldSize = this.worldRadius * 2;
+        const sectorW = worldSize / AOIDebugConfig.SECTOR_COUNT_X;
+        const sectorH = worldSize / AOIDebugConfig.SECTOR_COUNT_Y;
+
+        const clampSector = (v, max) => Math.max(0, Math.min(max, v));
+        const cx = clampSector(Math.floor(head.x / sectorW), AOIDebugConfig.SECTOR_COUNT_X - 1);
+        const cy = clampSector(Math.floor(head.y / sectorH), AOIDebugConfig.SECTOR_COUNT_Y - 1);
+
+        if (cx === this._aoiDebugLastSector.cx && cy === this._aoiDebugLastSector.cy) {
+            return; // sektör aynı → AOI dikdörtgeni değişmedi
+        }
+        this._aoiDebugLastSector.cx = cx;
+        this._aoiDebugLastSector.cy = cy;
+
+        // Sunucu fill3x3AOI dünya kenarında komşuları atlar → aynı kırpma.
+        const r = AOIDebugConfig.AOI_SECTOR_RADIUS;
+        const minCx = clampSector(cx - r, AOIDebugConfig.SECTOR_COUNT_X - 1);
+        const maxCx = clampSector(cx + r, AOIDebugConfig.SECTOR_COUNT_X - 1);
+        const minCy = clampSector(cy - r, AOIDebugConfig.SECTOR_COUNT_Y - 1);
+        const maxCy = clampSector(cy + r, AOIDebugConfig.SECTOR_COUNT_Y - 1);
+
+        const x0 = minCx * sectorW;
+        const y0 = minCy * sectorH;
+        const x1 = (maxCx + 1) * sectorW;
+        const y1 = (maxCy + 1) * sectorH;
+
+        g.clear();
+
+        // Çok soluk iç dolgu — gameplay görsellerini örtmez.
+        g.fillStyle(AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.FILL_ALPHA);
+        g.fillRect(x0, y0, x1 - x0, y1 - y0);
+
+        // AKTİF SEKTÖR HÜCRELERİ — sunucunun spatial hash'inin gerçek birimi.
+        // GÖRÜNÜRLÜK SEMANTİĞİ (yanlış yorumlamamak için kritik): sunucu bir
+        // yılanı sektör deposuna KAFA + HER SEGMENT için kaydeder. Uzak yılan,
+        // gövdesinin HERHANGİ bir parçası bu hücrelerden HERHANGİ birine
+        // girdiği sürece görünür kalır — kafası dış sınırın çok dışında olsa
+        // bile. Yani "kutunun dışında ama hâlâ görünüyor" çoğu zaman bug değil,
+        // kuyruğunun bir hücreye taşmasıdır. Despawn (RemoveEntity) yalnızca
+        // TÜM gövde tüm aktif hücrelerin dışına çıktığı tick'te gelir.
+        g.lineStyle(1, AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.CURRENT_SECTOR_ALPHA * 0.6);
+        for (let sy = minCy; sy <= maxCy; sy++) {
+            for (let sx = minCx; sx <= maxCx; sx++) {
+                g.strokeRect(sx * sectorW, sy * sectorH, sectorW, sectorH);
+            }
+        }
+
+        // Kesikli neon dış sınır — spawn/despawn eşiğinin kendisi.
+        g.lineStyle(AOIDebugConfig.OUTLINE_WIDTH, AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.OUTLINE_ALPHA);
+        this._strokeDashedRect(g, x0, y0, x1, y1);
+
+        // Oyuncunun mevcut sektörü — belirgin iç vurgu. Kafa bu hücreden
+        // çıktığı anda AOI bloğu bir sektör kayar (sınır sıçraması).
+        g.lineStyle(2, AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.CURRENT_SECTOR_ALPHA);
+        g.strokeRect(cx * sectorW, cy * sectorH, sectorW, sectorH);
+        g.fillStyle(AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.FILL_ALPHA * 2);
+        g.fillRect(cx * sectorW, cy * sectorH, sectorW, sectorH);
+    }
+
+    // Phaser Graphics'te yerleşik kesikli çizgi yok — dört kenarı parça parça çiz.
+    _strokeDashedRect(g, x0, y0, x1, y1) {
+        this._strokeDashedLine(g, x0, y0, x1, y0); // üst
+        this._strokeDashedLine(g, x1, y0, x1, y1); // sağ
+        this._strokeDashedLine(g, x1, y1, x0, y1); // alt
+        this._strokeDashedLine(g, x0, y1, x0, y0); // sol
+    }
+
+    _strokeDashedLine(g, ax, ay, bx, by) {
+        const dash = AOIDebugConfig.DASH_LENGTH;
+        const gap = AOIDebugConfig.GAP_LENGTH;
+        const totalLen = Math.hypot(bx - ax, by - ay);
+        if (totalLen <= 0) return;
+        const ux = (bx - ax) / totalLen;
+        const uy = (by - ay) / totalLen;
+
+        let drawn = 0;
+        while (drawn < totalLen) {
+            const segLen = Math.min(dash, totalLen - drawn);
+            g.beginPath();
+            g.moveTo(ax + ux * drawn, ay + uy * drawn);
+            g.lineTo(ax + ux * (drawn + segLen), ay + uy * (drawn + segLen));
+            g.strokePath();
+            drawn += dash + gap;
+        }
+    }
+
     update(time, delta) {
         if (!this.gameStarted) return;
 
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+
+        if (this.showAoiDebug) {
+            this._updateAoiDebugOverlay(mySnake);
+        }
 
         if (mySnake && mySnake.alive) {
             const head = mySnake.getHead();

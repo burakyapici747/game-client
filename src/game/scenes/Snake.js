@@ -393,6 +393,8 @@ export class Snake {
         if (this.isPlayerControlled && this.head?.body) {
             this.head.body.velocity.set(0, 0);
         }
+
+        // 1) Sahnedeki HER görsel düğümü söküp yok et — gizleme değil, imha.
         this.head?.destroy();
         this.segments.forEach(seg => seg?.destroy());
         this.trail?.destroy();
@@ -403,7 +405,35 @@ export class Snake {
         this.nicknameText?.destroy();
         this.serverDebugMarker?.destroy();
         this.serverDebugDot?.destroy();
+        this.head = null;
+        this.trail = null;
+        this.eyeL = null; this.eyeR = null;
+        this.pupilL = null; this.pupilR = null;
+        this.nicknameText = null;
+
+        // 2) NÜKLEER BUFFER SIFIRLAMA — geri dönüştürülmüş entity id'leri
+        // (respawn aynı id'yi geri alabilir) için SIFIR miras garantisi.
+        // Segment dizisi ve gövde path'i pristine boş duruma döner; aynı id
+        // için gelecek EntityFull tamamen boş tuvalden inşa edilir.
         this.segments = [];
+        this.sct = 0;
+        this.path = [];
+        this.pathSegLens = [];
+        this.totalPathLen = 0;
+        this._pathFollower = null;
+
+        // 3) İnterpolasyon / hız / tahmin buffer'ları — eski yaşamın yörünge
+        // verisi yeni yaşama sızamaz (ileri projeksiyon, reconciliation).
+        this._predHistory.length = 0;
+        this._smoothedError.x = 0;
+        this._smoothedError.y = 0;
+        this._correcting = false;
+        this._remoteVel.x = 0;
+        this._remoteVel.y = 0;
+        this._remoteLastPacketAt = 0;
+        this.hasServerState = false;
+        this.hasSelfServerState = false;
+        this.lastReconciledSequenceId = 0;
     }
 
     setNickname(nickname) {
