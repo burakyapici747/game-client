@@ -125,6 +125,7 @@ export class NetworkManager {
         // Start Info kontrolu (payload tipine bakılmaksızın)
         const startInfo = envelope.startInformation || envelope.start_information;
         if (startInfo) {
+            console.log("Start Information Yakalandı:", startInfo);
             this.scene.events.emit('start_game', startInfo);
         }
 
