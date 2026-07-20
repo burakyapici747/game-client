@@ -58,6 +58,10 @@ export class Game extends Phaser.Scene {
         this.foodBlitter = null;       // Normal food (scale=1), 16px glow dot
         this.foodBlitterLarge = null;   // Large food (scale>1), 24px glow dot
         this.pendingSegmentMutations = new Map();
+        // RESPAWN GENERATION: her yerel (re)spawn'da artar. Kuyruga alinan segment
+        // mutasyonlari bu damgayla saklanir; mevcut spawn'dan ESKI damgalilar
+        // (geri donusturulmus id / spawn-oncesi burst) flush'ta atilir.
+        this.localSpawnGeneration = 0;
         this.myId = null;
         this.networkManager = null;
         this.gameStarted = false;
@@ -88,6 +92,10 @@ export class Game extends Phaser.Scene {
         this.eatingFoods = new Map();
         this.predictedEatenFoodIds = new Set();
         this.pendingSegmentMutations = new Map();
+        // RESPAWN GENERATION: her yerel (re)spawn'da artar. Kuyruga alinan segment
+        // mutasyonlari bu damgayla saklanir; mevcut spawn'dan ESKI damgalilar
+        // (geri donusturulmus id / spawn-oncesi burst) flush'ta atilir.
+        this.localSpawnGeneration = 0;
         this.myId = null;
         this.foodBlitter = null;
         this.foodBlitterLarge = null;
@@ -303,6 +311,20 @@ export class Game extends Phaser.Scene {
             console.warn('Geçersiz clientId alındı:', startInfo);
             return;
         }
+
+        // ── RESPAWN GUARD (rapid-growth fix) ─────────────────────────────────
+        // Yeni yasam. StartInformation, bu yasamin MUTLAK baseline'idir
+        // (segmentCount). Geri donusturulmus entity id icin kuyrukta kalmis
+        // ONCEKI yasama ait ya da spawn-oncesi burst'e ait segment delta'lari
+        // varsa, bunlar mutlak baseline'a zaten dahildir — flush edilirse yilan
+        // aninda sisirir. Nesli ilerlet + bu id'nin bekleyen kuyrugunu bosalt.
+        this.localSpawnGeneration++;
+        const purged = this.pendingSegmentMutations.get(clientId);
+        if (purged && purged.length > 0) {
+            console.warn(
+                `[RESPAWN-GUARD] Discarded ${purged.length} stale pending segment mutation(s) for recycled id ${clientId} (gen ${this.localSpawnGeneration}).`);
+        }
+        this.pendingSegmentMutations.delete(clientId);
 
         this.myId = clientId;
         this.initialDataFlags.startInfo = true;
@@ -642,7 +664,8 @@ export class Game extends Phaser.Scene {
 
     queuePendingSegmentMutation(entityId, mutation) {
         const pending = this.pendingSegmentMutations.get(entityId) ?? [];
-        pending.push(mutation);
+        // Damga: kuyruga girdigi andaki yerel spawn nesli.
+        pending.push({ mutation, gen: this.localSpawnGeneration });
         this.pendingSegmentMutations.set(entityId, pending);
     }
 
@@ -650,8 +673,12 @@ export class Game extends Phaser.Scene {
         const pending = this.pendingSegmentMutations.get(entityId);
         if (!pending || pending.length === 0 || !snake) return;
 
-        pending.forEach((mutation) => {
-            snake.applySegmentMutationFromServer(mutation);
+        pending.forEach((entry) => {
+            // GENERATION GUARD (yalniz yerel oyuncu): geri donusturulmus id
+            // uzerinde onceki nesle ait damgali delta'lar mutlak baseline'a
+            // zaten dahildir; tekrar uygulanirsa yilan sisirir — at.
+            if (entityId === this.myId && entry.gen < this.localSpawnGeneration) return;
+            snake.applySegmentMutationFromServer(entry.mutation);
         });
         this.pendingSegmentMutations.delete(entityId);
     }
