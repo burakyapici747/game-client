@@ -135,10 +135,13 @@ export class Game extends Phaser.Scene {
         // NetworkManager'ın pong başına yaydığı yumuşatılmış (EMA) RTT değeri.
         // Connecting overlay'i açıksa oradaki PING metriği de canlı güncellenir.
         this.currentPingMs = null;
-        this.events.on('ping_update', (ms) => {
+        // Stored reference (arrow) so it can be removed on shutdown — inline
+        // arrow'lar off() ile kaldirilamaz ve restart'ta ust uste birikir.
+        this._onPingUpdate = (ms) => {
             this.currentPingMs = ms;
             updateConnectingPing(ms);
-        }, this);
+        };
+        this.events.on('ping_update', this._onPingUpdate, this);
 
         // Restart/kapanışta açık kalan HTML overlay'leri temizle.
         this.events.once('shutdown', () => hideAllGameOverlays());
@@ -147,6 +150,28 @@ export class Game extends Phaser.Scene {
         // fiziksel pozisyonuyla senkronize edilir. update() içinde physics henüz
         // çalışmadığından oradan çağrılmak 1 frame gecikmeye (esniyor hissi) yol açıyordu.
         this.events.on('postupdate', this._onPostUpdate, this);
+
+        // ── LISTENER TEARDOWN (respawn +2 / cift-islem fix) ──────────────────
+        // scene.restart() ayni scene ornegini ve ayni this.events emitter'ini
+        // yeniden kullanir; Phaser Systems.shutdown() ozel dinleyicileri
+        // KALDIRMAZ. create() her respawn'da yeniden kostugundan, asagidaki
+        // .on() kayitlari temizlenmezse her yasamda bir kopya daha birikir:
+        // tek 'segment_mutation_collection' paketi iki (sonra uc...) kez islenir
+        // -> yem basina +2, hem yerel hem uzak yilanlarda sisme. Her yasamin
+        // dinleyicilerini kendi shutdown'inda sokerek TAM BIR set garanti edilir.
+        this.events.once('shutdown', () => {
+            this.events.off('start_game', this.onStartGame, this);
+            this.events.off('self_position', this.onSelfPosition, this);
+            this.events.off('entity_collection', this.onEntityCollection, this);
+            this.events.off('segment_mutation_collection', this.onSegmentMutationCollection, this);
+            this.events.off('food_collection', this.onFoodCollection, this);
+            this.events.off('food_mutation_collection', this.onFoodMutationCollection, this);
+            this.events.off('remove_entity', this.onRemoveEntity, this);
+            this.events.off('disconnected', this.onDisconnected, this);
+            this.events.off('death_notification', this.onDeathNotification, this);
+            this.events.off('ping_update', this._onPingUpdate, this);
+            this.events.off('postupdate', this._onPostUpdate, this);
+        });
 
         this.networkManager.connect();
 
