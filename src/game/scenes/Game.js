@@ -887,13 +887,16 @@ export class Game extends Phaser.Scene {
         this.gameStarted = false;
 
         // ── Post-death freeze ────────────────────────────────────────────────
-        // gameStarted=false update()'i durdurur ama arcade body son hızını
-        // korur: kafa (ve onu takip eden kamera) ölümden sonra kaymaya devam
-        // ediyordu. Ölüm anında fizik tahmini ve kamera takibi anında donar.
+        // Kafa artık fizik body ile değil manuel entegrasyonla hareket ediyor;
+        // alive=false hem updateFromInput'u hem görsel katmanı durdurur. Yine
+        // de hız vektörünü sıfırlayarak niyeti açıkça belgeliyoruz.
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
         if (mySnake) {
             mySnake.alive = false;
-            mySnake.getHead()?.body?.stop();
+            if (mySnake.vel) {
+                mySnake.vel.x = 0;
+                mySnake.vel.y = 0;
+            }
         }
         this.cameras.main.stopFollow();
 
@@ -1147,7 +1150,9 @@ export class Game extends Phaser.Scene {
                 // baseZoom: ekran boyutuna göre belirlenen taban zoom (bkz. computeBaseZoom)
                 const targetZoom = this.baseZoom / (1.0 + (mySnake.scale - 1.0) * 0.12);
                 const currentZoom = this.cameras.main.zoom;
-                const zoomLerp = 0.05;
+                // Frame-rate-agnostik üstel yumuşatma: eski sabit 0.05/frame,
+                // 120Hz'de iki kat hızlı yakınsıyordu. 3.0/s ≈ 0.05 @60fps.
+                const zoomLerp = 1 - Math.exp(-3.0 * (delta / 1000));
                 this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
             }
         }
@@ -1319,8 +1324,15 @@ export class Game extends Phaser.Scene {
         }
         // Update HTML HUD with real-time stats (replaced legacy fpsText)
         // Skor burada DEĞİL, yem yendiği anda güncellenir (addPlayerScoreForFood).
+        // THROTTLE (10Hz): 120Hz+ ekranda her frame DOM yazmak layout/paint
+        // baskısıyla frame süresi jitter'ı üretiyordu — görsel akıcılığı bozan
+        // tam da bu tür düzensiz uzun frame'lerdir. Sayaç için 100ms yeterli.
         if (this.gameStarted) {
-            updateHUDStats(Math.round(fps), this.currentPingMs, coordX, coordY);
+            this._hudStatsAccumMs = (this._hudStatsAccumMs ?? 0) + delta;
+            if (this._hudStatsAccumMs >= 100) {
+                this._hudStatsAccumMs = 0;
+                updateHUDStats(Math.round(fps), this.currentPingMs, coordX, coordY);
+            }
         }
 
         if (this.minimapGraphics) {
