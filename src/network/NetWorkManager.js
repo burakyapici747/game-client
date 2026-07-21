@@ -272,10 +272,14 @@ export class NetworkManager {
     }
 
     // angleValue: quantizeAngleDeg ile önceden kuantalanmış 0..250 değeri.
-    updateAndSendInput(angleValue, isBoosting, delta) {
+    // sendAngle: girdi katmanindaki deadzone/epsilon guard'i aci gonderimini
+    // bastirdiginda false gelir — bu durumda YALNIZCA boost islenir, aci paketi
+    // uretilmez (mouse head merkezine cok yakinken paket spam'ini onler).
+    updateAndSendInput(angleValue, isBoosting, delta, sendAngle = true) {
         if (!this.canSend()) return;
 
-        // 1. Boost durumu değiştiğinde anında paket gönder.
+        // 1. Boost durumu değiştiğinde anında paket gönder. (Deadzone'da bile
+        //    boost her zaman islenmeli — aci gonderiminden bagimsizdir.)
         if (isBoosting !== this.isCurrentlyBoosting) {
             this.isCurrentlyBoosting = isBoosting;
             const actionValue = isBoosting ? 251 : 252; // 251: Boost Başlat, 252: Boost Bitir
@@ -284,7 +288,11 @@ export class NetworkManager {
         }
 
         // 2. Zamanlayıcıyı, son kareden bu yana geçen gerçek süre (delta) ile artır.
+        //    (Guard aktifken de ilerlesin ki deadzone'dan cikista aci aninda gitsin.)
         this.angleSendTimer += delta;
+
+        // Deadzone / epsilon guard: aci gonderimi bastirildi — boost islendi, cik.
+        if (!sendAngle) return;
 
         const angleChanged = angleValue !== this.lastSentAngleValue;
 

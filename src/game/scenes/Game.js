@@ -101,6 +101,10 @@ export class Game extends Phaser.Scene {
         // Input-delay kuyruğu — restart'ta önceki tura ait girdiler sızmasın.
         this._inputDelayQueue = [];
         this._lastDelayedInput = null;
+        // Steering deadzone/epsilon guard'inin son TAAHHUT edilen aci degeri (rad).
+        // Bu acidan MIN_ROTATION_RADIUS ya da ANGLE_EPSILON altinda kalan girdi
+        // ne yerel tahmini ne de agi gunceller. Respawn'da sifirlanmali.
+        this._lastCommittedAngleRad = null;
 
         this.gameStarted = false;
         this.initialDataFlags = { startInfo: false, entities: false };
@@ -1043,6 +1047,9 @@ export class Game extends Phaser.Scene {
             if (head?.active) {
                 let targetAngleRad;
                 let isBoosting;
+                // Deadzone / epsilon guard bunu false yaparsa: aci ne yerel tahmine
+                // ne de aga gonderilir (yalniz boost islenir).
+                let sendAngle = true;
 
                 const mob = window.mobileInput;
                 if (mob?.enabled) {
@@ -1052,8 +1059,12 @@ export class Game extends Phaser.Scene {
                     isBoosting = mob.boostActive;
                     if (mob.joystickActive && mob.joystickMagnitude > 0.1) {
                         targetAngleRad = mob.joystickAngle;
+                        this._lastCommittedAngleRad = targetAngleRad;
                     } else {
-                        targetAngleRad = head.rotation; // parmak yoksa yönü koru
+                        // Parmak yoksa yönü koru VE paket gönderme (eskiden her frame
+                        // head.rotation gönderiliyordu — gereksiz trafik).
+                        targetAngleRad = this._lastCommittedAngleRad ?? head.rotation;
+                        sendAngle = false;
                     }
                 } else {
                     // ── Desktop: mouse ────────────────────────────────────────
@@ -1061,11 +1072,39 @@ export class Game extends Phaser.Scene {
                     isBoosting   = this.pointer.isDown;
                     const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
 
-                    // Dead zone: mouse head'e çok yakınsa sayısal kararsızlık oluşur.
-                    const STEER_DEAD_ZONE_PX = 35;
+                    // ── Steering deadzone + açı epsilon guard ──────────────────
+                    // Mouse head merkezine çok yakınken atan2 mikro-harekete aşırı
+                    // duyarlı olur (açı aniden ~onlarca derece sıçrar) → her frame
+                    // farklı quantize açı → sunucuya paket spam'i + görsel titreme.
+                    //  1) MIN_ROTATION_RADIUS içinde: açıyı YENİDEN HESAPLAMA ve
+                    //     paket GÖNDERME (yön korunur, yılan düz devam eder).
+                    //  2) Dışında bile: açı son TAAHHÜT edilenden ANGLE_EPSILON'dan
+                    //     az değiştiyse gönderme (mikro-float dalgalanması susar).
+                    // Fark SARILMIŞ (wrap) alınır ki ±π sınırında (ör. +179°→−179°,
+                    // gerçekte 2°'lik değişim) yapay dev fark oluşup guard'ı atlamasın.
+                    // targetAngleRad hem wire hem yerel tahmine besleneceği için,
+                    // bastırıldığında taahhüt edilen açıya sabitlenir → client ve
+                    // sunucu aynı açıyı tutar (drift yok).
+                    const MIN_ROTATION_RADIUS = 35;   // px
+                    const ANGLE_EPSILON = 0.03;       // rad (~1.7°)
                     const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-                    const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-                    targetAngleRad    = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
+
+                    if (distToMouse < MIN_ROTATION_RADIUS) {
+                        targetAngleRad = this._lastCommittedAngleRad ?? head.rotation;
+                        sendAngle = false;
+                    } else {
+                        const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
+                        const prev = this._lastCommittedAngleRad;
+                        if (prev !== null && prev !== undefined
+                                && Math.abs(Phaser.Math.Angle.Wrap(rawAngleRad - prev)) <= ANGLE_EPSILON) {
+                            targetAngleRad = prev;   // değişim epsilon altında — taahhüdü koru
+                            sendAngle = false;
+                        } else {
+                            targetAngleRad = rawAngleRad;
+                            this._lastCommittedAngleRad = rawAngleRad;
+                            sendAngle = true;
+                        }
+                    }
                 }
 
                 // ── Determinizm: açıyı ÖNCE ağ formatına (0-250) kuantala, sonra
@@ -1078,7 +1117,7 @@ export class Game extends Phaser.Scene {
                 const predictedAngleRad = Phaser.Math.DegToRad(wireAngle * 1.44);
 
                 // Ağa HEMEN gönder — gecikme eklenmez.
-                this.networkManager.updateAndSendInput(wireAngle, isBoosting, delta);
+                this.networkManager.updateAndSendInput(wireAngle, isBoosting, delta, sendAngle);
 
                 // ── INPUT-DELAY ALIGNMENT ─────────────────────────────────────
                 // Lokal tahmine input ~tek-yön gecikme (+18 ms gönderim/tick marjı)
