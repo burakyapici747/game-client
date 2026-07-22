@@ -169,7 +169,12 @@ function makeShimmerSpritesheet(scene, key, size, shapeName) {
     const g = parseInt(color.slice(3, 5), 16);
     const b = parseInt(color.slice(5, 7), 16);
 
-    // Dış glow (çok soluk, şekilden bağımsız yumuşak yayılma)
+    // Dış glow — BUG FIX: önceden ctx.fillRect ile her zaman kare/dairesel bir
+    // bulanık halo çiziliyordu; bu halo tüm karo alanını kapladığından kare/
+    // beşgen gibi köşeli şekillerin siluetini görsel olarak eziyor, her şey
+    // "yuvarlak nokta" gibi görünüyordu. Artık dış glow da şeklin kendi yolunu
+    // (fillShapeAt) kullanıyor — parıltı hâlâ yumuşak (radial gradient) ama
+    // artık şeklin gerçek konturunu takip ediyor.
     const gradOuter = ctx.createRadialGradient(
       offsetX + cx, cy, midRadius,
       offsetX + cx, cy, outerRadius
@@ -177,7 +182,7 @@ function makeShimmerSpritesheet(scene, key, size, shapeName) {
     gradOuter.addColorStop(0, `rgba(${r},${g},${b},0.45)`);
     gradOuter.addColorStop(1, `rgba(${r},${g},${b},0.0)`);
     ctx.fillStyle = gradOuter;
-    ctx.fillRect(offsetX, 0, size, size);
+    fillShapeAt(ctx, shapeName, offsetX + cx, cy, outerRadius);
 
     // Orta glow — şekil silueti burada belirir
     const gradMid = ctx.createRadialGradient(
@@ -227,7 +232,7 @@ function makeDeathDropSpritesheet(scene, key, size) {
   gradOuter.addColorStop(0, `rgba(${r},${g},${b},0.55)`);
   gradOuter.addColorStop(1, `rgba(${r},${g},${b},0.0)`);
   ctx.fillStyle = gradOuter;
-  ctx.fillRect(0, 0, size, size);
+  fillShapeAt(ctx, 'pentagon', cx, cy, outerRadius);
 
   const gradMid = ctx.createRadialGradient(cx, cy, innerRadius, cx, cy, midRadius);
   gradMid.addColorStop(0, `rgba(${r},${g},${b},0.95)`);

@@ -1255,7 +1255,16 @@ export class Game extends Phaser.Scene {
 
             const head = targetSnake.getHead();
             let allReached = true;
-            const EATING_PULL_SPEED = 18.0; // Uçuş hızı daha canlı ve hızlı olsun
+            const EATING_PULL_SPEED = 18.0; // Uzaktan yaklaşırken oransal (P-controller) ivme
+            // BUG FIX: saf oransal takip (hız = mesafe * EATING_PULL_SPEED), hedef
+            // (yılan kafası) sabit hızda hareket ederken sabit bir "arkadan takip"
+            // mesafesinde dengeye oturabilir — kapanma hızı hedefin hızını
+            // yakaladığı an mesafe küçülmeyi durdurur (~hedefHızı/EATING_PULL_SPEED px).
+            // Tipik yılan hızlarında bu denge noktası 8px eşiğinin ÜZERİNDE kalıyor,
+            // yem sonsuza dek kafanın hemen arkasında asılı kalıp asla yok olmuyordu.
+            // Çözüm: kapanma hızına, hedefin olası hızını her zaman aşan bir taban
+            // (minimum) hız ekleyerek mesafenin SONLU sürede eşiğin altına inmesini garanti ediyoruz.
+            const EATING_MIN_CLOSE_SPEED_PX_S = 500;
 
             bobs.forEach(bob => {
                 const dx = head.x - bob.x;
@@ -1263,8 +1272,10 @@ export class Game extends Phaser.Scene {
                 const dist = Math.hypot(dx, dy);
 
                 if (dist > 8.0) {
-                    bob.x += dx * EATING_PULL_SPEED * dt;
-                    bob.y += dy * EATING_PULL_SPEED * dt;
+                    const closeSpeed = Math.max(dist * EATING_PULL_SPEED, EATING_MIN_CLOSE_SPEED_PX_S);
+                    const step = Math.min(dist, closeSpeed * dt); // hedefi asıp geçmeyi önle
+                    bob.x += (dx / dist) * step;
+                    bob.y += (dy / dist) * step;
                     allReached = false;
                 } else {
                     bob.destroy();
