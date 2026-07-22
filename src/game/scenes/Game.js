@@ -20,6 +20,12 @@ import {
 
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
+// ── YEM ŞEKİLLERİ (FOOD SHAPE) ───────────────────────────────────────────────
+// SENKRON SÖZLEŞMESİ: sunucu FoodShape.java ile BİREBİR aynı sıra/id.
+// 0=CIRCLE, 1=SQUARE, 2=TRIANGLE, 3=PENTAGON, 4=DEATH_DROP (ölüm ödülü).
+const FOOD_SHAPE_TEXTURES = ['food_circle', 'food_square', 'food_triangle', 'food_pentagon', 'food_death_drop'];
+const DEATH_DROP_SHAPE_ID = 4;
+
 // ── AOI DEBUG OVERLAY (sunucu görünürlük sınırının görselleştirilmesi) ──────
 // Sunucu algoritması: AOICalculationSystem.fill3x3AOI — AOI, oyuncunun
 // KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 3x3 sektörlük
@@ -55,8 +61,7 @@ export class Game extends Phaser.Scene {
         this.foods = new Map();
         this.eatingFoods = new Map();
         this.predictedEatenFoodIds = new Set(); // Client-side eat prediction: foods eaten before server confirms
-        this.foodBlitter = null;       // Normal food (scale=1), 16px glow dot
-        this.foodBlitterLarge = null;   // Large food (scale>1), 24px glow dot
+        this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null); // Şekil başına bir Blitter
         this.pendingSegmentMutations = new Map();
         this.myId = null;
         this.networkManager = null;
@@ -69,7 +74,7 @@ export class Game extends Phaser.Scene {
         this.minimapGraphics = null;
         this.worldRadius = 0;
 
-        // Client-side score tracking: her yenen yem grubu +10 puan
+        // Client-side score tracking: yenen yemin sunucudan gelen value'suna göre puan
         this.playerScore = 0;
         this.foodsEaten = 0;
 
@@ -89,8 +94,7 @@ export class Game extends Phaser.Scene {
         this.predictedEatenFoodIds = new Set();
         this.pendingSegmentMutations = new Map();
         this.myId = null;
-        this.foodBlitter = null;
-        this.foodBlitterLarge = null;
+        this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null);
         this.grid = null;
         this.boundaryGraphics = null;
         this.worldRadius = 0;
@@ -532,11 +536,9 @@ export class Game extends Phaser.Scene {
             }
         }
 
-        for (const [foodId, foodBobs] of this.foods) {
+        for (const [foodId, food] of this.foods) {
             if (incomingFoodIds.has(foodId)) continue;
-            // foodBobs is an array of Blitter.Bob — iterate and destroy each one individually
-            const bobsArray = Array.isArray(foodBobs) ? foodBobs : [foodBobs];
-            bobsArray.forEach(bob => bob.destroy());
+            food.bobs.forEach(bob => bob.destroy());
             this.foods.delete(foodId);
         }
     }
@@ -709,14 +711,14 @@ export class Game extends Phaser.Scene {
 
     // ── Food Rendering ──────────────────────────────────────────
     // Phaser Blitter: binlerce food objesini tek draw call ile çizen performans yapısı.
-    // Her food Bob'u oluşturulurken rastgele bir renk frame'i atanır.
+    // Rule 1: her yem tek, izole bir noktadır — kümeleme/çoklu-bob YOK, her
+    // food id'ye tam olarak bir Bob (bir şekil) karşılık gelir.
     // Koordinatlar doğrudan dünya piksel koordinatlarıdır (invScale yok).
-    
+
     seededRandom(seed) {
         const x = Math.sin(seed) * 10000;
         return x - Math.floor(x);
     }
-
 
     upsertFood(foodData) {
         const foodId = this.toFoodId(foodData?.foodId ?? foodData?.food_id);
@@ -731,61 +733,34 @@ export class Game extends Phaser.Scene {
 
         const existingFood = this.foods.get(foodId);
         if (existingFood) {
-            const bobsArray = Array.isArray(existingFood) ? existingFood : [existingFood];
-            bobsArray.forEach(bob => {
-                if (bob && bob.originalX === undefined) {
-                    bob.originalX = bob.x;
-                    bob.originalY = bob.y;
-                }
-            });
+            const bob = existingFood.bobs[0];
+            if (bob && bob.originalX === undefined) {
+                bob.originalX = bob.x;
+                bob.originalY = bob.y;
+            }
             return foodId;
         }
 
-        const scaleValue = Number(foodData?.scale ?? 1);
-        const isLarge = scaleValue > 1;
+        // Sunucunun atadığı şekil (kozmetik) ve değer (skor) — Rule 3 & Rule 4.
+        const rawShape = Number(foodData?.shape ?? 0);
+        const shape = (Number.isInteger(rawShape) && rawShape >= 0 && rawShape < FOOD_SHAPE_TEXTURES.length)
+            ? rawShape
+            : 0;
+        const value = Number(foodData?.value ?? 0);
 
-        // Normal food: 16px glow dot, Large food: 24px glow dot
-        const targetBlitter = isLarge ? this.ensureFoodBlitterLarge() : this.ensureFoodBlitter();
+        const targetBlitter = this.ensureFoodBlitter(shape);
 
-        const bobs = [];
-        // Deterministik kümeleme: her yiyecek ID'sine göre 2-4 arası nokta oluştur
-        // (Sunucu tarafında food sayısı 20.000'e çıktığı için max boyutu hafif optimize ediyoruz)
-        const clusterSize = 2 + Math.floor(this.seededRandom(foodId) * 3);
+        // Ölüm ödülü yemi tek renkli/tek karelik özel dokusunu kullanır (frame 0);
+        // ambient şekiller 16 renk varyantından birini deterministik seçer.
+        const colorFrame = shape === DEATH_DROP_SHAPE_ID
+            ? 0
+            : Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
 
-        const baseColor = Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
-        
-        // 1. Ana yem parçasını tam merkeze koy.
-        const centerBob = targetBlitter.create(targetX, targetY, baseColor);
-        centerBob.originalX = targetX;
-        centerBob.originalY = targetY;
-        bobs.push(centerBob);
+        const bob = targetBlitter.create(targetX, targetY, colorFrame);
+        bob.originalX = targetX;
+        bob.originalY = targetY;
 
-        // 2. Diğer parçaları etrafına, daha düzenli ve organik bir dağılımla (spiral/yıldız) yay.
-        for (let i = 1; i < clusterSize; i++) {
-            // Açıyı i'ye göre asimetrik ama dengeli dağıtıp ufak bir rastgelelik ekleyelim
-            const baseAngle = (i / clusterSize) * Math.PI * 2;
-            const angleOffset = (this.seededRandom(foodId + i * 100) - 0.5) * Math.PI * 0.5;
-            const finalAngle = baseAngle + angleOffset;
-            
-            // Merkeze olan uzaklığı düzenli bir şekilde artırarak rastgele yığılmaları (kümelenme) engelle
-            const distance = 12 + (i * 6) + (this.seededRandom(foodId + i * 200) * 8);
-
-            const offsetX = Math.cos(finalAngle) * distance;
-            const offsetY = Math.sin(finalAngle) * distance;
-            
-            // Daha organik bir görüntü için %80 oranında ana renkle aynı yap, %20 ihtimalle farklı bir renk
-            let colorFrame = baseColor;
-            if (this.seededRandom(foodId + i * 300) > 0.8) {
-                colorFrame = Math.floor(this.seededRandom(foodId + i * 400) * FOOD_COLOR_COUNT);
-            }
-
-            const bob = targetBlitter.create(targetX + offsetX, targetY + offsetY, colorFrame);
-            bob.originalX = targetX + offsetX;
-            bob.originalY = targetY + offsetY;
-            bobs.push(bob);
-        }
-
-        this.foods.set(foodId, bobs);
+        this.foods.set(foodId, { bobs: [bob], value });
         return foodId;
     }
 
@@ -801,10 +776,10 @@ export class Game extends Phaser.Scene {
         }
 
         // Uzak yılan tarafından yenilen yem (veya sunucu tahminimizden önce bildirdi)
-        const bobs = this.foods.get(foodId);
-        if (!bobs) return;
+        const food = this.foods.get(foodId);
+        if (!food) return;
 
-        const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
+        const { bobs: bobsArray, value } = food;
         this.foods.delete(foodId);
 
         const centerBob = bobsArray[0];
@@ -835,45 +810,39 @@ export class Game extends Phaser.Scene {
         if (closestSnake && minDistance < 300 * closestSnake.scale) {
             this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake: closestSnake });
             // Tahmin edilemeden sunucu onayıyla gelen oyuncu yemesi de puan kazandırır
-            if (closestSnake.isPlayerControlled) this.addPlayerScoreForFood();
+            if (closestSnake.isPlayerControlled) this.addPlayerScoreForFood(value);
         } else {
             bobsArray.forEach(bob => bob.destroy());
         }
     }
 
-    // Her yenen yem grubu +10 puan; HUD anında güncellenir.
-    addPlayerScoreForFood() {
-        this.playerScore += 10;
+    // Yenen yemin sunucudan gelen value'suna göre puan; HUD anında güncellenir.
+    addPlayerScoreForFood(value) {
+        this.playerScore += Number.isFinite(value) ? value : 0;
         this.foodsEaten += 1;
         updateHUDScore(this.playerScore);
     }
 
     clearFoods() {
-        if (this.foodBlitter) {
-            this.foodBlitter.clear();
-            this.foodBlitter.destroy();
-        }
-        if (this.foodBlitterLarge) {
-            this.foodBlitterLarge.clear();
-            this.foodBlitterLarge.destroy();
-        }
-        this.foodBlitter = null;
-        this.foodBlitterLarge = null;
+        this.foodBlitters.forEach(blitter => {
+            if (blitter) {
+                blitter.clear();
+                blitter.destroy();
+            }
+        });
+        this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null);
         this.foods.clear();
         this.eatingFoods.clear();
         this.predictedEatenFoodIds.clear();
     }
 
-    ensureFoodBlitter() {
-        if (this.foodBlitter) return this.foodBlitter;
-        this.foodBlitter = this.registerWorld(this.add.blitter(0, 0, 'food_dot').setDepth(0));
-        return this.foodBlitter;
-    }
-
-    ensureFoodBlitterLarge() {
-        if (this.foodBlitterLarge) return this.foodBlitterLarge;
-        this.foodBlitterLarge = this.registerWorld(this.add.blitter(0, 0, 'food_dot_large').setDepth(0));
-        return this.foodBlitterLarge;
+    // Şekil başına lazy Blitter — aynı şekildeki tüm yemler tek draw call'da çizilir.
+    ensureFoodBlitter(shape) {
+        if (this.foodBlitters[shape]) return this.foodBlitters[shape];
+        this.foodBlitters[shape] = this.registerWorld(
+            this.add.blitter(0, 0, FOOD_SHAPE_TEXTURES[shape]).setDepth(0)
+        );
+        return this.foodBlitters[shape];
     }
 
 
@@ -1199,8 +1168,8 @@ export class Game extends Phaser.Scene {
         // Tahmin edilen yemleri döngü dışında işlemek için toparla
         const predictedEats = [];
 
-        for (const [foodId, bobs] of this.foods) {
-            const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
+        for (const [foodId, food] of this.foods) {
+            const bobsArray = food.bobs;
             const centerBob = bobsArray[0];
             if (!centerBob) continue;
 
@@ -1236,7 +1205,7 @@ export class Game extends Phaser.Scene {
 
             if (playerEatSnake) {
                 // Sunucu onayı beklenmeden anında animasyona geç
-                predictedEats.push({ foodId, bobsArray, targetSnake: playerEatSnake });
+                predictedEats.push({ foodId, bobsArray, value: food.value, targetSnake: playerEatSnake });
                 continue;
             }
 
@@ -1266,12 +1235,12 @@ export class Game extends Phaser.Scene {
         }
 
         // Tahmin edilen yemeleri ana döngüden sonra işle (bu.foods'u güvenle değiştirebiliriz)
-        for (const { foodId, bobsArray, targetSnake } of predictedEats) {
+        for (const { foodId, bobsArray, value, targetSnake } of predictedEats) {
             if (this.predictedEatenFoodIds.has(foodId)) continue; // Aynı kare içinde tekrar tahmin önlemi
             this.predictedEatenFoodIds.add(foodId);
             this.foods.delete(foodId);
             this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake });
-            this.addPlayerScoreForFood(); // predictedEats her zaman oyuncunun yılanıdır
+            this.addPlayerScoreForFood(value); // predictedEats her zaman oyuncunun yılanıdır
         }
 
         // Yenen yemlerin yılan kafasına uçarak yok olması animasyonu (Deferred food eat/magnet animation)
@@ -1378,8 +1347,8 @@ export class Game extends Phaser.Scene {
 
         // Draw foods as tiny dots
         g.fillStyle(0xc2caad, 0.5); // on-surface-variant
-        for (const bobs of this.foods.values()) {
-            const bob = Array.isArray(bobs) ? bobs[0] : bobs;
+        for (const food of this.foods.values()) {
+            const bob = food.bobs[0];
             if (!bob) continue;
 
             const wx = bob.x - this.worldRadius;

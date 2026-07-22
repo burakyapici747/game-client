@@ -1770,6 +1770,12 @@ export namespace server {
 
         /** FoodData y */
         y?: (number|null);
+
+        /** FoodData shape */
+        shape?: (number|null);
+
+        /** FoodData value */
+        value?: (number|null);
     }
 
     /** Represents a FoodData. */
@@ -1789,6 +1795,12 @@ export namespace server {
 
         /** FoodData y. */
         public y: number;
+
+        /** FoodData shape. */
+        public shape: number;
+
+        /** FoodData value. */
+        public value: number;
 
         /**
          * Creates a new FoodData instance using the specified properties.
@@ -2165,121 +2177,6 @@ export namespace server {
 
         /**
          * Gets the default type url for DeathNotification
-         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
-         * @returns The default type url
-         */
-        public static getTypeUrl(typeUrlPrefix?: string): string;
-    }
-
-    /** Properties of an EntityPosition. */
-    interface IEntityPosition {
-
-        /** EntityPosition channelId */
-        channelId?: (number|null);
-
-        /** EntityPosition x */
-        x?: (number|null);
-
-        /** EntityPosition y */
-        y?: (number|null);
-
-        /** EntityPosition angle */
-        angle?: (number|null);
-    }
-
-    /** Represents an EntityPosition. */
-    class EntityPosition implements IEntityPosition {
-
-        /**
-         * Constructs a new EntityPosition.
-         * @param [properties] Properties to set
-         */
-        constructor(properties?: server.IEntityPosition);
-
-        /** EntityPosition channelId. */
-        public channelId: number;
-
-        /** EntityPosition x. */
-        public x: number;
-
-        /** EntityPosition y. */
-        public y: number;
-
-        /** EntityPosition angle. */
-        public angle: number;
-
-        /**
-         * Creates a new EntityPosition instance using the specified properties.
-         * @param [properties] Properties to set
-         * @returns EntityPosition instance
-         */
-        public static create(properties?: server.IEntityPosition): server.EntityPosition;
-
-        /**
-         * Encodes the specified EntityPosition message. Does not implicitly {@link server.EntityPosition.verify|verify} messages.
-         * @param message EntityPosition message or plain object to encode
-         * @param [writer] Writer to encode to
-         * @returns Writer
-         */
-        public static encode(message: server.IEntityPosition, writer?: $protobuf.Writer): $protobuf.Writer;
-
-        /**
-         * Encodes the specified EntityPosition message, length delimited. Does not implicitly {@link server.EntityPosition.verify|verify} messages.
-         * @param message EntityPosition message or plain object to encode
-         * @param [writer] Writer to encode to
-         * @returns Writer
-         */
-        public static encodeDelimited(message: server.IEntityPosition, writer?: $protobuf.Writer): $protobuf.Writer;
-
-        /**
-         * Decodes an EntityPosition message from the specified reader or buffer.
-         * @param reader Reader or buffer to decode from
-         * @param [length] Message length if known beforehand
-         * @returns EntityPosition
-         * @throws {Error} If the payload is not a reader or valid buffer
-         * @throws {$protobuf.util.ProtocolError} If required fields are missing
-         */
-        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.EntityPosition;
-
-        /**
-         * Decodes an EntityPosition message from the specified reader or buffer, length delimited.
-         * @param reader Reader or buffer to decode from
-         * @returns EntityPosition
-         * @throws {Error} If the payload is not a reader or valid buffer
-         * @throws {$protobuf.util.ProtocolError} If required fields are missing
-         */
-        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.EntityPosition;
-
-        /**
-         * Verifies an EntityPosition message.
-         * @param message Plain object to verify
-         * @returns `null` if valid, otherwise the reason why it is not
-         */
-        public static verify(message: { [k: string]: any }): (string|null);
-
-        /**
-         * Creates an EntityPosition message from a plain object. Also converts values to their respective internal types.
-         * @param object Plain object
-         * @returns EntityPosition
-         */
-        public static fromObject(object: { [k: string]: any }): server.EntityPosition;
-
-        /**
-         * Creates a plain object from an EntityPosition message. Also converts values to other types if specified.
-         * @param message EntityPosition
-         * @param [options] Conversion options
-         * @returns Plain object
-         */
-        public static toObject(message: server.EntityPosition, options?: $protobuf.IConversionOptions): { [k: string]: any };
-
-        /**
-         * Converts this EntityPosition to JSON.
-         * @returns JSON object
-         */
-        public toJSON(): { [k: string]: any };
-
-        /**
-         * Gets the default type url for EntityPosition
          * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
          * @returns The default type url
          */

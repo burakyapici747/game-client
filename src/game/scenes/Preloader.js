@@ -18,10 +18,18 @@ export class Preloader extends Phaser.Scene {
     generateCircleTexture(this, 'eye10', 16, 0xffffff, 0x000000, 1.5);
     generateCircleTexture(this, 'pupil4', 8, 0x000000);
 
-    // Food glow dot spritesheet: 16 renk varyantı, her biri 16×16 px
-    makeFoodDotSpritesheet(this, 'food_dot', 16);
-    // Large food glow dot: 24×24 px
-    makeFoodDotSpritesheet(this, 'food_dot_large', 24);
+    // Yem şekilleri: harita okunabilirliği + görsel çeşitlilik için 4 temel
+    // parlayan (shimmer) şekil. SENKRON SÖZLEŞMESİ: sıra/id sunucu
+    // FoodShape.java ile BİREBİR aynı olmalı: 0=CIRCLE, 1=SQUARE,
+    // 2=TRIANGLE, 3=PENTAGON (bkz. Game.js FOOD_SHAPE_TEXTURES).
+    makeShimmerSpritesheet(this, 'food_circle', 18, 'circle');
+    makeShimmerSpritesheet(this, 'food_square', 18, 'square');
+    makeShimmerSpritesheet(this, 'food_triangle', 18, 'triangle');
+    makeShimmerSpritesheet(this, 'food_pentagon', 18, 'pentagon');
+    // Ölüm sonrası ödül yemi (shape=4/DEATH_DROP): her zaman büyük, altın
+    // parıltılı bir beşgen — rakip oyunculara yüksek değerli bir rekabet
+    // bölgesi olduğunu görsel olarak sinyaller.
+    makeDeathDropSpritesheet(this, 'food_death_drop', 30);
 
     // Set linear filtering for smooth scaled rendering
     ['snake_body48', 'snake_head48', 'eye10', 'pupil4'].forEach(k => {
@@ -101,10 +109,40 @@ function generateCircleTexture(scene, key, size, fillColor, strokeColor = null, 
   g.destroy();
 }
 
-// 16 renkli parlayan food dot spritesheet üretici.
+// Duzgun poligon yolu ciz (kare/ucgen/besgen). `sides` yoksa (circle) cagiran
+// taraf ctx.arc kullanir. rotationDeg, koseleri istenen yone hizalar
+// (ör. ucgen/besgen "yukari bakan" gorunsun diye -90).
+function tracePolygon(ctx, cx, cy, radius, sides, rotationDeg) {
+  const rotationRad = (rotationDeg * Math.PI) / 180;
+  ctx.beginPath();
+  for (let i = 0; i < sides; i++) {
+    const angle = rotationRad + (i / sides) * Math.PI * 2;
+    const px = cx + Math.cos(angle) * radius;
+    const py = cy + Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+const SHAPE_SIDES = { square: 4, triangle: 3, pentagon: 5 };
+const SHAPE_ROTATION_DEG = { square: 45, triangle: -90, pentagon: -90 };
+
+function fillShapeAt(ctx, shapeName, cx, cy, radius) {
+  const sides = SHAPE_SIDES[shapeName];
+  if (sides) {
+    tracePolygon(ctx, cx, cy, radius, sides, SHAPE_ROTATION_DEG[shapeName] ?? 0);
+  } else {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
+// 16 renkli parlayan (shimmer) yem spritesheet üretici — şekil parametrik.
 // Her frame `size` × `size` piksel, tüm frame'ler yatay olarak dizilir.
 // Blitter Bob'ları frame index ile hangi rengi göstereceklerini seçer.
-function makeFoodDotSpritesheet(scene, key, size) {
+function makeShimmerSpritesheet(scene, key, size, shapeName) {
   const FOOD_COLORS = [
     '#FF4444', '#FF8833', '#FFDD33', '#AAFF33',
     '#33FF66', '#33FFBB', '#33DDFF', '#3388FF',
@@ -131,7 +169,7 @@ function makeFoodDotSpritesheet(scene, key, size) {
     const g = parseInt(color.slice(3, 5), 16);
     const b = parseInt(color.slice(5, 7), 16);
 
-    // Dış glow (çok soluk)
+    // Dış glow (çok soluk, şekilden bağımsız yumuşak yayılma)
     const gradOuter = ctx.createRadialGradient(
       offsetX + cx, cy, midRadius,
       offsetX + cx, cy, outerRadius
@@ -141,7 +179,7 @@ function makeFoodDotSpritesheet(scene, key, size) {
     ctx.fillStyle = gradOuter;
     ctx.fillRect(offsetX, 0, size, size);
 
-    // Orta glow
+    // Orta glow — şekil silueti burada belirir
     const gradMid = ctx.createRadialGradient(
       offsetX + cx, cy, innerRadius,
       offsetX + cx, cy, midRadius
@@ -149,9 +187,7 @@ function makeFoodDotSpritesheet(scene, key, size) {
     gradMid.addColorStop(0, `rgba(${r},${g},${b},0.9)`);
     gradMid.addColorStop(1, `rgba(${r},${g},${b},0.3)`);
     ctx.fillStyle = gradMid;
-    ctx.beginPath();
-    ctx.arc(offsetX + cx, cy, midRadius, 0, Math.PI * 2);
-    ctx.fill();
+    fillShapeAt(ctx, shapeName, offsetX + cx, cy, midRadius);
 
     // Parlak merkez (beyaza yakın)
     const gradInner = ctx.createRadialGradient(
@@ -164,9 +200,7 @@ function makeFoodDotSpritesheet(scene, key, size) {
     gradInner.addColorStop(0, `rgba(${brightR},${brightG},${brightB},1.0)`);
     gradInner.addColorStop(1, `rgba(${r},${g},${b},0.85)`);
     ctx.fillStyle = gradInner;
-    ctx.beginPath();
-    ctx.arc(offsetX + cx, cy, innerRadius, 0, Math.PI * 2);
-    ctx.fill();
+    fillShapeAt(ctx, shapeName, offsetX + cx, cy, innerRadius);
   }
 
   tex.refresh();
@@ -175,4 +209,38 @@ function makeFoodDotSpritesheet(scene, key, size) {
   for (let i = 0; i < frameCount; i++) {
     tex.add(i, 0, i * size, 0, size, size);
   }
+}
+
+// Ölüm sonrası ödül yemi: tek kare, sabit altın/amber parıltılı beşgen —
+// renk varyantı gerekmez, tek görev haritada "yüksek değerli bölge" sinyali.
+function makeDeathDropSpritesheet(scene, key, size) {
+  const tex = scene.textures.createCanvas(key, size, size);
+  const ctx = tex.getContext();
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerRadius = size / 2 - 1;
+  const midRadius = outerRadius * 0.6;
+  const innerRadius = outerRadius * 0.3;
+  const r = 255, g = 200, b = 60; // altın/amber
+
+  const gradOuter = ctx.createRadialGradient(cx, cy, midRadius, cx, cy, outerRadius);
+  gradOuter.addColorStop(0, `rgba(${r},${g},${b},0.55)`);
+  gradOuter.addColorStop(1, `rgba(${r},${g},${b},0.0)`);
+  ctx.fillStyle = gradOuter;
+  ctx.fillRect(0, 0, size, size);
+
+  const gradMid = ctx.createRadialGradient(cx, cy, innerRadius, cx, cy, midRadius);
+  gradMid.addColorStop(0, `rgba(${r},${g},${b},0.95)`);
+  gradMid.addColorStop(1, `rgba(${r},${g},${b},0.35)`);
+  ctx.fillStyle = gradMid;
+  fillShapeAt(ctx, 'pentagon', cx, cy, midRadius);
+
+  const gradInner = ctx.createRadialGradient(cx, cy, 0, cx, cy, innerRadius);
+  gradInner.addColorStop(0, 'rgba(255,255,220,1.0)');
+  gradInner.addColorStop(1, `rgba(${r},${g},${b},0.9)`);
+  ctx.fillStyle = gradInner;
+  fillShapeAt(ctx, 'pentagon', cx, cy, innerRadius);
+
+  tex.refresh();
+  tex.add(0, 0, 0, 0, size, size);
 }
