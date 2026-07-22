@@ -18,12 +18,10 @@ export class Preloader extends Phaser.Scene {
     generateCircleTexture(this, 'eye10', 16, 0xffffff, 0x000000, 1.5);
     generateCircleTexture(this, 'pupil4', 8, 0x000000);
 
-    // Yem katmanı (tier) spritesheet'leri: 16 renk varyantı, frame boyutu katmana göre.
-    // Boyutlar sunucu FoodTier sözleşmesinin görsel karşılığı — Game.js FOOD_TIER_TEXTURES
-    // sırasıyla eşleşir: 0=SMALL 16px, 1=MEDIUM 24px, 2=LARGE 32px.
-    makeFoodDotSpritesheet(this, 'food_dot_small', 16);
-    makeFoodDotSpritesheet(this, 'food_dot_medium', 24);
-    makeFoodDotSpritesheet(this, 'food_dot_large', 32);
+    // Food glow dot spritesheet: 16 renk varyantı, her biri 16×16 px
+    makeFoodDotSpritesheet(this, 'food_dot', 16);
+    // Large food glow dot: 24×24 px
+    makeFoodDotSpritesheet(this, 'food_dot_large', 24);
 
     // Set linear filtering for smooth scaled rendering
     ['snake_body48', 'snake_head48', 'eye10', 'pupil4'].forEach(k => {

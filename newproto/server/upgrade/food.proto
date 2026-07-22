@@ -8,11 +8,8 @@ message FoodData {
   uint32 food_id = 1;
   uint32 x = 2;
   uint32 y = 3;
-  // field 4 (scale) kaldırıldı — yerine tier geldi.
+  // field 4 (scale) kaldırıldı — tüm yemler eşit değerde.
   reserved 4;
-  // Yem katmanı: 0=SMALL (proto3 default — wire'da yer kaplamaz), 1=MEDIUM, 2=LARGE.
-  // Skor/görsel ölçek sözleşmesi: server FoodTier.java <-> client Game.js FOOD_TIER_SCORES.
-  uint32 tier = 5;
 }
 
 message FoodCollection {
