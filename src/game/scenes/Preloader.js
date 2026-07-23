@@ -22,14 +22,16 @@ export class Preloader extends Phaser.Scene {
     // parlayan (shimmer) şekil. SENKRON SÖZLEŞMESİ: sıra/id sunucu
     // FoodShape.java ile BİREBİR aynı olmalı: 0=CIRCLE, 1=SQUARE,
     // 2=TRIANGLE, 3=PENTAGON (bkz. Game.js FOOD_SHAPE_TEXTURES).
-    makeShimmerSpritesheet(this, 'food_circle', 18, 'circle');
-    makeShimmerSpritesheet(this, 'food_square', 18, 'square');
-    makeShimmerSpritesheet(this, 'food_triangle', 18, 'triangle');
-    makeShimmerSpritesheet(this, 'food_pentagon', 18, 'pentagon');
+    // Boyutlar Issue #1 için ~%20 büyütüldü (18→22 / 30→36): şekiller daha
+    // okunaklı, kenarlar (crisp stroke) daha net.
+    makeShimmerSpritesheet(this, 'food_circle', 22, 'circle');
+    makeShimmerSpritesheet(this, 'food_square', 22, 'square');
+    makeShimmerSpritesheet(this, 'food_triangle', 22, 'triangle');
+    makeShimmerSpritesheet(this, 'food_pentagon', 22, 'pentagon');
     // Ölüm sonrası ödül yemi (shape=4/DEATH_DROP): her zaman büyük, altın
     // parıltılı bir beşgen — rakip oyunculara yüksek değerli bir rekabet
     // bölgesi olduğunu görsel olarak sinyaller.
-    makeDeathDropSpritesheet(this, 'food_death_drop', 30);
+    makeDeathDropSpritesheet(this, 'food_death_drop', 36);
 
     // Set linear filtering for smooth scaled rendering
     ['snake_body48', 'snake_head48', 'eye10', 'pupil4'].forEach(k => {
@@ -128,7 +130,8 @@ function tracePolygon(ctx, cx, cy, radius, sides, rotationDeg) {
 const SHAPE_SIDES = { square: 4, triangle: 3, pentagon: 5 };
 const SHAPE_ROTATION_DEG = { square: 45, triangle: -90, pentagon: -90 };
 
-function fillShapeAt(ctx, shapeName, cx, cy, radius) {
+// Şeklin yolunu (path) kur — dolgu VEYA çizgi (stroke) için ortak.
+function traceShapeAt(ctx, shapeName, cx, cy, radius) {
   const sides = SHAPE_SIDES[shapeName];
   if (sides) {
     tracePolygon(ctx, cx, cy, radius, sides, SHAPE_ROTATION_DEG[shapeName] ?? 0);
@@ -136,7 +139,22 @@ function fillShapeAt(ctx, shapeName, cx, cy, radius) {
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   }
+}
+
+function fillShapeAt(ctx, shapeName, cx, cy, radius) {
+  traceShapeAt(ctx, shapeName, cx, cy, radius);
   ctx.fill();
+}
+
+// Kesin, yüksek kontrastlı dış çizgi (Issue #1): kare/üçgen/beşgen kenarları
+// küçük ölçekte bile tek bakışta ayırt edilsin. Köşeler yuvarlatılmış birleşimle
+// temiz kalır.
+function strokeShapeAt(ctx, shapeName, cx, cy, radius, width, style) {
+  traceShapeAt(ctx, shapeName, cx, cy, radius);
+  ctx.lineWidth = width;
+  ctx.strokeStyle = style;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
 }
 
 // 16 renkli parlayan (shimmer) yem spritesheet üretici — şekil parametrik.
@@ -157,8 +175,10 @@ function makeShimmerSpritesheet(scene, key, size, shapeName) {
   const cx = size / 2;
   const cy = size / 2;
   const outerRadius = size / 2 - 1;
-  const midRadius = outerRadius * 0.55;
-  const innerRadius = outerRadius * 0.25;
+  // Ana gövde silueti biraz büyütüldü (0.55→0.62) — şekil daha okunaklı,
+  // kesin dış çizgi (stroke) için de yer açılır.
+  const bodyRadius = outerRadius * 0.62;
+  const innerRadius = outerRadius * 0.28;
 
   for (let i = 0; i < frameCount; i++) {
     const offsetX = i * size;
@@ -168,15 +188,13 @@ function makeShimmerSpritesheet(scene, key, size, shapeName) {
     const r = parseInt(color.slice(1, 3), 16);
     const g = parseInt(color.slice(3, 5), 16);
     const b = parseInt(color.slice(5, 7), 16);
+    const brightR = Math.min(255, r + 100);
+    const brightG = Math.min(255, g + 100);
+    const brightB = Math.min(255, b + 100);
 
-    // Dış glow — BUG FIX: önceden ctx.fillRect ile her zaman kare/dairesel bir
-    // bulanık halo çiziliyordu; bu halo tüm karo alanını kapladığından kare/
-    // beşgen gibi köşeli şekillerin siluetini görsel olarak eziyor, her şey
-    // "yuvarlak nokta" gibi görünüyordu. Artık dış glow da şeklin kendi yolunu
-    // (fillShapeAt) kullanıyor — parıltı hâlâ yumuşak (radial gradient) ama
-    // artık şeklin gerçek konturunu takip ediyor.
+    // 1) Dış glow — şeklin kendi konturunu takip eden yumuşak parıltı (radial).
     const gradOuter = ctx.createRadialGradient(
-      offsetX + cx, cy, midRadius,
+      offsetX + cx, cy, bodyRadius,
       offsetX + cx, cy, outerRadius
     );
     gradOuter.addColorStop(0, `rgba(${r},${g},${b},0.45)`);
@@ -184,28 +202,30 @@ function makeShimmerSpritesheet(scene, key, size, shapeName) {
     ctx.fillStyle = gradOuter;
     fillShapeAt(ctx, shapeName, offsetX + cx, cy, outerRadius);
 
-    // Orta glow — şekil silueti burada belirir
+    // 2) Gövde dolgusu — şekil silueti burada belirir.
     const gradMid = ctx.createRadialGradient(
       offsetX + cx, cy, innerRadius,
-      offsetX + cx, cy, midRadius
+      offsetX + cx, cy, bodyRadius
     );
     gradMid.addColorStop(0, `rgba(${r},${g},${b},0.9)`);
-    gradMid.addColorStop(1, `rgba(${r},${g},${b},0.3)`);
+    gradMid.addColorStop(1, `rgba(${r},${g},${b},0.4)`);
     ctx.fillStyle = gradMid;
-    fillShapeAt(ctx, shapeName, offsetX + cx, cy, midRadius);
+    fillShapeAt(ctx, shapeName, offsetX + cx, cy, bodyRadius);
 
-    // Parlak merkez (beyaza yakın)
+    // 3) Parlak merkez (beyaza yakın çekirdek).
     const gradInner = ctx.createRadialGradient(
       offsetX + cx, cy, 0,
       offsetX + cx, cy, innerRadius
     );
-    const brightR = Math.min(255, r + 100);
-    const brightG = Math.min(255, g + 100);
-    const brightB = Math.min(255, b + 100);
     gradInner.addColorStop(0, `rgba(${brightR},${brightG},${brightB},1.0)`);
     gradInner.addColorStop(1, `rgba(${r},${g},${b},0.85)`);
     ctx.fillStyle = gradInner;
     fillShapeAt(ctx, shapeName, offsetX + cx, cy, innerRadius);
+
+    // 4) KESİN DIŞ ÇİZGİ (Issue #1) — parlak, yüksek kontrastlı 2px kontur:
+    //    şeklin geometrisini (köşe sayısını) tek bakışta okunur kılar.
+    strokeShapeAt(ctx, shapeName, offsetX + cx, cy, bodyRadius, 2,
+      `rgba(${brightR},${brightG},${brightB},0.95)`);
   }
 
   tex.refresh();
@@ -245,6 +265,9 @@ function makeDeathDropSpritesheet(scene, key, size) {
   gradInner.addColorStop(1, `rgba(${r},${g},${b},0.9)`);
   ctx.fillStyle = gradInner;
   fillShapeAt(ctx, 'pentagon', cx, cy, innerRadius);
+
+  // Kesin, parlak altın kontur (Issue #1) — ödül beşgeni net okunur.
+  strokeShapeAt(ctx, 'pentagon', cx, cy, midRadius, 2, 'rgba(255,240,180,0.95)');
 
   tex.refresh();
   tex.add(0, 0, 0, 0, size, size);

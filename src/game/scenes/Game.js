@@ -26,6 +26,29 @@ const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 const FOOD_SHAPE_TEXTURES = ['food_circle', 'food_square', 'food_triangle', 'food_pentagon', 'food_death_drop'];
 const DEATH_DROP_SHAPE_ID = 4;
 
+// ── MANYETİK YEME MEKANİĞİ (Issue #2) ────────────────────────────────────────
+// Yem, kafanın çekim halkasına girince yenmeye başlar. Uçuş sırasında
+// normalize mesafe  t = clamp(d / r0, 0, 1)  (r0: yakalama anındaki mesafe)
+// üzerinden:
+//   • hız   = V_MIN + (V_MAX - V_MIN) · (1 - t)²   → kafaya yaklaştıkça ivmelenir
+//   • ölçek = t                                    → 1.0 → 0.0 küçülerek yok olur
+// V_MAX yılanın boost dahil maksimum hızını (~<900 px/s) rahatça aştığından
+// yem HER durumda yakalanır (yemin "kafada asılı kalması" bug'ı da böyle biter).
+const FOOD_MAGNET_V_MIN = 140;    // px/s — yakalama kenarında yavaş süzülme
+const FOOD_MAGNET_V_MAX = 1500;   // px/s — kafanın dibinde hızlı içine çekilme
+// Yakalama garantisi: kuadratik eğri UZAKTA (t→1) yavaştır (V_MIN); bu, boost'lu
+// bir yılanın (~450 px/s) yemi geride bırakmasına ve yemin asla yetişememesine
+// yol açar. Bu taban hız, maksimum yılan hızını rahatça aşar → yem her koşulda
+// yetişip yenir. Yakın alanda kuadratik hız zaten bu tabanın üstündedir, dolayısıyla
+// ivme/küçülme hissi korunur.
+const FOOD_MAGNET_CATCHUP_MIN = 650; // px/s
+const FOOD_EAT_DESTROY_DIST = 5;  // px — bu mesafenin altında yem yok edilir
+const FOOD_EAT_MIN_SCALE = 0.06;  // ölçek bunun altına inince yem yok edilir
+// Görsel manyetik yaslanma yarıçapı = yeme yarıçapı × bu kat. Yem, yenmeden
+// önce bu halkada kafaya doğru yaslanır (hem oyuncu hem rakip için).
+const FOOD_MAGNET_RADIUS_FACTOR = 1.7;
+const FOOD_MAGNET_HOVER_PULL = 12.0; // yaslanma/geri-dönüş üstel çekim katsayısı
+
 // ── AOI DEBUG OVERLAY (sunucu görünürlük sınırının görselleştirilmesi) ──────
 // Sunucu algoritması: AOICalculationSystem.fill3x3AOI — AOI, oyuncunun
 // KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 3x3 sektörlük
@@ -538,7 +561,7 @@ export class Game extends Phaser.Scene {
 
         for (const [foodId, food] of this.foods) {
             if (incomingFoodIds.has(foodId)) continue;
-            food.bobs.forEach(bob => bob.destroy());
+            food.bob?.destroy();
             this.foods.delete(foodId);
         }
     }
@@ -624,7 +647,7 @@ export class Game extends Phaser.Scene {
         try {
             this.eatingFoods.forEach((data, foodId) => {
                 if (data.targetSnake === snake) {
-                    data.bobs.forEach(bob => bob?.destroy());
+                    data.sprite?.destroy();
                     this.eatingFoods.delete(foodId);
                 }
             });
@@ -733,7 +756,7 @@ export class Game extends Phaser.Scene {
 
         const existingFood = this.foods.get(foodId);
         if (existingFood) {
-            const bob = existingFood.bobs[0];
+            const bob = existingFood.bob;
             if (bob && bob.originalX === undefined) {
                 bob.originalX = bob.x;
                 bob.originalY = bob.y;
@@ -760,7 +783,9 @@ export class Game extends Phaser.Scene {
         bob.originalX = targetX;
         bob.originalY = targetY;
 
-        this.foods.set(foodId, { bobs: [bob], value });
+        // Rule 1: her yem tek bir Bob. shape, yem yenirken Sprite'a dönüştürmek
+        // (Bob'lar setScale desteklemez — bkz. _beginFoodEatingFlight) için saklanır.
+        this.foods.set(foodId, { bob, value, shape });
         return foodId;
     }
 
@@ -778,20 +803,15 @@ export class Game extends Phaser.Scene {
         // Uzak yılan tarafından yenilen yem (veya sunucu tahminimizden önce bildirdi)
         const food = this.foods.get(foodId);
         if (!food) return;
-
-        const { bobs: bobsArray, value } = food;
         this.foods.delete(foodId);
 
-        const centerBob = bobsArray[0];
-        if (!centerBob) {
-            bobsArray.forEach(bob => bob.destroy());
-            return;
-        }
+        const bob = food.bob;
+        if (!bob) return;
 
         // Mıknatıs efekti bob konumunu zaten yılan kafasına doğru çekmiş olabilir.
         // originalX/Y yerine güncel bob.x/y kullanmak çok daha isabetli bir mesafe verir.
-        const checkX = centerBob.x;
-        const checkY = centerBob.y;
+        const checkX = bob.x;
+        const checkY = bob.y;
 
         let closestSnake = null;
         let minDistance  = Infinity;
@@ -808,12 +828,38 @@ export class Game extends Phaser.Scene {
 
         // 300 px: 45 px yeme yarıçapı + ~200 ms gecikme × 225 px/s ≈ 90 px + güvenlik payı
         if (closestSnake && minDistance < 300 * closestSnake.scale) {
-            this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake: closestSnake });
+            this._beginFoodEatingFlight(foodId, food, closestSnake);
             // Tahmin edilemeden sunucu onayıyla gelen oyuncu yemesi de puan kazandırır
-            if (closestSnake.isPlayerControlled) this.addPlayerScoreForFood(value);
+            if (closestSnake.isPlayerControlled) this.addPlayerScoreForFood(food.value);
         } else {
-            bobsArray.forEach(bob => bob.destroy());
+            bob.destroy();
         }
+    }
+
+    // Statik yem (Blitter Bob) → yenme animasyonu (Sprite) dönüşümü.
+    // NEDEN Sprite: Phaser Blitter Bob'ları setScale DESTEKLEMEZ; yemin küçülerek
+    // (scale 1→0) yok olması (Issue #2) için gerçek bir Sprite şart. Bu dönüşüm
+    // yalnızca AYNI ANDA yenmekte olan birkaç yem için yapılır — 4000 statik
+    // yemin tek-draw-call Blitter avantajı korunur.
+    _beginFoodEatingFlight(foodId, food, targetSnake) {
+        const bob = food.bob;
+        const startX = bob ? bob.x : 0;
+        const startY = bob ? bob.y : 0;
+        const frameName = bob && bob.frame ? bob.frame.name : 0;
+        if (bob) bob.destroy();
+
+        const shape = (food.shape >= 0 && food.shape < FOOD_SHAPE_TEXTURES.length) ? food.shape : 0;
+        const sprite = this.registerWorld(
+            this.add.sprite(startX, startY, FOOD_SHAPE_TEXTURES[shape], frameName).setDepth(0)
+        );
+
+        // r0 = yakalama anındaki kafa mesafesi. Hız eğrisi ve küçülme bu yarıçapa
+        // göre normalize edilir → yem yakalandığı yerde scale=1 (sıçrama yok)
+        // başlar, kafaya varınca scale→0.
+        const head = targetSnake.getHead();
+        const r0 = head ? Math.max(Math.hypot(head.x - startX, head.y - startY), 1) : 1;
+
+        this.eatingFoods.set(foodId, { sprite, targetSnake, r0 });
     }
 
     // Yenen yemin sunucudan gelen value'suna göre puan; HUD anında güncellenir.
@@ -1152,11 +1198,9 @@ export class Game extends Phaser.Scene {
         // Oyuncunun yılanı yeme yarıçapına girince yemi hemen eatingFoods'a taşırız;
         // sunucu onayı (~100ms sonra) gelince sadece seti temizleriz.
         const dt = delta / 1000;
-        const PULL_SPEED_FACTOR = 12.0;
         // SUNUCU FORMÜL AYNASI — game-server FoodConfig.eatRadiusPx ile BIREBIR:
-        // min(MAX, BASE * (1 + (scale-1) * GAIN)). Eski lineer "45 * scale"
-        // tavansızdı ve kütle→vakum→kütle geri-beslemesiyle kill sonrası aşırı
-        // büyüme yaratıyordu. Değişiklik sunucuyla BİRLİKTE yapılmalı.
+        // min(MAX, BASE * (1 + (scale-1) * GAIN)). Bu YEME (commit) yarıçapıdır;
+        // oyuncunun tahmini yemesi sunucuyla senkron kalsın diye DEĞİŞTİRİLMEZ.
         const EAT_RADIUS_BASE = 45.0;
         const EAT_RADIUS_SCALE_GAIN = 0.35;
         const EAT_RADIUS_MAX = 100.0;
@@ -1169,126 +1213,110 @@ export class Game extends Phaser.Scene {
         const predictedEats = [];
 
         for (const [foodId, food] of this.foods) {
-            const bobsArray = food.bobs;
-            const centerBob = bobsArray[0];
-            if (!centerBob) continue;
+            const bob = food.bob;
+            if (!bob) continue;
 
-            const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
-            const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+            // Commit/return kararı yemin GERÇEK (orijinal) konumuna göre verilir —
+            // manyetik yaslanma bob'u kaydırmış olsa da sunucu geometrisiyle
+            // senkron kalmak için orijinal konum esas alınır.
+            const origX = bob.originalX !== undefined ? bob.originalX : bob.x;
+            const origY = bob.originalY !== undefined ? bob.originalY : bob.y;
 
-            let playerEatSnake = null;   // Oyuncu yılanı yeme yarıçapındaysa
-            let remoteSnake   = null;    // Uzak yılan için mıknatıs çekimi
-            let remoteDist    = Infinity;
+            let commitSnake = null;   // OYUNCU kafası YEME yarıçapında → hemen ye (sunucu aynası)
+            let magnetHead  = null;   // en yakın kafa MIKNATIS halkasında → görsel yaslanma
+            let magnetDist  = Infinity;
 
             for (const snake of this.snakes.values()) {
                 if (!snake.alive || !snake.getHead()?.active) continue;
                 const head = snake.getHead();
+                const dist = Math.hypot(head.x - origX, head.y - origY);
                 const eatRadius = eatRadiusForScale(snake.scale);
 
-                const dx = head.x - origX;
-                const dy = head.y - origY;
-                const distSq = dx * dx + dy * dy;
-                if (distSq > eatRadius * eatRadius) continue;
-
-                if (snake.isPlayerControlled) {
-                    // Oyuncunun yılanı yeme menzilinde → hemen tahminle ye
-                    playerEatSnake = snake;
-                    break; // Oyuncu önceliği
+                // Commit YALNIZCA oyuncu için ve yeme yarıçapında (desync önlenir:
+                // rakip yılanların yediği sunucu 'removed' paketiyle onaylanır).
+                if (snake.isPlayerControlled && dist <= eatRadius) {
+                    commitSnake = snake;
+                    break;
                 }
-
-                const dist = Math.sqrt(distSq);
-                if (dist < remoteDist) {
-                    remoteDist  = dist;
-                    remoteSnake = snake;
+                // Manyetik yaslanma halkası — hem oyuncu hem rakip için geniş.
+                if (dist <= eatRadius * FOOD_MAGNET_RADIUS_FACTOR && dist < magnetDist) {
+                    magnetDist = dist;
+                    magnetHead = head;
                 }
             }
 
-            if (playerEatSnake) {
-                // Sunucu onayı beklenmeden anında animasyona geç
-                predictedEats.push({ foodId, bobsArray, value: food.value, targetSnake: playerEatSnake });
+            if (commitSnake) {
+                predictedEats.push({ foodId, food, targetSnake: commitSnake });
                 continue;
             }
 
-            if (remoteSnake) {
-                // Uzak yılan: sunucu onayı gelene kadar görsel mıknatıs çekimi uygula
-                const head = remoteSnake.getHead();
-                bobsArray.forEach(bob => {
-                    bob.x += (head.x - bob.x) * PULL_SPEED_FACTOR * dt;
-                    bob.y += (head.y - bob.y) * PULL_SPEED_FACTOR * dt;
-                });
+            if (magnetHead) {
+                // Kafaya doğru yumuşak yaslanma (henüz yenmedi; kafa uzaklaşırsa geri döner).
+                bob.x += (magnetHead.x - bob.x) * FOOD_MAGNET_HOVER_PULL * dt;
+                bob.y += (magnetHead.y - bob.y) * FOOD_MAGNET_HOVER_PULL * dt;
             } else {
-                // Menzil dışında: orijinal konuma geri dön
-                bobsArray.forEach(bob => {
-                    const oX = bob.originalX !== undefined ? bob.originalX : bob.x;
-                    const oY = bob.originalY !== undefined ? bob.originalY : bob.y;
-                    const dx = oX - bob.x;
-                    const dy = oY - bob.y;
-                    if (Math.hypot(dx, dy) > 0.1) {
-                        bob.x += dx * PULL_SPEED_FACTOR * dt;
-                        bob.y += dy * PULL_SPEED_FACTOR * dt;
-                    } else {
-                        bob.x = oX;
-                        bob.y = oY;
-                    }
-                });
+                // Menzil dışında: orijinal konuma geri dön.
+                const dx = origX - bob.x;
+                const dy = origY - bob.y;
+                if (Math.hypot(dx, dy) > 0.1) {
+                    bob.x += dx * FOOD_MAGNET_HOVER_PULL * dt;
+                    bob.y += dy * FOOD_MAGNET_HOVER_PULL * dt;
+                } else {
+                    bob.x = origX;
+                    bob.y = origY;
+                }
             }
         }
 
-        // Tahmin edilen yemeleri ana döngüden sonra işle (bu.foods'u güvenle değiştirebiliriz)
-        for (const { foodId, bobsArray, value, targetSnake } of predictedEats) {
+        // Tahmin edilen yemeleri ana döngüden sonra işle (this.foods'u güvenle değiştirebiliriz)
+        for (const { foodId, food, targetSnake } of predictedEats) {
             if (this.predictedEatenFoodIds.has(foodId)) continue; // Aynı kare içinde tekrar tahmin önlemi
             this.predictedEatenFoodIds.add(foodId);
             this.foods.delete(foodId);
-            this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake });
-            this.addPlayerScoreForFood(value); // predictedEats her zaman oyuncunun yılanıdır
+            this._beginFoodEatingFlight(foodId, food, targetSnake);
+            this.addPlayerScoreForFood(food.value); // predictedEats her zaman oyuncunun yılanıdır
         }
 
-        // Yenen yemlerin yılan kafasına uçarak yok olması animasyonu (Deferred food eat/magnet animation)
+        // Yenen yemin kafaya kuadratik ivmeyle uçup küçülerek yok olması (Issue #2).
         this.eatingFoods.forEach((data, foodId) => {
-            const { bobs, targetSnake } = data;
+            const { sprite, targetSnake, r0 } = data;
+            if (!sprite || !sprite.active) {
+                this.eatingFoods.delete(foodId);
+                return;
+            }
             if (!targetSnake.alive || !targetSnake.getHead()?.active) {
-                // Yiyen yılan öldüyse veya aktif değilse yemleri hemen temizle
-                bobs.forEach(bob => bob.destroy());
+                // Yiyen yılan öldüyse/aktif değilse yemi hemen temizle.
+                sprite.destroy();
                 this.eatingFoods.delete(foodId);
                 return;
             }
 
             const head = targetSnake.getHead();
-            let allReached = true;
-            const EATING_PULL_SPEED = 18.0; // Uzaktan yaklaşırken oransal (P-controller) ivme
-            // BUG FIX: saf oransal takip (hız = mesafe * EATING_PULL_SPEED), hedef
-            // (yılan kafası) sabit hızda hareket ederken sabit bir "arkadan takip"
-            // mesafesinde dengeye oturabilir — kapanma hızı hedefin hızını
-            // yakaladığı an mesafe küçülmeyi durdurur (~hedefHızı/EATING_PULL_SPEED px).
-            // Tipik yılan hızlarında bu denge noktası 8px eşiğinin ÜZERİNDE kalıyor,
-            // yem sonsuza dek kafanın hemen arkasında asılı kalıp asla yok olmuyordu.
-            // Çözüm: kapanma hızına, hedefin olası hızını her zaman aşan bir taban
-            // (minimum) hız ekleyerek mesafenin SONLU sürede eşiğin altına inmesini garanti ediyoruz.
-            const EATING_MIN_CLOSE_SPEED_PX_S = 500;
+            const dx = head.x - sprite.x;
+            const dy = head.y - sprite.y;
+            const d = Math.hypot(dx, dy);
 
-            bobs.forEach(bob => {
-                const dx = head.x - bob.x;
-                const dy = head.y - bob.y;
-                const dist = Math.hypot(dx, dy);
+            // Normalize mesafe t = d / r0 (yakalama yarıçapı). Uçuş boyunca:
+            //   hız  = V_MIN + (V_MAX - V_MIN)·(1 - t)²   (kafaya yaklaştıkça ivmelenir)
+            //   ölçek = t                                  (1.0 → 0.0 küçülür)
+            const t = Phaser.Math.Clamp(d / r0, 0, 1);
 
-                if (dist > 8.0) {
-                    const closeSpeed = Math.max(dist * EATING_PULL_SPEED, EATING_MIN_CLOSE_SPEED_PX_S);
-                    const step = Math.min(dist, closeSpeed * dt); // hedefi asıp geçmeyi önle
-                    bob.x += (dx / dist) * step;
-                    bob.y += (dy / dist) * step;
-                    allReached = false;
-                } else {
-                    bob.destroy();
-                    bob.isDestroyed = true;
-                }
-            });
-
-            // Yok edilen bob'ları listeden çıkar
-            data.bobs = bobs.filter(bob => !bob.isDestroyed);
-
-            if (allReached || data.bobs.length === 0) {
+            if (d < FOOD_EAT_DESTROY_DIST || t < FOOD_EAT_MIN_SCALE) {
+                sprite.destroy();
                 this.eatingFoods.delete(foodId);
+                return;
             }
+
+            const quadVelocity = FOOD_MAGNET_V_MIN + (FOOD_MAGNET_V_MAX - FOOD_MAGNET_V_MIN) * (1 - t) * (1 - t);
+            // Kuadratik hız yakın alanı şekillendirir; taban hız uzak alanda
+            // yakalamayı garantiler (hedef kafa uzaklaşsa bile yem yetişir).
+            const velocity = Math.max(quadVelocity, FOOD_MAGNET_CATCHUP_MIN);
+            const step = Math.min(d, velocity * dt); // hedefi aşıp geçmeyi önle
+            sprite.x += (dx / d) * step;
+            sprite.y += (dy / d) * step;
+
+            sprite.setScale(t);
+            sprite.setAlpha(Phaser.Math.Clamp(0.2 + t, 0, 1)); // ağırlıklı küçülme + hafif solma
         });
 
         // Food'lar artık statik renk frame'leri kullanıyor — animasyon döngüsü gerekmiyor.
@@ -1359,7 +1387,7 @@ export class Game extends Phaser.Scene {
         // Draw foods as tiny dots
         g.fillStyle(0xc2caad, 0.5); // on-surface-variant
         for (const food of this.foods.values()) {
-            const bob = food.bobs[0];
+            const bob = food.bob;
             if (!bob) continue;
 
             const wx = bob.x - this.worldRadius;
@@ -1416,7 +1444,7 @@ export class Game extends Phaser.Scene {
         this.snakes.forEach(snake => snake.hardResync());
 
         // Yarım kalmış yeme animasyonları bayat koordinatlarda titreşir — bitir.
-        this.eatingFoods.forEach(({ bobs }) => bobs.forEach(bob => bob.destroy()));
+        this.eatingFoods.forEach(({ sprite }) => sprite?.destroy());
         this.eatingFoods.clear();
         this.predictedEatenFoodIds.clear();
 

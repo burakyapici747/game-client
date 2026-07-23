@@ -66,6 +66,13 @@ const SnakeConfig = {
     RECONCILIATION_MAX_CORRECTION_SPEED: 300, // px/s cap — corrections stay sub-perceptual
     RECON_HARD_SNAP_DISTANCE: 800,   // death/respawn/teleport only
 
+    // ── Segment ekleme/çıkarma yumuşak animasyonları (game feel) ─────────
+    // Büyüme: yeni segment ölçek/opaklık 0'dan başlar, üstel yaklaşımla 1'e
+    //   çıkar → scale = 1 - exp(-k·t) (kare-bağımsız artımlı biçim).
+    // Çıkış: çıkarılan segment anında yok edilmez; yerinde 1→0 çöker (~180ms).
+    SEGMENT_GROW_RATE: 14,        // 1/s — büyüme üstel oranı (τ≈71ms)
+    SEGMENT_DESPAWN_MS: 180,      // çıkış çöküş süresi (ms)
+
     // ── Segment isolation (anti-cascade) ────────────────────────────────
     // The body path is sampled from a low-pass "follower" of the head, not
     // the head itself. Reconciliation micro-corrections on the head are
@@ -135,6 +142,9 @@ export class Snake {
         this._smoothedError = { x: 0, y: 0 }; // EMA of time-aligned prediction error
         this._correcting = false;             // hysteresis latch
         this.segments = [];
+        // Çıkış animasyonundaki (çökmekte olan) segmentler — this.segments'ten
+        // ÇIKARILMIŞ ama henüz görsel olarak yok olmamış ghost'lar: { sprite, t }.
+        this._despawningSegments = [];
         this.segmentPrimaryColor = 0xD4AF37;
         this.segmentSecondaryColor = 0x2B2B2B;
         this.segmentStripeWidth = 3;
@@ -193,14 +203,23 @@ export class Snake {
             : this.segmentSecondaryColor;
     }
 
-    _createSegmentSprite(index, x, y) {
+    _createSegmentSprite(index, x, y, animateIn = false) {
         // registerWorld: world-space objects render via the zoomed main camera
         // only — the zoom-1 UI camera must ignore them (see Game.js).
-        return this.scene.registerWorld(
+        const seg = this.scene.registerWorld(
             this.scene.add.sprite(x, y, 'snake_body48')
                 .setOrigin(0.5)
                 .setTint(this._getSegmentColor(index))
         );
+        // _animScale: this.scale ile ÇARPILAN büyüme/çöküş çarpanı (0..1).
+        // animateIn=true → 0'dan başlar, _updateSegmentLifecycle ile 1'e büyür.
+        seg._animScale = animateIn ? 0 : 1;
+        seg._growing = animateIn;
+        if (animateIn) {
+            seg.setScale(0);
+            seg.setAlpha(0);
+        }
+        return seg;
     }
 
     _refreshSegmentDepths() {
@@ -320,8 +339,10 @@ export class Snake {
         for (let i = 0; i < normalizedAddCount; i++) {
             const spawnPos = this._resolveSegmentSpawnPositionBehindTail();
             const segmentIndex = this.segments.length;
-            const segment = this._createSegmentSprite(segmentIndex, spawnPos.x, spawnPos.y);
-            segment.setScale(this.scale); // Scale new segments immediately
+            // animateIn: yeni segment 0 ölçek/opaklıktan başlayıp yumuşakça büyür
+            // (Issue #3 — ani "pop" yerine üstel yaklaşım). Ölçek artık
+            // _updateSegmentLifecycle tarafından this.scale ile sürülür.
+            const segment = this._createSegmentSprite(segmentIndex, spawnPos.x, spawnPos.y, true);
             this.segments.push(segment);
         }
 
@@ -337,11 +358,58 @@ export class Snake {
         const removeCount = Math.min(normalizedRemoveCount, this.segments.length);
         for (let i = 0; i < removeCount; i++) {
             const segment = this.segments.pop();
-            segment?.destroy();
+            this._beginSegmentDespawn(segment); // ani yok etme yerine yerinde çöküş (Issue #3)
         }
 
         this.sct = this.segments.length;
         this._refreshSegmentDepths();
+    }
+
+    // Segmenti this.segments'ten çıkarıp yerinde 1→0 çöküşe alır (anında değil).
+    // this.segments'ten çıkarıldığı için gövde path'ini artık takip etmez —
+    // en son konumunda küçülüp solar, tamamlanınca _updateSegmentLifecycle
+    // sprite'ı yok eder.
+    _beginSegmentDespawn(seg) {
+        if (!seg) return;
+        if (!seg.active) { seg.destroy?.(); return; }
+        seg._growing = false;
+        this._despawningSegments.push({ sprite: seg, t: seg._animScale ?? 1 });
+    }
+
+    // Her karede çağrılır: büyüyen segmentleri 1'e yaklaştırır, çökenleri 0'a
+    // indirip yok eder. dtMs frame-rate agnostiktir.
+    _updateSegmentLifecycle(dtMs) {
+        const dtSec = Math.min(dtMs, this.config.MAX_SIM_DT_MS) / 1000;
+
+        // Büyüme: scale = 1 - exp(-k·t) — artımlı, kare-bağımsız üstel yaklaşım.
+        const growAlpha = 1 - Math.exp(-this.config.SEGMENT_GROW_RATE * dtSec);
+        for (let i = 0; i < this.segments.length; i++) {
+            const seg = this.segments[i];
+            if (!seg || !seg.active || !seg._growing) continue;
+            seg._animScale += (1 - seg._animScale) * growAlpha;
+            if (seg._animScale > 0.995) {
+                seg._animScale = 1;
+                seg._growing = false;
+            }
+            seg.setScale(this.scale * seg._animScale);
+            seg.setAlpha(seg._animScale);
+        }
+
+        // Çıkış: 1→0 doğrusal çöküş (~SEGMENT_DESPAWN_MS), tamamlanınca yok et.
+        if (this._despawningSegments.length > 0) {
+            const shrinkStep = dtMs / this.config.SEGMENT_DESPAWN_MS;
+            for (let i = this._despawningSegments.length - 1; i >= 0; i--) {
+                const d = this._despawningSegments[i];
+                d.t -= shrinkStep;
+                if (d.t <= 0 || !d.sprite || !d.sprite.active) {
+                    d.sprite?.destroy();
+                    this._despawningSegments.splice(i, 1);
+                } else {
+                    d.sprite.setScale(this.scale * d.t);
+                    d.sprite.setAlpha(d.t);
+                }
+            }
+        }
     }
 
     applySegmentMutationFromServer(mutation) {
@@ -431,6 +499,9 @@ export class Snake {
         // 1) Sahnedeki HER görsel düğümü söküp yok et — gizleme değil, imha.
         this.head?.destroy();
         this.segments.forEach(seg => seg?.destroy());
+        // Çıkış animasyonundaki ghost segmentler de imha edilir (sızıntı önleme).
+        this._despawningSegments?.forEach(d => d.sprite?.destroy());
+        this._despawningSegments = [];
         this.trail?.destroy();
         this.eyeL?.destroy();
         this.eyeR?.destroy();
@@ -612,6 +683,9 @@ export class Snake {
 
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
+        // Segment büyüme/çöküş animasyonları (Issue #3) — konumlandırmadan sonra,
+        // ölçeği/opaklığı bu karenin dt'siyle ilerlet.
+        this._updateSegmentLifecycle(this._delta || 16.67);
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
         this._updateEyes(worldPoint.x, worldPoint.y);
         if (this.nicknameText) {
@@ -1017,7 +1091,9 @@ export class Snake {
     _updateSegmentScaling() {
         if (this.head) this.head.setScale(this.scale);
         this.segments.forEach(seg => {
-            if (seg && seg.active) seg.setScale(this.scale);
+            // Büyüme animasyonundaki segmentin ölçeği _animScale ile çarpılır —
+            // aksi halde sunucu scale güncellemesi büyüme "pop"unu geri getirirdi.
+            if (seg && seg.active) seg.setScale(this.scale * (seg._animScale ?? 1));
         });
     }
 
