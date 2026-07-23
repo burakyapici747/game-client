@@ -26,28 +26,47 @@ const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 const FOOD_SHAPE_TEXTURES = ['food_circle', 'food_square', 'food_triangle', 'food_pentagon', 'food_death_drop'];
 const DEATH_DROP_SHAPE_ID = 4;
 
-// ── MANYETİK YEME MEKANİĞİ (Issue #2) ────────────────────────────────────────
-// Yem, kafanın çekim halkasına girince yenmeye başlar. Uçuş sırasında
-// normalize mesafe  t = clamp(d / r0, 0, 1)  (r0: yakalama anındaki mesafe)
-// üzerinden:
+// ── BİRLEŞİK YEME EŞİĞİ (client ⇄ server sözleşmesi) ─────────────────────────
+// SUNUCU AYNASI — game-server FoodConfig.eatRadiusPx ile BİREBİR:
+//   radius = min(MAX, BASE · (1 + (scale-1)·GAIN))
+// Bu, HEM çekim (magnet) HEM de yeme (consume) eşiğidir — TEK, birleşik değer.
+// Sunucu da yemi yalnızca bu yarıçap içinde yer; client sadece bu eşikte çekimi
+// tetikler. Böylece "client çeker ama server yemez" bandı (eski 1.7× yaslanma
+// halkası) ortadan kalkar → geri-zıplama (rubber-band) yapısal olarak imkânsız.
+const FOOD_EAT_RADIUS_BASE_PX = 45.0;
+const FOOD_EAT_RADIUS_SCALE_GAIN = 0.35;
+const FOOD_EAT_RADIUS_MAX_PX = 100.0;
+function foodEatRadiusPx(scale) {
+    const s = (Number.isFinite(scale) && scale > 0) ? scale : 1.0;
+    return Math.min(FOOD_EAT_RADIUS_MAX_PX,
+        FOOD_EAT_RADIUS_BASE_PX * (1 + (s - 1) * FOOD_EAT_RADIUS_SCALE_GAIN));
+}
+
+// ── MANYETİK YEME UÇUŞU ──────────────────────────────────────────────────────
+// Yem birleşik eşiğe girip yenmeye BAŞLAYINCA, normalize mesafe t = clamp(d/r0,0,1)
+// (r0: yakalama anındaki mesafe) üzerinden kafaya uçar:
 //   • hız   = V_MIN + (V_MAX - V_MIN) · (1 - t)²   → kafaya yaklaştıkça ivmelenir
 //   • ölçek = t                                    → 1.0 → 0.0 küçülerek yok olur
-// V_MAX yılanın boost dahil maksimum hızını (~<900 px/s) rahatça aştığından
-// yem HER durumda yakalanır (yemin "kafada asılı kalması" bug'ı da böyle biter).
 const FOOD_MAGNET_V_MIN = 140;    // px/s — yakalama kenarında yavaş süzülme
 const FOOD_MAGNET_V_MAX = 1500;   // px/s — kafanın dibinde hızlı içine çekilme
-// Yakalama garantisi: kuadratik eğri UZAKTA (t→1) yavaştır (V_MIN); bu, boost'lu
-// bir yılanın (~450 px/s) yemi geride bırakmasına ve yemin asla yetişememesine
-// yol açar. Bu taban hız, maksimum yılan hızını rahatça aşar → yem her koşulda
-// yetişip yenir. Yakın alanda kuadratik hız zaten bu tabanın üstündedir, dolayısıyla
-// ivme/küçülme hissi korunur.
+// Yakalama garantisi: kuadratik eğri UZAKTA (t→1) yavaştır; taban hız maksimum
+// yılan hızını aşar → hedef kafa uzaklaşsa bile yem yetişir (asılı kalma bug'ı yok).
 const FOOD_MAGNET_CATCHUP_MIN = 650; // px/s
 const FOOD_EAT_DESTROY_DIST = 5;  // px — bu mesafenin altında yem yok edilir
 const FOOD_EAT_MIN_SCALE = 0.06;  // ölçek bunun altına inince yem yok edilir
-// Görsel manyetik yaslanma yarıçapı = yeme yarıçapı × bu kat. Yem, yenmeden
-// önce bu halkada kafaya doğru yaslanır (hem oyuncu hem rakip için).
-const FOOD_MAGNET_RADIUS_FACTOR = 1.7;
-const FOOD_MAGNET_HOVER_PULL = 12.0; // yaslanma/geri-dönüş üstel çekim katsayısı
+
+// ── TAHMİN UZLAŞTIRMA (pending-consumption) ──────────────────────────────────
+// Oyuncu bir yemi tahminle yediğinde, sunucu onayına (FOOD_REMOVE) kadar
+// pending katmanında tutulur. Sunucu bu süre içinde onaylamazsa (nadir sınır
+// durumu: kafa tahmini otoriteden birkaç px sapmış) tahmin REDDEDİLMİŞ sayılır:
+// spekülatif skor geri alınır ve yem orijinal konumunda yumuşakça geri getirilir
+// (sert ışınlama YOK). Süre, en kötü RTT + sunucu tick'ini rahatça aşar.
+const FOOD_PREDICTION_TIMEOUT_MS = 1000;
+const FOOD_RESTORE_FADE_MS = 200; // reddedilen yemin geri gelirken fade-in süresi
+
+// SUNUCU AYNASI — game-server ScoreConfig.SCORE_PER_SEGMENT. Boost/shrink ile
+// bir segment kaybında HUD skoru bu kadar düşürülür (GÖREV 2.4, gerçek-zamanlı).
+const CLIENT_SCORE_PER_SEGMENT = 50;
 
 // ── AOI DEBUG OVERLAY (sunucu görünürlük sınırının görselleştirilmesi) ──────
 // Sunucu algoritması: AOICalculationSystem.fill3x3AOI — AOI, oyuncunun
@@ -83,7 +102,10 @@ export class Game extends Phaser.Scene {
         this.snakes = new Map();
         this.foods = new Map();
         this.eatingFoods = new Map();
-        this.predictedEatenFoodIds = new Set(); // Client-side eat prediction: foods eaten before server confirms
+        // Pending-consumption katmanı: tahminle yenmiş ama sunucu onayı beklenen
+        // yemler. foodId → { value, shape, origX, origY, colorFrame, predictedAtMs }.
+        // Onay (FOOD_REMOVE) gelince silinir; timeout'ta reddedilip geri getirilir.
+        this.pendingConsumption = new Map();
         this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null); // Şekil başına bir Blitter
         this.pendingSegmentMutations = new Map();
         this.myId = null;
@@ -114,7 +136,7 @@ export class Game extends Phaser.Scene {
         this.snakes = new Map();
         this.foods = new Map();
         this.eatingFoods = new Map();
-        this.predictedEatenFoodIds = new Set();
+        this.pendingConsumption = new Map();
         this.pendingSegmentMutations = new Map();
         this.myId = null;
         this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null);
@@ -538,6 +560,18 @@ export class Game extends Phaser.Scene {
             const entityId = this.toId(mutation?.entityId ?? mutation?.entity_id);
             if (entityId === null) return;
 
+            // GÖREV 2.4: Oyuncunun KENDİ yılanı segment KAYBEDERSE (boost/shrink →
+            // sunucu drainOneSegment), HUD skorunu gerçek-zamanlı düşür. Sunucu
+            // ScoreConfig.SCORE_PER_SEGMENT aynası. Segment EKLEME'de skor DEĞİŞMEZ
+            // (puan yem yenirken addPlayerScoreForFood ile eklenir; çift sayım olmaz).
+            if (entityId === this.myId) {
+                const removed = this._parseRemovedSegmentCount(mutation);
+                if (removed > 0) {
+                    this.playerScore = Math.max(0, this.playerScore - removed * CLIENT_SCORE_PER_SEGMENT);
+                    updateHUDScore(this.playerScore);
+                }
+            }
+
             const snake = this.snakes.get(entityId);
             if (!snake) {
                 this.queuePendingSegmentMutation(entityId, mutation);
@@ -546,6 +580,17 @@ export class Game extends Phaser.Scene {
 
             snake.applySegmentMutationFromServer(mutation);
         });
+    }
+
+    // Bir segment mutasyonundan çıkarılan segment sayısını çözer (SEGMENT_REMOVE
+    // değilse 0). Tip kodlaması Snake.applySegmentMutationFromServer ile aynıdır:
+    // SEGMENT_REMOVE = 'SEGMENT_REMOVE' veya sayısal 1.
+    _parseRemovedSegmentCount(mutation) {
+        const type = mutation?.mutationType ?? mutation?.mutation_type;
+        const isRemove = type === 'SEGMENT_REMOVE' || type === 1;
+        if (!isRemove) return 0;
+        const count = Number(mutation?.removedSegmentCount ?? mutation?.removed_segment_count ?? 0);
+        return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
     }
 
     onFoodCollection(foodCollection) {
@@ -754,13 +799,9 @@ export class Game extends Phaser.Scene {
         const targetX = Math.round(x);
         const targetY = Math.round(y);
 
-        const existingFood = this.foods.get(foodId);
-        if (existingFood) {
-            const bob = existingFood.bob;
-            if (bob && bob.originalX === undefined) {
-                bob.originalX = bob.x;
-                bob.originalY = bob.y;
-            }
+        // Aynı foodId zaten varsa (yeniden gönderim) dokunma. Yem artık konumunu
+        // ASLA değiştirmez (yaslanma/geri-dönüş kaldırıldı) — bob.x/y kalıcı orijindir.
+        if (this.foods.has(foodId)) {
             return foodId;
         }
 
@@ -780,12 +821,11 @@ export class Game extends Phaser.Scene {
             : Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
 
         const bob = targetBlitter.create(targetX, targetY, colorFrame);
-        bob.originalX = targetX;
-        bob.originalY = targetY;
 
-        // Rule 1: her yem tek bir Bob. shape, yem yenirken Sprite'a dönüştürmek
-        // (Bob'lar setScale desteklemez — bkz. _beginFoodEatingFlight) için saklanır.
-        this.foods.set(foodId, { bob, value, shape });
+        // Rule 1: her yem tek bir Bob. colorFrame + shape, yem yenirken Sprite'a
+        // dönüştürmek (Bob'lar setScale desteklemez — bkz. _beginFoodEatingFlight)
+        // ve reddedilen tahminde yemi birebir geri getirmek için saklanır.
+        this.foods.set(foodId, { bob, value, shape, colorFrame });
         return foodId;
     }
 
@@ -793,10 +833,10 @@ export class Game extends Phaser.Scene {
         const foodId = this.toFoodId(rawFoodId);
         if (foodId === null) return;
 
-        // Oyuncu kendi yılanıyla bu yemi zaten tahmin ederek yedi; sunucu sadece onaylıyor.
-        // eatingFoods animasyonu zaten devam ediyor — seti temizleyip çık.
-        if (this.predictedEatenFoodIds.has(foodId)) {
-            this.predictedEatenFoodIds.delete(foodId);
+        // FOOD_REMOVE = sunucunun yeme ONAYI. Oyuncu bunu zaten tahmin ettiyse,
+        // pending kaydını sonlandır (uçuş animasyonu zaten devam ediyor/bitti).
+        if (this.pendingConsumption.has(foodId)) {
+            this.pendingConsumption.delete(foodId);
             return;
         }
 
@@ -808,8 +848,7 @@ export class Game extends Phaser.Scene {
         const bob = food.bob;
         if (!bob) return;
 
-        // Mıknatıs efekti bob konumunu zaten yılan kafasına doğru çekmiş olabilir.
-        // originalX/Y yerine güncel bob.x/y kullanmak çok daha isabetli bir mesafe verir.
+        // Yem konumu kalıcı orijindir (yaslanma yok) — en yakın yılanı buradan bul.
         const checkX = bob.x;
         const checkY = bob.y;
 
@@ -869,6 +908,17 @@ export class Game extends Phaser.Scene {
         updateHUDScore(this.playerScore);
     }
 
+    // Reddedilen tahmin (sunucu onaylamadı) sonrası yemi orijinal konumunda
+    // yumuşak fade-in ile GERİ getirir (sert ışınlama yok). rec: pending kaydı.
+    _restoreFoodNode(foodId, rec) {
+        if (this.foods.has(foodId)) return; // zaten mevcutsa (yarış) dokunma
+        const shape = (rec.shape >= 0 && rec.shape < FOOD_SHAPE_TEXTURES.length) ? rec.shape : 0;
+        const blitter = this.ensureFoodBlitter(shape);
+        const bob = blitter.create(Math.round(rec.origX), Math.round(rec.origY), rec.colorFrame);
+        bob.alpha = 0;
+        this.foods.set(foodId, { bob, value: rec.value, shape, colorFrame: rec.colorFrame, fadeInMsLeft: FOOD_RESTORE_FADE_MS });
+    }
+
     clearFoods() {
         this.foodBlitters.forEach(blitter => {
             if (blitter) {
@@ -879,7 +929,7 @@ export class Game extends Phaser.Scene {
         this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null);
         this.foods.clear();
         this.eatingFoods.clear();
-        this.predictedEatenFoodIds.clear();
+        this.pendingConsumption.clear();
     }
 
     // Şekil başına lazy Blitter — aynı şekildeki tüm yemler tek draw call'da çizilir.
@@ -1194,87 +1244,82 @@ export class Game extends Phaser.Scene {
             }
         }
 
-        // İstemci tarafı görsel mıknatıs çekim efekti + anında yeme tahmini (Client-side food magnet + eat prediction)
-        // Oyuncunun yılanı yeme yarıçapına girince yemi hemen eatingFoods'a taşırız;
-        // sunucu onayı (~100ms sonra) gelince sadece seti temizleriz.
+        // ── GÖREV 1: Birleşik eşikli yeme tahmini (rubber-band'siz) ──────────
+        // Yem KONUMU asla değişmez (yaslanma/geri-dönüş kaldırıldı). Çekim
+        // (uçuş) YALNIZCA oyuncu kafası birleşik eşiğe — foodEatRadiusPx(scale),
+        // sunucu FoodConfig.eatRadiusPx ile BİREBİR — girince tetiklenir. Sunucu
+        // da yalnızca bu yarıçapta yer; dolayısıyla client'ın çekip sunucunun
+        // yemediği bir ara-bant YOKTUR → geri-zıplama yapısal olarak imkânsız.
         const dt = delta / 1000;
-        // SUNUCU FORMÜL AYNASI — game-server FoodConfig.eatRadiusPx ile BIREBIR:
-        // min(MAX, BASE * (1 + (scale-1) * GAIN)). Bu YEME (commit) yarıçapıdır;
-        // oyuncunun tahmini yemesi sunucuyla senkron kalsın diye DEĞİŞTİRİLMEZ.
-        const EAT_RADIUS_BASE = 45.0;
-        const EAT_RADIUS_SCALE_GAIN = 0.35;
-        const EAT_RADIUS_MAX = 100.0;
-        const eatRadiusForScale = (scale) => {
-            const s = (Number.isFinite(scale) && scale > 0) ? scale : 1.0;
-            return Math.min(EAT_RADIUS_MAX, EAT_RADIUS_BASE * (1 + (s - 1) * EAT_RADIUS_SCALE_GAIN));
-        };
+        const nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-        // Tahmin edilen yemleri döngü dışında işlemek için toparla
+        // mySnake yukarıda (update başında) tanımlı — yeniden bildirme.
+        const myHead = (mySnake && mySnake.alive && mySnake.getHead()?.active) ? mySnake.getHead() : null;
+        const myEatRadius = myHead ? foodEatRadiusPx(mySnake.scale) : 0;
+        const myEatRadiusSq = myEatRadius * myEatRadius;
+
+        // Tahmin edilen yemleri döngü dışında işlemek için toparla (this.foods'u
+        // iterasyon sırasında değiştirmemek için).
         const predictedEats = [];
 
         for (const [foodId, food] of this.foods) {
             const bob = food.bob;
             if (!bob) continue;
 
-            // Commit/return kararı yemin GERÇEK (orijinal) konumuna göre verilir —
-            // manyetik yaslanma bob'u kaydırmış olsa da sunucu geometrisiyle
-            // senkron kalmak için orijinal konum esas alınır.
-            const origX = bob.originalX !== undefined ? bob.originalX : bob.x;
-            const origY = bob.originalY !== undefined ? bob.originalY : bob.y;
-
-            let commitSnake = null;   // OYUNCU kafası YEME yarıçapında → hemen ye (sunucu aynası)
-            let magnetHead  = null;   // en yakın kafa MIKNATIS halkasında → görsel yaslanma
-            let magnetDist  = Infinity;
-
-            for (const snake of this.snakes.values()) {
-                if (!snake.alive || !snake.getHead()?.active) continue;
-                const head = snake.getHead();
-                const dist = Math.hypot(head.x - origX, head.y - origY);
-                const eatRadius = eatRadiusForScale(snake.scale);
-
-                // Commit YALNIZCA oyuncu için ve yeme yarıçapında (desync önlenir:
-                // rakip yılanların yediği sunucu 'removed' paketiyle onaylanır).
-                if (snake.isPlayerControlled && dist <= eatRadius) {
-                    commitSnake = snake;
-                    break;
-                }
-                // Manyetik yaslanma halkası — hem oyuncu hem rakip için geniş.
-                if (dist <= eatRadius * FOOD_MAGNET_RADIUS_FACTOR && dist < magnetDist) {
-                    magnetDist = dist;
-                    magnetHead = head;
-                }
-            }
-
-            if (commitSnake) {
-                predictedEats.push({ foodId, food, targetSnake: commitSnake });
-                continue;
-            }
-
-            if (magnetHead) {
-                // Kafaya doğru yumuşak yaslanma (henüz yenmedi; kafa uzaklaşırsa geri döner).
-                bob.x += (magnetHead.x - bob.x) * FOOD_MAGNET_HOVER_PULL * dt;
-                bob.y += (magnetHead.y - bob.y) * FOOD_MAGNET_HOVER_PULL * dt;
-            } else {
-                // Menzil dışında: orijinal konuma geri dön.
-                const dx = origX - bob.x;
-                const dy = origY - bob.y;
-                if (Math.hypot(dx, dy) > 0.1) {
-                    bob.x += dx * FOOD_MAGNET_HOVER_PULL * dt;
-                    bob.y += dy * FOOD_MAGNET_HOVER_PULL * dt;
+            // Geri getirilen (reddedilmiş tahmin) yemin yumuşak fade-in'i.
+            if (food.fadeInMsLeft !== undefined) {
+                food.fadeInMsLeft -= delta;
+                if (food.fadeInMsLeft <= 0) {
+                    bob.alpha = 1;
+                    food.fadeInMsLeft = undefined;
                 } else {
-                    bob.x = origX;
-                    bob.y = origY;
+                    bob.alpha = 1 - food.fadeInMsLeft / FOOD_RESTORE_FADE_MS;
+                }
+            }
+
+            // Commit YALNIZCA oyuncu için ve birleşik eşikte (yemin kalıcı orijin
+            // konumuna göre — sunucu geometrisiyle senkron). Rakiplerin yemesi
+            // client'ta tahmin EDİLMEZ; sunucu FOOD_REMOVE'u ile onaylanır.
+            if (myHead) {
+                const dx = myHead.x - bob.x;
+                const dy = myHead.y - bob.y;
+                if (dx * dx + dy * dy <= myEatRadiusSq) {
+                    predictedEats.push({ foodId, food });
                 }
             }
         }
 
-        // Tahmin edilen yemeleri ana döngüden sonra işle (this.foods'u güvenle değiştirebiliriz)
-        for (const { foodId, food, targetSnake } of predictedEats) {
-            if (this.predictedEatenFoodIds.has(foodId)) continue; // Aynı kare içinde tekrar tahmin önlemi
-            this.predictedEatenFoodIds.add(foodId);
+        // Tahmin edilen yemeleri işle: pending-consumption katmanına al, uçuşu
+        // başlat, skoru spekülatif ekle. Sunucu onayı FOOD_REMOVE ile gelir.
+        for (const { foodId, food } of predictedEats) {
+            if (this.pendingConsumption.has(foodId)) continue; // aynı kare tekrar önlemi
             this.foods.delete(foodId);
-            this._beginFoodEatingFlight(foodId, food, targetSnake);
+            // Reddedilme (timeout) durumunda birebir geri getirebilmek için yemin
+            // orijin/şekil/renk verisini sakla (bob uçuşta yok edilecek).
+            this.pendingConsumption.set(foodId, {
+                value: food.value,
+                shape: food.shape,
+                origX: food.bob.x,
+                origY: food.bob.y,
+                colorFrame: food.colorFrame,
+                predictedAtMs: nowMs,
+            });
+            this._beginFoodEatingFlight(foodId, food, mySnake);
             this.addPlayerScoreForFood(food.value); // predictedEats her zaman oyuncunun yılanıdır
+        }
+
+        // Bekleyen tahminlerin timeout denetimi: sunucu FOOD_PREDICTION_TIMEOUT_MS
+        // içinde onaylamadıysa tahmin REDDEDİLMİŞ say → skoru geri al, yemi
+        // orijinal konumunda yumuşak fade-in ile geri getir (sert ışınlama yok).
+        if (this.pendingConsumption.size > 0) {
+            for (const [foodId, rec] of this.pendingConsumption) {
+                if (nowMs - rec.predictedAtMs < FOOD_PREDICTION_TIMEOUT_MS) continue;
+                this.playerScore = Math.max(0, this.playerScore - (Number.isFinite(rec.value) ? rec.value : 0));
+                this.foodsEaten = Math.max(0, this.foodsEaten - 1);
+                updateHUDScore(this.playerScore);
+                this._restoreFoodNode(foodId, rec);
+                this.pendingConsumption.delete(foodId);
+            }
         }
 
         // Yenen yemin kafaya kuadratik ivmeyle uçup küçülerek yok olması (Issue #2).
@@ -1446,7 +1491,9 @@ export class Game extends Phaser.Scene {
         // Yarım kalmış yeme animasyonları bayat koordinatlarda titreşir — bitir.
         this.eatingFoods.forEach(({ sprite }) => sprite?.destroy());
         this.eatingFoods.clear();
-        this.predictedEatenFoodIds.clear();
+        // Bekleyen tahminler bayat: sekme dönüşünde onay/timeout mantığı anlamsız,
+        // sunucu otoriter durumu hardResync ile zaten hizalandı — kayıtları temizle.
+        this.pendingConsumption.clear();
 
         // Kamerayı yeni kafa konumuna anında taşı (lerp'le sürüklenmesin).
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
