@@ -4625,7 +4625,6 @@ export const server = $root.server = (() => {
          * @property {number|null} [foodId] FoodData foodId
          * @property {number|null} [x] FoodData x
          * @property {number|null} [y] FoodData y
-         * @property {number|null} [shape] FoodData shape
          * @property {number|null} [value] FoodData value
          */
 
@@ -4669,14 +4668,6 @@ export const server = $root.server = (() => {
         FoodData.prototype.y = 0;
 
         /**
-         * FoodData shape.
-         * @member {number} shape
-         * @memberof server.FoodData
-         * @instance
-         */
-        FoodData.prototype.shape = 0;
-
-        /**
          * FoodData value.
          * @member {number} value
          * @memberof server.FoodData
@@ -4714,8 +4705,6 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.x);
             if (message.y != null && Object.hasOwnProperty.call(message, "y"))
                 writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
-            if (message.shape != null && Object.hasOwnProperty.call(message, "shape"))
-                writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.shape);
             if (message.value != null && Object.hasOwnProperty.call(message, "value"))
                 writer.uint32(/* id 6, wireType 0 =*/48).uint32(message.value);
             return writer;
@@ -4766,10 +4755,6 @@ export const server = $root.server = (() => {
                         message.y = reader.uint32();
                         break;
                     }
-                case 5: {
-                        message.shape = reader.uint32();
-                        break;
-                    }
                 case 6: {
                         message.value = reader.uint32();
                         break;
@@ -4818,9 +4803,6 @@ export const server = $root.server = (() => {
             if (message.y != null && message.hasOwnProperty("y"))
                 if (!$util.isInteger(message.y))
                     return "y: integer expected";
-            if (message.shape != null && message.hasOwnProperty("shape"))
-                if (!$util.isInteger(message.shape))
-                    return "shape: integer expected";
             if (message.value != null && message.hasOwnProperty("value"))
                 if (!$util.isInteger(message.value))
                     return "value: integer expected";
@@ -4845,8 +4827,6 @@ export const server = $root.server = (() => {
                 message.x = object.x >>> 0;
             if (object.y != null)
                 message.y = object.y >>> 0;
-            if (object.shape != null)
-                message.shape = object.shape >>> 0;
             if (object.value != null)
                 message.value = object.value >>> 0;
             return message;
@@ -4869,7 +4849,6 @@ export const server = $root.server = (() => {
                 object.foodId = 0;
                 object.x = 0;
                 object.y = 0;
-                object.shape = 0;
                 object.value = 0;
             }
             if (message.foodId != null && message.hasOwnProperty("foodId"))
@@ -4878,8 +4857,6 @@ export const server = $root.server = (() => {
                 object.x = message.x;
             if (message.y != null && message.hasOwnProperty("y"))
                 object.y = message.y;
-            if (message.shape != null && message.hasOwnProperty("shape"))
-                object.shape = message.shape;
             if (message.value != null && message.hasOwnProperty("value"))
                 object.value = message.value;
             return object;

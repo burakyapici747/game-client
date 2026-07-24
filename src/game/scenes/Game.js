@@ -20,22 +20,29 @@ import {
 
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
-// ── YEM ŞEKİLLERİ (FOOD SHAPE) ───────────────────────────────────────────────
-// SENKRON SÖZLEŞMESİ: sunucu FoodShape.java ile BİREBİR aynı sıra/id.
-// 0=CIRCLE, 1=SQUARE, 2=TRIANGLE, 3=PENTAGON, 4=DEATH_DROP (ölüm ödülü).
-const FOOD_SHAPE_TEXTURES = ['food_circle', 'food_square', 'food_triangle', 'food_pentagon', 'food_death_drop'];
-const DEATH_DROP_SHAPE_ID = 4;
+// ── YEM DOKUSU (GÖREV 1: hepsi parlayan DAİRE) ───────────────────────────────
+// Polygon şekiller kaldırıldı; tüm yemler tek 'food_glow' dairesi kullanır.
+const FOOD_GLOW_TEXTURE = 'food_glow';
 
-// ── BİRLEŞİK YEME EŞİĞİ (client ⇄ server sözleşmesi) ─────────────────────────
+// ── YEM ŞİMMER/GLOW (GÖREV 2) ────────────────────────────────────────────────
+// Yüksek performanslı parıltı: 4000 yem için parçacık-emitter YERİNE (bu, node
+// başına emitter/parçacık maliyetiyle 120fps'i çökertirdi) tek havuzlanmış
+// Blitter + additive blend + her yeme faz-kaymalı alpha nabzı (twinkle). Ekstra
+// draw-call YOK (Blitter tek çizim); maliyet mevcut yem döngüsünde bir sin/alpha.
+const FOOD_SHIMMER_HZ = 1.6;      // nabız frekansı (saniyedeki döngü)
+const FOOD_SHIMMER_MIN_ALPHA = 0.62; // en sönük an
+const FOOD_SHIMMER_AMP = 0.38;    // 0.62 → 1.0 arası salınım
+
+// ── BİRLEŞİK YEME + MAGNET EŞİĞİ (client ⇄ server sözleşmesi) ────────────────
 // SUNUCU AYNASI — game-server FoodConfig.eatRadiusPx ile BİREBİR:
 //   radius = min(MAX, BASE · (1 + (scale-1)·GAIN))
-// Bu, HEM çekim (magnet) HEM de yeme (consume) eşiğidir — TEK, birleşik değer.
-// Sunucu da yemi yalnızca bu yarıçap içinde yer; client sadece bu eşikte çekimi
-// tetikler. Böylece "client çeker ama server yemez" bandı (eski 1.7× yaslanma
-// halkası) ortadan kalkar → geri-zıplama (rubber-band) yapısal olarak imkânsız.
-const FOOD_EAT_RADIUS_BASE_PX = 45.0;
+// Bu, HEM çekim (R_magnet) HEM de yeme (R_eat) eşiğidir — TEK, birleşik değer
+// (rubber-band önlemi). GÖREV 3: menzil ~%30 büyütüldü (BASE 45→60, MAX 100→130)
+// → suck-in daha erken tetiklenir, yeme daha akıcı hissedilir. Sunucu FoodConfig
+// ile SİMETRİK güncellendi (desync yok).
+const FOOD_EAT_RADIUS_BASE_PX = 60.0;
 const FOOD_EAT_RADIUS_SCALE_GAIN = 0.35;
-const FOOD_EAT_RADIUS_MAX_PX = 100.0;
+const FOOD_EAT_RADIUS_MAX_PX = 130.0;
 function foodEatRadiusPx(scale) {
     const s = (Number.isFinite(scale) && scale > 0) ? scale : 1.0;
     return Math.min(FOOD_EAT_RADIUS_MAX_PX,
@@ -103,10 +110,10 @@ export class Game extends Phaser.Scene {
         this.foods = new Map();
         this.eatingFoods = new Map();
         // Pending-consumption katmanı: tahminle yenmiş ama sunucu onayı beklenen
-        // yemler. foodId → { value, shape, origX, origY, colorFrame, predictedAtMs }.
+        // yemler. foodId → { value, origX, origY, colorFrame, predictedAtMs }.
         // Onay (FOOD_REMOVE) gelince silinir; timeout'ta reddedilip geri getirilir.
         this.pendingConsumption = new Map();
-        this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null); // Şekil başına bir Blitter
+        this.foodBlitter = null; // Tüm yemler için tek havuzlanmış Blitter (tek draw call)
         this.pendingSegmentMutations = new Map();
         this.myId = null;
         this.networkManager = null;
@@ -139,7 +146,7 @@ export class Game extends Phaser.Scene {
         this.pendingConsumption = new Map();
         this.pendingSegmentMutations = new Map();
         this.myId = null;
-        this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null);
+        this.foodBlitter = null;
         this.grid = null;
         this.boundaryGraphics = null;
         this.worldRadius = 0;
@@ -805,27 +812,20 @@ export class Game extends Phaser.Scene {
             return foodId;
         }
 
-        // Sunucunun atadığı şekil (kozmetik) ve değer (skor) — Rule 3 & Rule 4.
-        const rawShape = Number(foodData?.shape ?? 0);
-        const shape = (Number.isInteger(rawShape) && rawShape >= 0 && rawShape < FOOD_SHAPE_TEXTURES.length)
-            ? rawShape
-            : 0;
         const value = Number(foodData?.value ?? 0);
 
-        const targetBlitter = this.ensureFoodBlitter(shape);
+        // 16 renk varyantından biri deterministik seçilir (aynı foodId → aynı renk).
+        const colorFrame = Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
+        const bob = this.ensureFoodBlitter().create(targetX, targetY, colorFrame);
 
-        // Ölüm ödülü yemi tek renkli/tek karelik özel dokusunu kullanır (frame 0);
-        // ambient şekiller 16 renk varyantından birini deterministik seçer.
-        const colorFrame = shape === DEATH_DROP_SHAPE_ID
-            ? 0
-            : Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
+        // Şimmer (twinkle) fazı: her yem farklı fazda nabız atsın diye foodId'den
+        // deterministik türetilir (senkron olmayan, canlı parıltı).
+        const shimmerPhase = this.seededRandom(foodId * 13) * Math.PI * 2;
 
-        const bob = targetBlitter.create(targetX, targetY, colorFrame);
-
-        // Rule 1: her yem tek bir Bob. colorFrame + shape, yem yenirken Sprite'a
-        // dönüştürmek (Bob'lar setScale desteklemez — bkz. _beginFoodEatingFlight)
-        // ve reddedilen tahminde yemi birebir geri getirmek için saklanır.
-        this.foods.set(foodId, { bob, value, shape, colorFrame });
+        // Her yem tek bir Bob. colorFrame, yem yenirken Sprite'a dönüştürmek
+        // (Bob'lar setScale desteklemez — bkz. _beginFoodEatingFlight) ve
+        // reddedilen tahminde yemi birebir geri getirmek için saklanır.
+        this.foods.set(foodId, { bob, value, colorFrame, shimmerPhase });
         return foodId;
     }
 
@@ -887,9 +887,12 @@ export class Game extends Phaser.Scene {
         const frameName = bob && bob.frame ? bob.frame.name : 0;
         if (bob) bob.destroy();
 
-        const shape = (food.shape >= 0 && food.shape < FOOD_SHAPE_TEXTURES.length) ? food.shape : 0;
+        // Tek daire dokusu (frame = renk varyantı). Additive blend Blitter'la aynı
+        // canlı parıltıyı korumak için Sprite de ADD moduyla çizilir.
         const sprite = this.registerWorld(
-            this.add.sprite(startX, startY, FOOD_SHAPE_TEXTURES[shape], frameName).setDepth(0)
+            this.add.sprite(startX, startY, FOOD_GLOW_TEXTURE, frameName)
+                .setDepth(0)
+                .setBlendMode(Phaser.BlendModes.ADD)
         );
 
         // r0 = yakalama anındaki kafa mesafesi. Hız eğrisi ve küçülme bu yarıçapa
@@ -912,33 +915,38 @@ export class Game extends Phaser.Scene {
     // yumuşak fade-in ile GERİ getirir (sert ışınlama yok). rec: pending kaydı.
     _restoreFoodNode(foodId, rec) {
         if (this.foods.has(foodId)) return; // zaten mevcutsa (yarış) dokunma
-        const shape = (rec.shape >= 0 && rec.shape < FOOD_SHAPE_TEXTURES.length) ? rec.shape : 0;
-        const blitter = this.ensureFoodBlitter(shape);
-        const bob = blitter.create(Math.round(rec.origX), Math.round(rec.origY), rec.colorFrame);
+        const bob = this.ensureFoodBlitter().create(Math.round(rec.origX), Math.round(rec.origY), rec.colorFrame);
         bob.alpha = 0;
-        this.foods.set(foodId, { bob, value: rec.value, shape, colorFrame: rec.colorFrame, fadeInMsLeft: FOOD_RESTORE_FADE_MS });
+        this.foods.set(foodId, {
+            bob,
+            value: rec.value,
+            colorFrame: rec.colorFrame,
+            shimmerPhase: this.seededRandom(foodId * 13) * Math.PI * 2,
+            fadeInMsLeft: FOOD_RESTORE_FADE_MS,
+        });
     }
 
     clearFoods() {
-        this.foodBlitters.forEach(blitter => {
-            if (blitter) {
-                blitter.clear();
-                blitter.destroy();
-            }
-        });
-        this.foodBlitters = new Array(FOOD_SHAPE_TEXTURES.length).fill(null);
+        if (this.foodBlitter) {
+            this.foodBlitter.clear();
+            this.foodBlitter.destroy();
+            this.foodBlitter = null;
+        }
         this.foods.clear();
         this.eatingFoods.clear();
         this.pendingConsumption.clear();
     }
 
-    // Şekil başına lazy Blitter — aynı şekildeki tüm yemler tek draw call'da çizilir.
-    ensureFoodBlitter(shape) {
-        if (this.foodBlitters[shape]) return this.foodBlitters[shape];
-        this.foodBlitters[shape] = this.registerWorld(
-            this.add.blitter(0, 0, FOOD_SHAPE_TEXTURES[shape]).setDepth(0)
+    // Tek havuzlanmış Blitter — TÜM yemler (tek daire dokusu) tek draw call'da
+    // çizilir. Additive blend, üst üste gelen glow'ların canlı neon toplamı için.
+    ensureFoodBlitter() {
+        if (this.foodBlitter) return this.foodBlitter;
+        this.foodBlitter = this.registerWorld(
+            this.add.blitter(0, 0, FOOD_GLOW_TEXTURE)
+                .setDepth(0)
+                .setBlendMode(Phaser.BlendModes.ADD)
         );
-        return this.foodBlitters[shape];
+        return this.foodBlitter;
     }
 
 
@@ -1258,6 +1266,11 @@ export class Game extends Phaser.Scene {
         const myEatRadius = myHead ? foodEatRadiusPx(mySnake.scale) : 0;
         const myEatRadiusSq = myEatRadius * myEatRadius;
 
+        // GÖREV 2: şimmer (twinkle) faz açısal hızı — nowMs (ms) tabanlı, tüm
+        // yemler için tek kez hesaplanır; döngü içinde yem başına yalnızca bir
+        // sin + alpha yazımı kalır (4000 yemde bile <0.1ms, ekstra draw-call yok).
+        const shimmerOmega = FOOD_SHIMMER_HZ * Math.PI * 2 / 1000;
+
         // Tahmin edilen yemleri döngü dışında işlemek için toparla (this.foods'u
         // iterasyon sırasında değiştirmemek için).
         const predictedEats = [];
@@ -1266,16 +1279,16 @@ export class Game extends Phaser.Scene {
             const bob = food.bob;
             if (!bob) continue;
 
-            // Geri getirilen (reddedilmiş tahmin) yemin yumuşak fade-in'i.
+            // GÖREV 2: faz-kaymalı alpha nabzı (senkron olmayan canlı parıltı).
+            let alpha = FOOD_SHIMMER_MIN_ALPHA
+                + FOOD_SHIMMER_AMP * (0.5 + 0.5 * Math.sin(nowMs * shimmerOmega + food.shimmerPhase));
+            // Geri getirilen (reddedilmiş tahmin) yemin yumuşak fade-in çarpanı.
             if (food.fadeInMsLeft !== undefined) {
                 food.fadeInMsLeft -= delta;
-                if (food.fadeInMsLeft <= 0) {
-                    bob.alpha = 1;
-                    food.fadeInMsLeft = undefined;
-                } else {
-                    bob.alpha = 1 - food.fadeInMsLeft / FOOD_RESTORE_FADE_MS;
-                }
+                if (food.fadeInMsLeft <= 0) food.fadeInMsLeft = undefined;
+                else alpha *= (1 - food.fadeInMsLeft / FOOD_RESTORE_FADE_MS);
             }
+            bob.alpha = alpha;
 
             // Commit YALNIZCA oyuncu için ve birleşik eşikte (yemin kalıcı orijin
             // konumuna göre — sunucu geometrisiyle senkron). Rakiplerin yemesi
@@ -1295,10 +1308,9 @@ export class Game extends Phaser.Scene {
             if (this.pendingConsumption.has(foodId)) continue; // aynı kare tekrar önlemi
             this.foods.delete(foodId);
             // Reddedilme (timeout) durumunda birebir geri getirebilmek için yemin
-            // orijin/şekil/renk verisini sakla (bob uçuşta yok edilecek).
+            // orijin/renk verisini sakla (bob uçuşta yok edilecek).
             this.pendingConsumption.set(foodId, {
                 value: food.value,
-                shape: food.shape,
                 origX: food.bob.x,
                 origY: food.bob.y,
                 colorFrame: food.colorFrame,

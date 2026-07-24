@@ -8,13 +8,11 @@ message FoodData {
   uint32 food_id = 1;
   uint32 x = 2;
   uint32 y = 3;
-  // field 4 (scale) kaldırıldı — yerine shape + value geldi.
-  reserved 4;
-  // Görsel şekil: 0=CIRCLE, 1=SQUARE, 2=TRIANGLE, 3=PENTAGON, 4=DEATH_DROP.
-  // Sözleşme: server FoodShape.java <-> client Game.js FOOD_SHAPE_TEXTURES.
-  uint32 shape = 5;
-  // Bu yemin yendiğinde kazandırdığı skor. Ambient yemler sabit değerdedir;
-  // ölüm sonrası düşen yemler (shape=DEATH_DROP) daha yüksek ve değişken değer taşır.
+  // field 4 (scale) ve field 5 (shape) kaldırıldı — tüm yemler artık düz
+  // parlayan DAİRE; şekil çeşitliliği (polygon) kaldırıldı.
+  reserved 4, 5;
+  // Bu yemin yendiğinde kazandırdığı skor. Ambient yemler sabit değerde;
+  // ölüm/eject sonrası düşen yemler daha yüksek ve değişken değer taşır.
   uint32 value = 6;
 }
 

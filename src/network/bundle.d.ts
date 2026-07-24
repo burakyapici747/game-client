@@ -1771,9 +1771,6 @@ export namespace server {
         /** FoodData y */
         y?: (number|null);
 
-        /** FoodData shape */
-        shape?: (number|null);
-
         /** FoodData value */
         value?: (number|null);
     }
@@ -1795,9 +1792,6 @@ export namespace server {
 
         /** FoodData y. */
         public y: number;
-
-        /** FoodData shape. */
-        public shape: number;
 
         /** FoodData value. */
         public value: number;
