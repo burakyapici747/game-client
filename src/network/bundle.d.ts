@@ -784,6 +784,9 @@ export namespace server {
 
         /** ServerEnvelope foodMutationCollection */
         foodMutationCollection?: (server.IFoodMutationCollection|null);
+
+        /** ServerEnvelope leaderboardUpdate */
+        leaderboardUpdate?: (server.ILeaderboardUpdate|null);
     }
 
     /** Represents a ServerEnvelope. */
@@ -821,6 +824,9 @@ export namespace server {
 
         /** ServerEnvelope foodMutationCollection. */
         public foodMutationCollection?: (server.IFoodMutationCollection|null);
+
+        /** ServerEnvelope leaderboardUpdate. */
+        public leaderboardUpdate?: (server.ILeaderboardUpdate|null);
 
         /** ServerEnvelope payload. */
         public payload?: ("startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification");
@@ -2171,6 +2177,230 @@ export namespace server {
 
         /**
          * Gets the default type url for DeathNotification
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
+    /** Properties of a LeaderboardEntry. */
+    interface ILeaderboardEntry {
+
+        /** LeaderboardEntry playerId */
+        playerId?: (number|null);
+
+        /** LeaderboardEntry nickname */
+        nickname?: (string|null);
+
+        /** LeaderboardEntry score */
+        score?: (number|null);
+    }
+
+    /** Represents a LeaderboardEntry. */
+    class LeaderboardEntry implements ILeaderboardEntry {
+
+        /**
+         * Constructs a new LeaderboardEntry.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.ILeaderboardEntry);
+
+        /** LeaderboardEntry playerId. */
+        public playerId: number;
+
+        /** LeaderboardEntry nickname. */
+        public nickname: string;
+
+        /** LeaderboardEntry score. */
+        public score: number;
+
+        /**
+         * Creates a new LeaderboardEntry instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns LeaderboardEntry instance
+         */
+        public static create(properties?: server.ILeaderboardEntry): server.LeaderboardEntry;
+
+        /**
+         * Encodes the specified LeaderboardEntry message. Does not implicitly {@link server.LeaderboardEntry.verify|verify} messages.
+         * @param message LeaderboardEntry message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.ILeaderboardEntry, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified LeaderboardEntry message, length delimited. Does not implicitly {@link server.LeaderboardEntry.verify|verify} messages.
+         * @param message LeaderboardEntry message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.ILeaderboardEntry, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a LeaderboardEntry message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns LeaderboardEntry
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.LeaderboardEntry;
+
+        /**
+         * Decodes a LeaderboardEntry message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns LeaderboardEntry
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.LeaderboardEntry;
+
+        /**
+         * Verifies a LeaderboardEntry message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a LeaderboardEntry message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns LeaderboardEntry
+         */
+        public static fromObject(object: { [k: string]: any }): server.LeaderboardEntry;
+
+        /**
+         * Creates a plain object from a LeaderboardEntry message. Also converts values to other types if specified.
+         * @param message LeaderboardEntry
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.LeaderboardEntry, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this LeaderboardEntry to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for LeaderboardEntry
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
+    /** Properties of a LeaderboardUpdate. */
+    interface ILeaderboardUpdate {
+
+        /** LeaderboardUpdate entries */
+        entries?: (server.ILeaderboardEntry[]|null);
+
+        /** LeaderboardUpdate totalPlayers */
+        totalPlayers?: (number|null);
+
+        /** LeaderboardUpdate selfRank */
+        selfRank?: (number|null);
+
+        /** LeaderboardUpdate selfScore */
+        selfScore?: (number|null);
+    }
+
+    /** Represents a LeaderboardUpdate. */
+    class LeaderboardUpdate implements ILeaderboardUpdate {
+
+        /**
+         * Constructs a new LeaderboardUpdate.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.ILeaderboardUpdate);
+
+        /** LeaderboardUpdate entries. */
+        public entries: server.ILeaderboardEntry[];
+
+        /** LeaderboardUpdate totalPlayers. */
+        public totalPlayers: number;
+
+        /** LeaderboardUpdate selfRank. */
+        public selfRank: number;
+
+        /** LeaderboardUpdate selfScore. */
+        public selfScore: number;
+
+        /**
+         * Creates a new LeaderboardUpdate instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns LeaderboardUpdate instance
+         */
+        public static create(properties?: server.ILeaderboardUpdate): server.LeaderboardUpdate;
+
+        /**
+         * Encodes the specified LeaderboardUpdate message. Does not implicitly {@link server.LeaderboardUpdate.verify|verify} messages.
+         * @param message LeaderboardUpdate message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.ILeaderboardUpdate, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified LeaderboardUpdate message, length delimited. Does not implicitly {@link server.LeaderboardUpdate.verify|verify} messages.
+         * @param message LeaderboardUpdate message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.ILeaderboardUpdate, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a LeaderboardUpdate message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns LeaderboardUpdate
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.LeaderboardUpdate;
+
+        /**
+         * Decodes a LeaderboardUpdate message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns LeaderboardUpdate
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.LeaderboardUpdate;
+
+        /**
+         * Verifies a LeaderboardUpdate message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a LeaderboardUpdate message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns LeaderboardUpdate
+         */
+        public static fromObject(object: { [k: string]: any }): server.LeaderboardUpdate;
+
+        /**
+         * Creates a plain object from a LeaderboardUpdate message. Also converts values to other types if specified.
+         * @param message LeaderboardUpdate
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.LeaderboardUpdate, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this LeaderboardUpdate to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for LeaderboardUpdate
          * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
          * @returns The default type url
          */

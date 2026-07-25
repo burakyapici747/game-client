@@ -122,6 +122,14 @@ export class NetworkManager {
             this.scene.events.emit('food_mutation_collection', foodMutationCollection);
         }
 
+        // Sıralama: sunucu bunu 5 sn'de birden sık GÖNDERMEZ ve yalnızca
+        // sıralama değiştiğinde ekler — alan çoğu pakette hiç bulunmaz.
+        const leaderboardUpdate =
+            envelope.leaderboardUpdate ?? envelope.leaderboard_update;
+        if (leaderboardUpdate) {
+            this.scene.events.emit('leaderboard_update', leaderboardUpdate);
+        }
+
         // Start Info kontrolu (payload tipine bakılmaksızın)
         const startInfo = envelope.startInformation || envelope.start_information;
         if (startInfo) {

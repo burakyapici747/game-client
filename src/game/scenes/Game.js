@@ -187,6 +187,7 @@ export class Game extends Phaser.Scene {
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
+        this.events.on('leaderboard_update', this.onLeaderboardUpdate, this);
 
         // NetworkManager'ın pong başına yaydığı yumuşatılmış (EMA) RTT değeri.
         // Connecting overlay'i açıksa oradaki PING metriği de canlı güncellenir.
@@ -225,6 +226,7 @@ export class Game extends Phaser.Scene {
             this.events.off('remove_entity', this.onRemoveEntity, this);
             this.events.off('disconnected', this.onDisconnected, this);
             this.events.off('death_notification', this.onDeathNotification, this);
+            this.events.off('leaderboard_update', this.onLeaderboardUpdate, this);
             this.events.off('ping_update', this._onPingUpdate, this);
             this.events.off('postupdate', this._onPostUpdate, this);
         });
@@ -306,8 +308,11 @@ export class Game extends Phaser.Scene {
 
         this.registerHUD(this.minimapGraphics);
 
-        // Initialize default leaderboard
-        updateHUDLeaderboard([]);
+        // Bağlantı öncesi yer tutucu liste. null → overlays.js mockup'ı çizer;
+        // ilk gerçek 'leaderboard_update' paketi geldiğinde tamamen değişir.
+        // (Eskiden [] geçiliyordu; artık boş dizi GEÇERLİ bir "0 oyuncu"
+        // sıralaması anlamına geldiği için yer tutucu ile karışmamalı.)
+        updateHUDLeaderboard(null);
 
         // Bağlantı ekranı artık Phaser içinde çizilmiyor — HTML/CSS overlay
         // (bkz. index.html #connecting-overlay + src/ui/overlays.js).
@@ -954,6 +959,37 @@ export class Game extends Phaser.Scene {
         return this.foodBlitter;
     }
 
+
+    // ── SIRALAMA PAKETİ ─────────────────────────────────────────────────────
+    // Sunucu bunu 5 sn'de birden sık göndermez ve yalnızca sıralama
+    // değiştiğinde ekler (bkz. server LeaderboardSystem). Burada sadece wire
+    // formatı UI şekline çevrilir; DOM verimliliği overlays.js tarafında
+    // (satır havuzu + fark tabanlı yazma) çözülür.
+    onLeaderboardUpdate(leaderboardUpdate) {
+        if (!leaderboardUpdate) return;
+
+        const rawEntries = Array.isArray(leaderboardUpdate.entries) ? leaderboardUpdate.entries : [];
+        const entries = rawEntries.map((entry) => ({
+            name: entry?.nickname || 'Unknown',
+            score: Number(entry?.score ?? 0),
+        }));
+
+        // protobufjs camelCase üretir; snake_case yedeği savunma amaçlı.
+        const selfRank = Number(
+            leaderboardUpdate.selfRank ?? leaderboardUpdate.self_rank ?? 0);
+        const selfScore = Number(
+            leaderboardUpdate.selfScore ?? leaderboardUpdate.self_score ?? 0);
+        const totalPlayers = Number(
+            leaderboardUpdate.totalPlayers ?? leaderboardUpdate.total_players ?? 0);
+
+        updateHUDLeaderboard({
+            entries,
+            totalPlayers,
+            selfRank,
+            selfScore,
+            selfName: window.gameSettings?.nickname || 'You',
+        });
+    }
 
     onDeathNotification() {
         this.onGameOver();

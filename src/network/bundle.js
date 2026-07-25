@@ -1825,6 +1825,7 @@ export const server = $root.server = (() => {
          * @property {server.ISegmentMutationCollection|null} [segmentMutationCollection] ServerEnvelope segmentMutationCollection
          * @property {server.IFoodCollection|null} [foodCollection] ServerEnvelope foodCollection
          * @property {server.IFoodMutationCollection|null} [foodMutationCollection] ServerEnvelope foodMutationCollection
+         * @property {server.ILeaderboardUpdate|null} [leaderboardUpdate] ServerEnvelope leaderboardUpdate
          */
 
         /**
@@ -1914,6 +1915,14 @@ export const server = $root.server = (() => {
          */
         ServerEnvelope.prototype.foodMutationCollection = null;
 
+        /**
+         * ServerEnvelope leaderboardUpdate.
+         * @member {server.ILeaderboardUpdate|null|undefined} leaderboardUpdate
+         * @memberof server.ServerEnvelope
+         * @instance
+         */
+        ServerEnvelope.prototype.leaderboardUpdate = null;
+
         // OneOf field names bound to virtual getters and setters
         let $oneOfFields;
 
@@ -1970,6 +1979,8 @@ export const server = $root.server = (() => {
                 $root.server.FoodCollection.encode(message.foodCollection, writer.uint32(/* id 12, wireType 2 =*/98).fork()).ldelim();
             if (message.foodMutationCollection != null && Object.hasOwnProperty.call(message, "foodMutationCollection"))
                 $root.server.FoodMutationCollection.encode(message.foodMutationCollection, writer.uint32(/* id 13, wireType 2 =*/106).fork()).ldelim();
+            if (message.leaderboardUpdate != null && Object.hasOwnProperty.call(message, "leaderboardUpdate"))
+                $root.server.LeaderboardUpdate.encode(message.leaderboardUpdate, writer.uint32(/* id 14, wireType 2 =*/114).fork()).ldelim();
             return writer;
         };
 
@@ -2040,6 +2051,10 @@ export const server = $root.server = (() => {
                     }
                 case 13: {
                         message.foodMutationCollection = $root.server.FoodMutationCollection.decode(reader, reader.uint32());
+                        break;
+                    }
+                case 14: {
+                        message.leaderboardUpdate = $root.server.LeaderboardUpdate.decode(reader, reader.uint32());
                         break;
                     }
                 default:
@@ -2146,6 +2161,11 @@ export const server = $root.server = (() => {
                 if (error)
                     return "foodMutationCollection." + error;
             }
+            if (message.leaderboardUpdate != null && message.hasOwnProperty("leaderboardUpdate")) {
+                let error = $root.server.LeaderboardUpdate.verify(message.leaderboardUpdate);
+                if (error)
+                    return "leaderboardUpdate." + error;
+            }
             return null;
         };
 
@@ -2206,6 +2226,11 @@ export const server = $root.server = (() => {
                     throw TypeError(".server.ServerEnvelope.foodMutationCollection: object expected");
                 message.foodMutationCollection = $root.server.FoodMutationCollection.fromObject(object.foodMutationCollection);
             }
+            if (object.leaderboardUpdate != null) {
+                if (typeof object.leaderboardUpdate !== "object")
+                    throw TypeError(".server.ServerEnvelope.leaderboardUpdate: object expected");
+                message.leaderboardUpdate = $root.server.LeaderboardUpdate.fromObject(object.leaderboardUpdate);
+            }
             return message;
         };
 
@@ -2227,6 +2252,7 @@ export const server = $root.server = (() => {
                 object.segmentMutationCollection = null;
                 object.foodCollection = null;
                 object.foodMutationCollection = null;
+                object.leaderboardUpdate = null;
             }
             if (message.startInformation != null && message.hasOwnProperty("startInformation")) {
                 object.startInformation = $root.server.StartInformation.toObject(message.startInformation, options);
@@ -2261,6 +2287,8 @@ export const server = $root.server = (() => {
                 object.foodCollection = $root.server.FoodCollection.toObject(message.foodCollection, options);
             if (message.foodMutationCollection != null && message.hasOwnProperty("foodMutationCollection"))
                 object.foodMutationCollection = $root.server.FoodMutationCollection.toObject(message.foodMutationCollection, options);
+            if (message.leaderboardUpdate != null && message.hasOwnProperty("leaderboardUpdate"))
+                object.leaderboardUpdate = $root.server.LeaderboardUpdate.toObject(message.leaderboardUpdate, options);
             return object;
         };
 
@@ -5618,6 +5646,555 @@ export const server = $root.server = (() => {
         };
 
         return DeathNotification;
+    })();
+
+    server.LeaderboardEntry = (function() {
+
+        /**
+         * Properties of a LeaderboardEntry.
+         * @memberof server
+         * @interface ILeaderboardEntry
+         * @property {number|null} [playerId] LeaderboardEntry playerId
+         * @property {string|null} [nickname] LeaderboardEntry nickname
+         * @property {number|null} [score] LeaderboardEntry score
+         */
+
+        /**
+         * Constructs a new LeaderboardEntry.
+         * @memberof server
+         * @classdesc Represents a LeaderboardEntry.
+         * @implements ILeaderboardEntry
+         * @constructor
+         * @param {server.ILeaderboardEntry=} [properties] Properties to set
+         */
+        function LeaderboardEntry(properties) {
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * LeaderboardEntry playerId.
+         * @member {number} playerId
+         * @memberof server.LeaderboardEntry
+         * @instance
+         */
+        LeaderboardEntry.prototype.playerId = 0;
+
+        /**
+         * LeaderboardEntry nickname.
+         * @member {string} nickname
+         * @memberof server.LeaderboardEntry
+         * @instance
+         */
+        LeaderboardEntry.prototype.nickname = "";
+
+        /**
+         * LeaderboardEntry score.
+         * @member {number} score
+         * @memberof server.LeaderboardEntry
+         * @instance
+         */
+        LeaderboardEntry.prototype.score = 0;
+
+        /**
+         * Creates a new LeaderboardEntry instance using the specified properties.
+         * @function create
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {server.ILeaderboardEntry=} [properties] Properties to set
+         * @returns {server.LeaderboardEntry} LeaderboardEntry instance
+         */
+        LeaderboardEntry.create = function create(properties) {
+            return new LeaderboardEntry(properties);
+        };
+
+        /**
+         * Encodes the specified LeaderboardEntry message. Does not implicitly {@link server.LeaderboardEntry.verify|verify} messages.
+         * @function encode
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {server.ILeaderboardEntry} message LeaderboardEntry message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        LeaderboardEntry.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.playerId != null && Object.hasOwnProperty.call(message, "playerId"))
+                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.playerId);
+            if (message.nickname != null && Object.hasOwnProperty.call(message, "nickname"))
+                writer.uint32(/* id 2, wireType 2 =*/18).string(message.nickname);
+            if (message.score != null && Object.hasOwnProperty.call(message, "score"))
+                writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.score);
+            return writer;
+        };
+
+        /**
+         * Encodes the specified LeaderboardEntry message, length delimited. Does not implicitly {@link server.LeaderboardEntry.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {server.ILeaderboardEntry} message LeaderboardEntry message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        LeaderboardEntry.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a LeaderboardEntry message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.LeaderboardEntry} LeaderboardEntry
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        LeaderboardEntry.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.LeaderboardEntry();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.playerId = reader.uint32();
+                        break;
+                    }
+                case 2: {
+                        message.nickname = reader.string();
+                        break;
+                    }
+                case 3: {
+                        message.score = reader.uint32();
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a LeaderboardEntry message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.LeaderboardEntry} LeaderboardEntry
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        LeaderboardEntry.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a LeaderboardEntry message.
+         * @function verify
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        LeaderboardEntry.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.playerId != null && message.hasOwnProperty("playerId"))
+                if (!$util.isInteger(message.playerId))
+                    return "playerId: integer expected";
+            if (message.nickname != null && message.hasOwnProperty("nickname"))
+                if (!$util.isString(message.nickname))
+                    return "nickname: string expected";
+            if (message.score != null && message.hasOwnProperty("score"))
+                if (!$util.isInteger(message.score))
+                    return "score: integer expected";
+            return null;
+        };
+
+        /**
+         * Creates a LeaderboardEntry message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.LeaderboardEntry} LeaderboardEntry
+         */
+        LeaderboardEntry.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.LeaderboardEntry)
+                return object;
+            let message = new $root.server.LeaderboardEntry();
+            if (object.playerId != null)
+                message.playerId = object.playerId >>> 0;
+            if (object.nickname != null)
+                message.nickname = String(object.nickname);
+            if (object.score != null)
+                message.score = object.score >>> 0;
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a LeaderboardEntry message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {server.LeaderboardEntry} message LeaderboardEntry
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        LeaderboardEntry.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.defaults) {
+                object.playerId = 0;
+                object.nickname = "";
+                object.score = 0;
+            }
+            if (message.playerId != null && message.hasOwnProperty("playerId"))
+                object.playerId = message.playerId;
+            if (message.nickname != null && message.hasOwnProperty("nickname"))
+                object.nickname = message.nickname;
+            if (message.score != null && message.hasOwnProperty("score"))
+                object.score = message.score;
+            return object;
+        };
+
+        /**
+         * Converts this LeaderboardEntry to JSON.
+         * @function toJSON
+         * @memberof server.LeaderboardEntry
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        LeaderboardEntry.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for LeaderboardEntry
+         * @function getTypeUrl
+         * @memberof server.LeaderboardEntry
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        LeaderboardEntry.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.LeaderboardEntry";
+        };
+
+        return LeaderboardEntry;
+    })();
+
+    server.LeaderboardUpdate = (function() {
+
+        /**
+         * Properties of a LeaderboardUpdate.
+         * @memberof server
+         * @interface ILeaderboardUpdate
+         * @property {Array.<server.ILeaderboardEntry>|null} [entries] LeaderboardUpdate entries
+         * @property {number|null} [totalPlayers] LeaderboardUpdate totalPlayers
+         * @property {number|null} [selfRank] LeaderboardUpdate selfRank
+         * @property {number|null} [selfScore] LeaderboardUpdate selfScore
+         */
+
+        /**
+         * Constructs a new LeaderboardUpdate.
+         * @memberof server
+         * @classdesc Represents a LeaderboardUpdate.
+         * @implements ILeaderboardUpdate
+         * @constructor
+         * @param {server.ILeaderboardUpdate=} [properties] Properties to set
+         */
+        function LeaderboardUpdate(properties) {
+            this.entries = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * LeaderboardUpdate entries.
+         * @member {Array.<server.ILeaderboardEntry>} entries
+         * @memberof server.LeaderboardUpdate
+         * @instance
+         */
+        LeaderboardUpdate.prototype.entries = $util.emptyArray;
+
+        /**
+         * LeaderboardUpdate totalPlayers.
+         * @member {number} totalPlayers
+         * @memberof server.LeaderboardUpdate
+         * @instance
+         */
+        LeaderboardUpdate.prototype.totalPlayers = 0;
+
+        /**
+         * LeaderboardUpdate selfRank.
+         * @member {number} selfRank
+         * @memberof server.LeaderboardUpdate
+         * @instance
+         */
+        LeaderboardUpdate.prototype.selfRank = 0;
+
+        /**
+         * LeaderboardUpdate selfScore.
+         * @member {number} selfScore
+         * @memberof server.LeaderboardUpdate
+         * @instance
+         */
+        LeaderboardUpdate.prototype.selfScore = 0;
+
+        /**
+         * Creates a new LeaderboardUpdate instance using the specified properties.
+         * @function create
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {server.ILeaderboardUpdate=} [properties] Properties to set
+         * @returns {server.LeaderboardUpdate} LeaderboardUpdate instance
+         */
+        LeaderboardUpdate.create = function create(properties) {
+            return new LeaderboardUpdate(properties);
+        };
+
+        /**
+         * Encodes the specified LeaderboardUpdate message. Does not implicitly {@link server.LeaderboardUpdate.verify|verify} messages.
+         * @function encode
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {server.ILeaderboardUpdate} message LeaderboardUpdate message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        LeaderboardUpdate.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.entries != null && message.entries.length)
+                for (let i = 0; i < message.entries.length; ++i)
+                    $root.server.LeaderboardEntry.encode(message.entries[i], writer.uint32(/* id 1, wireType 2 =*/10).fork()).ldelim();
+            if (message.totalPlayers != null && Object.hasOwnProperty.call(message, "totalPlayers"))
+                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.totalPlayers);
+            if (message.selfRank != null && Object.hasOwnProperty.call(message, "selfRank"))
+                writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.selfRank);
+            if (message.selfScore != null && Object.hasOwnProperty.call(message, "selfScore"))
+                writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.selfScore);
+            return writer;
+        };
+
+        /**
+         * Encodes the specified LeaderboardUpdate message, length delimited. Does not implicitly {@link server.LeaderboardUpdate.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {server.ILeaderboardUpdate} message LeaderboardUpdate message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        LeaderboardUpdate.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a LeaderboardUpdate message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.LeaderboardUpdate} LeaderboardUpdate
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        LeaderboardUpdate.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.LeaderboardUpdate();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        if (!(message.entries && message.entries.length))
+                            message.entries = [];
+                        message.entries.push($root.server.LeaderboardEntry.decode(reader, reader.uint32()));
+                        break;
+                    }
+                case 2: {
+                        message.totalPlayers = reader.uint32();
+                        break;
+                    }
+                case 3: {
+                        message.selfRank = reader.uint32();
+                        break;
+                    }
+                case 4: {
+                        message.selfScore = reader.uint32();
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a LeaderboardUpdate message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.LeaderboardUpdate} LeaderboardUpdate
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        LeaderboardUpdate.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a LeaderboardUpdate message.
+         * @function verify
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        LeaderboardUpdate.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.entries != null && message.hasOwnProperty("entries")) {
+                if (!Array.isArray(message.entries))
+                    return "entries: array expected";
+                for (let i = 0; i < message.entries.length; ++i) {
+                    let error = $root.server.LeaderboardEntry.verify(message.entries[i]);
+                    if (error)
+                        return "entries." + error;
+                }
+            }
+            if (message.totalPlayers != null && message.hasOwnProperty("totalPlayers"))
+                if (!$util.isInteger(message.totalPlayers))
+                    return "totalPlayers: integer expected";
+            if (message.selfRank != null && message.hasOwnProperty("selfRank"))
+                if (!$util.isInteger(message.selfRank))
+                    return "selfRank: integer expected";
+            if (message.selfScore != null && message.hasOwnProperty("selfScore"))
+                if (!$util.isInteger(message.selfScore))
+                    return "selfScore: integer expected";
+            return null;
+        };
+
+        /**
+         * Creates a LeaderboardUpdate message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.LeaderboardUpdate} LeaderboardUpdate
+         */
+        LeaderboardUpdate.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.LeaderboardUpdate)
+                return object;
+            let message = new $root.server.LeaderboardUpdate();
+            if (object.entries) {
+                if (!Array.isArray(object.entries))
+                    throw TypeError(".server.LeaderboardUpdate.entries: array expected");
+                message.entries = [];
+                for (let i = 0; i < object.entries.length; ++i) {
+                    if (typeof object.entries[i] !== "object")
+                        throw TypeError(".server.LeaderboardUpdate.entries: object expected");
+                    message.entries[i] = $root.server.LeaderboardEntry.fromObject(object.entries[i]);
+                }
+            }
+            if (object.totalPlayers != null)
+                message.totalPlayers = object.totalPlayers >>> 0;
+            if (object.selfRank != null)
+                message.selfRank = object.selfRank >>> 0;
+            if (object.selfScore != null)
+                message.selfScore = object.selfScore >>> 0;
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a LeaderboardUpdate message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {server.LeaderboardUpdate} message LeaderboardUpdate
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        LeaderboardUpdate.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.arrays || options.defaults)
+                object.entries = [];
+            if (options.defaults) {
+                object.totalPlayers = 0;
+                object.selfRank = 0;
+                object.selfScore = 0;
+            }
+            if (message.entries && message.entries.length) {
+                object.entries = [];
+                for (let j = 0; j < message.entries.length; ++j)
+                    object.entries[j] = $root.server.LeaderboardEntry.toObject(message.entries[j], options);
+            }
+            if (message.totalPlayers != null && message.hasOwnProperty("totalPlayers"))
+                object.totalPlayers = message.totalPlayers;
+            if (message.selfRank != null && message.hasOwnProperty("selfRank"))
+                object.selfRank = message.selfRank;
+            if (message.selfScore != null && message.hasOwnProperty("selfScore"))
+                object.selfScore = message.selfScore;
+            return object;
+        };
+
+        /**
+         * Converts this LeaderboardUpdate to JSON.
+         * @function toJSON
+         * @memberof server.LeaderboardUpdate
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        LeaderboardUpdate.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for LeaderboardUpdate
+         * @function getTypeUrl
+         * @memberof server.LeaderboardUpdate
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        LeaderboardUpdate.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.LeaderboardUpdate";
+        };
+
+        return LeaderboardUpdate;
     })();
 
     return server;
