@@ -17,7 +17,6 @@ import {
 
 // Note: updateHUDLeaderboard is called with empty array [] to trigger
 // the default mockup data initialization in overlays.js
-
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
 // ── YEM DOKUSU (GÖREV 1: hepsi parlayan DAİRE) ───────────────────────────────
@@ -50,17 +49,14 @@ function foodEatRadiusPx(scale) {
 }
 
 // ── MANYETİK YEME UÇUŞU ──────────────────────────────────────────────────────
-// Yem birleşik eşiğe girip yenmeye BAŞLAYINCA, normalize mesafe t = clamp(d/r0,0,1)
-// (r0: yakalama anındaki mesafe) üzerinden kafaya uçar:
-//   • hız   = V_MIN + (V_MAX - V_MIN) · (1 - t)²   → kafaya yaklaştıkça ivmelenir
-//   • ölçek = t                                    → 1.0 → 0.0 küçülerek yok olur
-const FOOD_MAGNET_V_MIN = 140;    // px/s — yakalama kenarında yavaş süzülme
-const FOOD_MAGNET_V_MAX = 1500;   // px/s — kafanın dibinde hızlı içine çekilme
-// Yakalama garantisi: kuadratik eğri UZAKTA (t→1) yavaştır; taban hız maksimum
-// yılan hızını aşar → hedef kafa uzaklaşsa bile yem yetişir (asılı kalma bug'ı yok).
-const FOOD_MAGNET_CATCHUP_MIN = 650; // px/s
-const FOOD_EAT_DESTROY_DIST = 5;  // px — bu mesafenin altında yem yok edilir
-const FOOD_EAT_MIN_SCALE = 0.06;  // ölçek bunun altına inince yem yok edilir
+// Basit ve anlık: yem eşiğe girdiği anda kafa MERKEZİNE frame-rate-agnostik
+// üstel lerp ile SNAP eder (eğri/gecikmeli ivme yok — hedef her frame güncel
+// kafa merkezi olduğundan kafa yemi geçse bile yem asla arkada süzülmez/orbit
+// yapmaz), eşzamanlı olarak ölçek ZAMANA bağlı (mesafeye DEĞİL) ~100ms'de 0'a
+// çöker. Ölçek biter ya da yem kafa merkezine değer değmez sprite yok edilir.
+const FOOD_MAGNET_SNAP_RATE = 30;   // üstel çekim: k = 1 - e^(-30·dt) (~%39/frame @60fps)
+const FOOD_EAT_SHRINK_MS = 100;     // ölçek 1 → 0 çöküş süresi (80–120ms bandı)
+const FOOD_EAT_DESTROY_DIST = 6;    // px — kafa merkezine bu kadar yaklaşınca imha
 
 // ── TAHMİN UZLAŞTIRMA (pending-consumption) ──────────────────────────────────
 // Oyuncu bir yemi tahminle yediğinde, sunucu onayına (FOOD_REMOVE) kadar
@@ -895,13 +891,10 @@ export class Game extends Phaser.Scene {
                 .setBlendMode(Phaser.BlendModes.ADD)
         );
 
-        // r0 = yakalama anındaki kafa mesafesi. Hız eğrisi ve küçülme bu yarıçapa
-        // göre normalize edilir → yem yakalandığı yerde scale=1 (sıçrama yok)
-        // başlar, kafaya varınca scale→0.
-        const head = targetSnake.getHead();
-        const r0 = head ? Math.max(Math.hypot(head.x - startX, head.y - startY), 1) : 1;
-
-        this.eatingFoods.set(foodId, { sprite, targetSnake, r0 });
+        // Ölçek çöküşü ZAMANA bağlıdır (mesafeye değil): elapsedMs 0'dan
+        // FOOD_EAT_SHRINK_MS'e sayar, scale = 1 - elapsed/süre → kafa uzaklaşsa
+        // bile yem asla yeniden büyümez, ~100ms içinde garantili yok olur.
+        this.eatingFoods.set(foodId, { sprite, targetSnake, elapsedMs: 0 });
     }
 
     // Yenen yemin sunucudan gelen value'suna göre puan; HUD anında güncellenir.
@@ -1293,11 +1286,21 @@ export class Game extends Phaser.Scene {
             // Commit YALNIZCA oyuncu için ve birleşik eşikte (yemin kalıcı orijin
             // konumuna göre — sunucu geometrisiyle senkron). Rakiplerin yemesi
             // client'ta tahmin EDİLMEZ; sunucu FOOD_REMOVE'u ile onaylanır.
+            // ÖN YAY KAPISI: kafanın hareket yönüne göre ARKADA kalmış yem
+            // tahminle çekilmez (geriye doğru yankılanma görüntüsü yok) — çok
+            // yakın merkez bölgesi hariç (kafa üstünden geçen yem her yönde
+            // yenir). Sunucu arkadaki yemi yine yerse FOOD_REMOVE onayı
+            // removeFood → _beginFoodEatingFlight yolundan animasyonu başlatır.
             if (myHead) {
-                const dx = myHead.x - bob.x;
-                const dy = myHead.y - bob.y;
-                if (dx * dx + dy * dy <= myEatRadiusSq) {
-                    predictedEats.push({ foodId, food });
+                const fx = bob.x - myHead.x;
+                const fy = bob.y - myHead.y;
+                const distSq = fx * fx + fy * fy;
+                if (distSq <= myEatRadiusSq) {
+                    const coreSq = myEatRadiusSq * 0.16; // r·0.4 içinde yön şartı aranmaz
+                    const inFrontArc = fx * Math.cos(myHead.rotation) + fy * Math.sin(myHead.rotation) >= 0;
+                    if (inFrontArc || distSq <= coreSq) {
+                        predictedEats.push({ foodId, food });
+                    }
                 }
             }
         }
@@ -1334,9 +1337,12 @@ export class Game extends Phaser.Scene {
             }
         }
 
-        // Yenen yemin kafaya kuadratik ivmeyle uçup küçülerek yok olması (Issue #2).
+        // Yenen yemin kafa merkezine üstel snap ile uçup zamanla küçülerek yok
+        // olması. Hedef her frame CANLI kafa merkezi; üstel lerp mesafenin sabit
+        // bir oranını her frame kapattığından yem kafayı asla arkadan takip
+        // etmez, orbit/looping yapmaz.
         this.eatingFoods.forEach((data, foodId) => {
-            const { sprite, targetSnake, r0 } = data;
+            const { sprite, targetSnake } = data;
             if (!sprite || !sprite.active) {
                 this.eatingFoods.delete(foodId);
                 return;
@@ -1349,31 +1355,26 @@ export class Game extends Phaser.Scene {
             }
 
             const head = targetSnake.getHead();
-            const dx = head.x - sprite.x;
-            const dy = head.y - sprite.y;
-            const d = Math.hypot(dx, dy);
 
-            // Normalize mesafe t = d / r0 (yakalama yarıçapı). Uçuş boyunca:
-            //   hız  = V_MIN + (V_MAX - V_MIN)·(1 - t)²   (kafaya yaklaştıkça ivmelenir)
-            //   ölçek = t                                  (1.0 → 0.0 küçülür)
-            const t = Phaser.Math.Clamp(d / r0, 0, 1);
+            // Frame-rate-agnostik üstel snap: kalan mesafenin k oranı kapanır.
+            const k = 1 - Math.exp(-FOOD_MAGNET_SNAP_RATE * dt);
+            sprite.x += (head.x - sprite.x) * k;
+            sprite.y += (head.y - sprite.y) * k;
 
-            if (d < FOOD_EAT_DESTROY_DIST || t < FOOD_EAT_MIN_SCALE) {
+            // Zaman tabanlı ölçek çöküşü: 1 → 0, FOOD_EAT_SHRINK_MS içinde.
+            data.elapsedMs += delta;
+            const s = 1 - data.elapsedMs / FOOD_EAT_SHRINK_MS;
+            const d = Math.hypot(head.x - sprite.x, head.y - sprite.y);
+
+            // Süre doldu VEYA kafa merkezine değdi → ANINDA imha (artık görsel yok).
+            if (s <= 0 || d < FOOD_EAT_DESTROY_DIST) {
                 sprite.destroy();
                 this.eatingFoods.delete(foodId);
                 return;
             }
 
-            const quadVelocity = FOOD_MAGNET_V_MIN + (FOOD_MAGNET_V_MAX - FOOD_MAGNET_V_MIN) * (1 - t) * (1 - t);
-            // Kuadratik hız yakın alanı şekillendirir; taban hız uzak alanda
-            // yakalamayı garantiler (hedef kafa uzaklaşsa bile yem yetişir).
-            const velocity = Math.max(quadVelocity, FOOD_MAGNET_CATCHUP_MIN);
-            const step = Math.min(d, velocity * dt); // hedefi aşıp geçmeyi önle
-            sprite.x += (dx / d) * step;
-            sprite.y += (dy / d) * step;
-
-            sprite.setScale(t);
-            sprite.setAlpha(Phaser.Math.Clamp(0.2 + t, 0, 1)); // ağırlıklı küçülme + hafif solma
+            sprite.setScale(s);
+            sprite.setAlpha(0.2 + 0.8 * s); // küçülürken hafif solma
         });
 
         // Food'lar artık statik renk frame'leri kullanıyor — animasyon döngüsü gerekmiyor.
