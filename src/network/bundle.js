@@ -4702,9 +4702,9 @@ export const server = $root.server = (() => {
             if (message.foodId != null && Object.hasOwnProperty.call(message, "foodId"))
                 writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.foodId);
             if (message.x != null && Object.hasOwnProperty.call(message, "x"))
-                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.x);
+                writer.uint32(/* id 2, wireType 5 =*/21).float(message.x);
             if (message.y != null && Object.hasOwnProperty.call(message, "y"))
-                writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
+                writer.uint32(/* id 3, wireType 5 =*/29).float(message.y);
             if (message.value != null && Object.hasOwnProperty.call(message, "value"))
                 writer.uint32(/* id 6, wireType 0 =*/48).uint32(message.value);
             return writer;
@@ -4748,11 +4748,11 @@ export const server = $root.server = (() => {
                         break;
                     }
                 case 2: {
-                        message.x = reader.uint32();
+                        message.x = reader.float();
                         break;
                     }
                 case 3: {
-                        message.y = reader.uint32();
+                        message.y = reader.float();
                         break;
                     }
                 case 6: {
@@ -4798,11 +4798,11 @@ export const server = $root.server = (() => {
                 if (!$util.isInteger(message.foodId))
                     return "foodId: integer expected";
             if (message.x != null && message.hasOwnProperty("x"))
-                if (!$util.isInteger(message.x))
-                    return "x: integer expected";
+                if (typeof message.x !== "number")
+                    return "x: number expected";
             if (message.y != null && message.hasOwnProperty("y"))
-                if (!$util.isInteger(message.y))
-                    return "y: integer expected";
+                if (typeof message.y !== "number")
+                    return "y: number expected";
             if (message.value != null && message.hasOwnProperty("value"))
                 if (!$util.isInteger(message.value))
                     return "value: integer expected";
@@ -4824,9 +4824,9 @@ export const server = $root.server = (() => {
             if (object.foodId != null)
                 message.foodId = object.foodId >>> 0;
             if (object.x != null)
-                message.x = object.x >>> 0;
+                message.x = Number(object.x);
             if (object.y != null)
-                message.y = object.y >>> 0;
+                message.y = Number(object.y);
             if (object.value != null)
                 message.value = object.value >>> 0;
             return message;
@@ -4854,9 +4854,9 @@ export const server = $root.server = (() => {
             if (message.foodId != null && message.hasOwnProperty("foodId"))
                 object.foodId = message.foodId;
             if (message.x != null && message.hasOwnProperty("x"))
-                object.x = message.x;
+                object.x = options.json && !isFinite(message.x) ? String(message.x) : message.x;
             if (message.y != null && message.hasOwnProperty("y"))
-                object.y = message.y;
+                object.y = options.json && !isFinite(message.y) ? String(message.y) : message.y;
             if (message.value != null && message.hasOwnProperty("value"))
                 object.value = message.value;
             return object;

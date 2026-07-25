@@ -799,8 +799,17 @@ export class Game extends Phaser.Scene {
         const y = Number(foodData?.y);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
 
-        const targetX = Math.round(x);
-        const targetY = Math.round(y);
+        // ── 1:1 DÜNYA KOORDİNATI (yuvarlama YOK) ────────────────────────────
+        // Sunucudan gelen px koordinatı doğrudan dünya uzayına yazılır. Eskiden
+        // burada Math.round vardı: sunucu zaten uint32 ile tam piksele
+        // yuvarladığı için client ikinci kez yuvarlıyordu ve alt-piksel çizilen
+        // yılan gövdesine göre yem eksen başına ±0.5 px kayıyordu. Sunucu artık
+        // float gönderiyor (food.proto: float x/y ← uint32); bu değeri yuvarlamak
+        // düzeltmeyi anında geri alırdı. Blitter dünya uzayında (registerWorld)
+        // çizildiği için ekstra render/DPI/viewport dönüşümü uygulanmaz — kamera
+        // zoom/scroll'u tüm dünya nesnelerine aynı şekilde etki eder.
+        const targetX = x;
+        const targetY = y;
 
         // Aynı foodId zaten varsa (yeniden gönderim) dokunma. Yem artık konumunu
         // ASLA değiştirmez (yaslanma/geri-dönüş kaldırıldı) — bob.x/y kalıcı orijindir.
@@ -908,7 +917,10 @@ export class Game extends Phaser.Scene {
     // yumuşak fade-in ile GERİ getirir (sert ışınlama yok). rec: pending kaydı.
     _restoreFoodNode(foodId, rec) {
         if (this.foods.has(foodId)) return; // zaten mevcutsa (yarış) dokunma
-        const bob = this.ensureFoodBlitter().create(Math.round(rec.origX), Math.round(rec.origY), rec.colorFrame);
+        // Yuvarlama YOK — reddedilen tahmin geri alınırken yem TAM olarak
+        // alındığı alt-piksel konuma döner (aksi halde geri dönüş, düzeltilen
+        // ±0.5 px kaymayı yeniden üretirdi).
+        const bob = this.ensureFoodBlitter().create(rec.origX, rec.origY, rec.colorFrame);
         bob.alpha = 0;
         this.foods.set(foodId, {
             bob,
