@@ -1006,17 +1006,90 @@ export class Snake {
                 seg.rotation = p.angle;
             }
         }
+        // Konum entegrasyonundan SONRA rijit boyun kısıtı (bkz. _clampNeckToHead).
+        this._enforceNeckJoint(spacing);
     }
 
+    // ── RİJİT BOYUN EKLEMİ (kafa ↔ segment[0]) ───────────────────────────────
+    // Yukarıdaki stub matematiği kafa↔segment[0] mesafesini zaten TAM `spacing`
+    // yapar; bu yüzden normal akışta bu fonksiyon bir NO-OP'tur (tolerans içi).
+    // Yine de son bir sert kısıt olarak durur: path'in dejenere olduğu (hard
+    // resync, respawn, teleport, tek noktaya çökmüş path) karelerde segment[0]
+    // kafadan kopamaz. Yalnızca BOYUN düzeltilir — segment[0] zaten doğru
+    // konumdayken hiçbir yazma yapılmadığından gövdenin geri kalanının
+    // yay-uzunluğu geometrisi bozulmaz.
+    _enforceNeckJoint(spacing) {
+        const neck = this.segments[0];
+        if (!neck || !neck.active || !this.head?.active) return;
+
+        const dx = neck.x - this.head.x;
+        const dy = neck.y - this.head.y;
+        const dist = Math.hypot(dx, dy);
+
+        // Dejenere durum: boyun kafanın tam üstünde → yönü hareket açısından türet
+        // (kafanın TAM arkasına yerleştir).
+        if (dist < 0.0001) {
+            neck.setPosition(
+                this.head.x - Math.cos(this.head.rotation) * spacing,
+                this.head.y - Math.sin(this.head.rotation) * spacing
+            );
+            return;
+        }
+
+        // Zaten hedef aralıktaysa dokunma (stub yolunda beklenen durum).
+        if (Math.abs(dist - spacing) < 0.01) return;
+
+        // Yönü koru, mesafeyi tam `spacing`e kilitle.
+        const inv = spacing / dist;
+        neck.setPosition(this.head.x + dx * inv, this.head.y + dy * inv);
+    }
+
+    // Yay uzunluğu KAFANIN GERÇEK konumundan ölçülür (path[0]'dan DEĞİL).
+    //
+    // KÖK NEDEN (boost'ta boyun esnemesi): path[0], kafayı üstel olarak izleyen
+    // _pathFollower'dır. Bu alçak-geçiren filtre kararlı durumda kafanın
+    // GERİSİNDE v·dt kadar sabit bir gecikme taşır (PATH_SMOOTHING_FACTOR=0.5)
+    // ve bu gecikme HIZLA ORANTILIDIR: taban hızda ~3.75px, boost'ta (2× hız)
+    // ~7.5px. Segmentler yay uzunluğuyla path[0]'dan ölçüldüğünden segment↔
+    // segment aralıkları tam `spacing` kalıyor, ama kafa↔segment[0] aralığı
+    // `spacing + v·dt` oluyordu → boost'a girince YALNIZCA boyun uzuyordu
+    // (12.5+3.75=16.25px → 12.5+7.5=20px, %23; 120Hz'de %27).
+    //
+    // NOT: sunucu tarafında bu sorun YOKTUR — TailSystem.sampleHeadToPath ham
+    // kafa konumunu her tick örnekler (follower yok), dolayısıyla path[0] zaten
+    // kafanın kendisidir. Sapma tamamen client'ın görsel filtresinden gelir.
+    //
+    // ÇÖZÜM: kafa → path[0] arasına sanal bir "stub" parça eklenir, yay uzunluğu
+    // buradan itibaren sayılır. Böylece segment[0] hız ne olursa olsun kafadan
+    // TAM `spacing` uzaklıkta kalır; follower gecikmesi stub içinde soğurulur.
+    // _pathFollower'ın anti-cascade filtresi path'in ŞEKLİ için aynen korunur —
+    // yalnızca ölçümün başlangıç noktası değişir.
     _pointAndAngleAtDistance(distanceFromHead) {
         if (!this.head.active) {
             return { x: 0, y: 0, angle: 0 };
         }
         if (distanceFromHead <= 0 || this.path.length === 0) {
-            const a = this.path[0] ?? new Phaser.Math.Vector2(this.head.x, this.head.y);
-            return { x: a.x, y: a.y, angle: this.head.rotation };
+            return { x: this.head.x, y: this.head.y, angle: this.head.rotation };
         }
         let d = distanceFromHead;
+
+        // Öncü stub: kafa → path[0]. Follower gecikmesini soğurur.
+        const p0 = this.path[0];
+        if (p0) {
+            const stubLen = Math.hypot(p0.x - this.head.x, p0.y - this.head.y);
+            if (stubLen > 0.0001) {
+                if (d <= stubLen) {
+                    const t = d / stubLen;
+                    return {
+                        x: Phaser.Math.Linear(this.head.x, p0.x, t),
+                        y: Phaser.Math.Linear(this.head.y, p0.y, t),
+                        angle: Phaser.Math.Angle.Between(this.head.x, this.head.y, p0.x, p0.y)
+                    };
+                }
+                d -= stubLen;
+            }
+        }
+
         for (let i = 0; i < this.pathSegLens.length; i++) {
             const segLen = this.pathSegLens[i];
             if (d <= segLen) {
