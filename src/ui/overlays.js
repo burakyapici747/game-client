@@ -44,11 +44,13 @@ export function onConnectingCancel(handler) {
 export function showGameOverOverlay(stats, onPlayAgain) {
     const { score = 0, foodEaten = 0 } = stats ?? {};
 
+    // Oyun sonu ekrani da AYNI biçimlendiriciyi kullanır — oyuncunun HUD'da
+    // "12,450" görüp ölünce "12450" görmesi tutarsızlığını kapatır.
     const scoreEl = $('gameover-score');
-    if (scoreEl) scoreEl.textContent = String(score);
+    if (scoreEl) scoreEl.textContent = formatScore(score);
 
     const foodEl = $('gameover-food-eaten');
-    if (foodEl) foodEl.textContent = String(foodEaten);
+    if (foodEl) foodEl.textContent = formatScore(foodEaten);
 
     const btn = $('gameover-play-again');
     if (btn) {
@@ -108,12 +110,37 @@ export function updateHUDStats(fps, ping, coordX, coordY) {
     }
 }
 
-export function updateHUDScore(score) {
-    const scoreEl = $('hud-score');
-    if (scoreEl) scoreEl.textContent = String(score ?? 0);
+// ── SKOR BİÇİMLENDİRME — TEK KAYNAK ─────────────────────────────────────────
+// Tüm skor gösterimleri (HUD skor podu, Top-5 satırları, sabitlenmiş kendi
+// satırın) BU fonksiyondan geçer.
+//
+// NEDEN TEK NOKTA: #hud-your-score elemanına İKİ ayrı yol yazıyordu —
+// sıralama paketi geldiğinde binlik ayraçlı ("12,450"), her yem yendiğinde
+// updateHUDScore ham String() ile ("12450"). Aynı hücre iki biçim arasında
+// gidip geliyordu; kullanıcının gördüğü tutarsızlık tam olarak buydu.
+//
+// Intl.NumberFormat örneği bir kez kurulur (her çağrıda yeniden kurmak
+// pahalıdır) ve sabit 'en-US' yerelini kullanır: yerele göre değişen ayraç
+// (12,450 ↔ 12.450) oyuncular arasında farklı görünüm üretirdi.
+const SCORE_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
+export function formatScore(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    // Negatifi gösterme (skor asla negatif olmamalı; savunma amaçlı).
+    return SCORE_FORMATTER.format(Math.max(0, Math.trunc(n)));
+}
+
+export function updateHUDScore(score) {
+    const text = formatScore(score);
+
+    const scoreEl = $('hud-score');
+    if (scoreEl && scoreEl.textContent !== text) scoreEl.textContent = text;
+
+    // Sıralamadaki kendi satırının skoru — sıralama paketleri arasında canlı
+    // tutulur ve artık sıralama satırlarıyla AYNI biçimi kullanır.
     const yourScoreEl = $('hud-your-score');
-    if (yourScoreEl) yourScoreEl.textContent = String(score ?? 0);
+    if (yourScoreEl && yourScoreEl.textContent !== text) yourScoreEl.textContent = text;
 }
 
 // ── SIRALAMA (LEADERBOARD) HUD ───────────────────────────────────────────────
@@ -121,11 +148,9 @@ export function updateHUDScore(score) {
 // burada yalnızca ilk 5 çizilir.
 const LEADERBOARD_DISPLAY_COUNT = 5;
 
-// Skoru binlik ayraçlı gösterir: 1450 → "1,450".
-function formatLeaderboardScore(score) {
-    const n = Number(score);
-    return Number.isFinite(n) ? n.toLocaleString('en-US') : '0';
-}
+// (formatLeaderboardScore KALDIRILDI — skor biçimlendirmesi artık tek kaynaktan,
+// yukarıdaki formatScore'dan gelir. İki ayrı biçimlendirici, aynı hücrenin
+// yazana göre "12,450" ya da "12450" görünmesine yol açıyordu.)
 
 // Havuzdan üretilmiş satırları işaretler. Havuz DIŞINDAN gelen (placeholder,
 // eski innerHTML şablonu, elle eklenmiş) düğümler bu işareti taşımaz ve asla
@@ -215,7 +240,7 @@ function paintLeaderboardRow(row, { rank, name, score, isTop1, isSelf, pinned })
     const wantName = name || 'Unknown';
     if (nameEl.textContent !== wantName) nameEl.textContent = wantName;
 
-    const wantScore = formatLeaderboardScore(score);
+    const wantScore = formatScore(score);
     if (scoreEl.textContent !== wantScore) scoreEl.textContent = wantScore;
 
     // Oyuncunun kendi satırı (Top-5 içinde vurgulu ya da altta sabitlenmiş)
