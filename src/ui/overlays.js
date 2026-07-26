@@ -127,20 +127,17 @@ function formatLeaderboardScore(score) {
     return Number.isFinite(n) ? n.toLocaleString('en-US') : '0';
 }
 
-// Satır havuzu: satırlar YENİDEN KULLANILIR. innerHTML ile her pakette tüm
-// listeyi yıkıp kurmak (eski davranış) her seferinde tam bir parse + layout +
-// paint zinciri tetikliyordu. Burada DOM yapısı satır oluşturulurken BİR kez
-// kurulur; güncellemede yalnızca gerçekten değişen textContent/className
-// yazılır (değişmeyene hiç dokunulmaz → gereksiz reflow yok).
-function ensureLeaderboardRow(listEl, index) {
-    let row = listEl.children[index];
-    if (row) return row;
+// Havuzdan üretilmiş satırları işaretler. Havuz DIŞINDAN gelen (placeholder,
+// eski innerHTML şablonu, elle eklenmiş) düğümler bu işareti taşımaz ve asla
+// yeniden kullanılmaz — bkz. isPooledLeaderboardRow.
+const LEADERBOARD_ROW_FLAG = '1';
 
-    row = document.createElement('div');
+function createPooledLeaderboardRow() {
+    const row = document.createElement('div');
     row.className = 'leaderboard-entry';
+    row.dataset.lbRow = LEADERBOARD_ROW_FLAG;
 
     const left = document.createElement('div');
-    // Mockup ile aynı iç düzen (public/style.css bu yapıyı bekliyor).
     left.style.display = 'flex';
     left.style.alignItems = 'center';
     left.style.gap = '8px';
@@ -159,14 +156,54 @@ function ensureLeaderboardRow(listEl, index) {
 
     row.appendChild(left);
     row.appendChild(scoreEl);
-    listEl.appendChild(row);
+    return row;
+}
+
+// Düğümün paintLeaderboardRow'un beklediği yapıya BİREBİR sahip olduğunu
+// doğrular. Yalnızca işaret bitine güvenmek yetmez; yapı da denetlenir ki
+// ileride şablon değişirse sessizce bozulmak yerine satır yeniden kurulsun.
+function isPooledLeaderboardRow(row) {
+    if (!row || row.nodeType !== 1 || row.dataset?.lbRow !== LEADERBOARD_ROW_FLAG) {
+        return false;
+    }
+    const left = row.firstElementChild;
+    const scoreEl = row.lastElementChild;
+    return !!left && !!scoreEl && left !== scoreEl
+        && !!left.firstElementChild && !!left.lastElementChild;
+}
+
+// Satır havuzu: satırlar YENİDEN KULLANILIR. innerHTML ile her pakette tüm
+// listeyi yıkıp kurmak her seferinde tam bir parse + layout + paint zinciri
+// tetiklerdi. Burada DOM yapısı satır oluşturulurken BİR kez kurulur;
+// güncellemede yalnızca gerçekten değişen textContent/className yazılır.
+//
+// KRİTİK: index'teki düğüm havuz satırı DEĞİLSE yeniden kurulur. Eskiden
+// "varsa kullan" deniyordu ve boş-durum şablonundan kalan düğümler veri
+// satırı sanılıp paintLeaderboardRow'da null dereference'a yol açıyordu.
+function ensureLeaderboardRow(listEl, index) {
+    const existing = listEl.children[index];
+    if (isPooledLeaderboardRow(existing)) return existing;
+
+    const row = createPooledLeaderboardRow();
+    if (existing) {
+        listEl.replaceChild(row, existing);
+    } else {
+        listEl.appendChild(row);
+    }
     return row;
 }
 
 function paintLeaderboardRow(row, { rank, name, score, isTop1, isSelf, pinned }) {
-    const rankEl = row.firstChild.firstChild;
-    const nameEl = row.firstChild.lastChild;
-    const scoreEl = row.lastChild;
+    // ELEMENT erişimcileri (firstChild/lastChild DEĞİL): innerHTML ile kurulan
+    // şablonlarda etiketler arasındaki satır sonu/girinti birer TEXT düğümü
+    // oluşturur. row.firstChild o boşluk metnini döndürür ve metin düğümünün
+    // firstChild'ı null olduğundan `null.className` okumaya çalışılırdı — bu,
+    // ilk sıralama paketinde patlayan TypeError'ın ta kendisiydi.
+    // firstElementChild/lastElementChild metin düğümlerini atlar.
+    const left = row.firstElementChild;
+    const rankEl = left.firstElementChild;
+    const nameEl = left.lastElementChild;
+    const scoreEl = row.lastElementChild;
 
     // 1. sıra tacı ile diğer sıraların numarası AYNI span'i kullanır — yapı
     // değişmez, yalnızca sınıf/metin değişir (düğüm ekleme/çıkarma yok).
@@ -195,6 +232,13 @@ function paintLeaderboardRow(row, { rank, name, score, isTop1, isSelf, pinned })
     if (row.className !== wantRowClass) row.className = wantRowClass;
 }
 
+function setLeaderboardPlayerCount(totalPlayers) {
+    const playersEl = $('hud-players');
+    if (!playersEl) return;
+    const totalText = String(Number(totalPlayers) || 0);
+    if (playersEl.textContent !== totalText) playersEl.textContent = totalText;
+}
+
 /**
  * @param {object|null} data
  *   entries      : [{ name, score }] — sunucudan gelen sıralı Top-N
@@ -202,15 +246,28 @@ function paintLeaderboardRow(row, { rank, name, score, isTop1, isSelf, pinned })
  *   selfRank     : 1-tabanlı kendi sıran (0 = sıralanmamış/ölü)
  *   selfScore    : kendi skorun
  *   selfName     : kendi takma adın
- * data null/eksikse bağlantı öncesi yer tutucu liste gösterilir.
+ * data null ise (bağlantı öncesi) ya da entries boşsa nötr bir boş-durum
+ * satırı gösterilir — UYDURMA oyuncu adı/skoru ASLA gösterilmez.
  */
 export function updateHUDLeaderboard(data) {
     const listEl = $('hud-leaderboard-list');
     if (!listEl) return;
 
     const entries = Array.isArray(data?.entries) ? data.entries : null;
+
+    // Henüz sıralama paketi gelmedi (bağlantı/handshake aşaması).
     if (!entries) {
-        initializeDefaultLeaderboard();
+        renderLeaderboardEmptyState(listEl, 'Connecting…');
+        setLeaderboardPlayerCount(0);
+        return;
+    }
+
+    // Haritada sıralanacak oyuncu yok. Not: entries boşsa sunucuda oyuncu
+    // sayısı 0 demektir, dolayısıyla selfRank de zorunlu olarak 0'dır —
+    // sabitlenmiş "kendi sıran" satırı bu dalda mümkün değildir.
+    if (entries.length === 0) {
+        renderLeaderboardEmptyState(listEl, 'Waiting for players…');
+        setLeaderboardPlayerCount(data.totalPlayers);
         return;
     }
 
@@ -246,52 +303,52 @@ export function updateHUDLeaderboard(data) {
         });
     }
 
-    // Fazla satırları kaldır (oyuncu sayısı azaldığında).
+    // Fazla satırları kaldır (oyuncu sayısı azaldığında). lastElementChild:
+    // children.length yalnızca ELEMENT sayar; lastChild ile silmek, arada metin
+    // düğümü varsa sayacı düşürmeyen turlar harcardı.
     while (listEl.children.length > totalRows) {
-        listEl.removeChild(listEl.lastChild);
+        listEl.removeChild(listEl.lastElementChild);
     }
 
-    const playersEl = $('hud-players');
-    if (playersEl) {
-        const totalText = String(Number(data.totalPlayers) || 0);
-        if (playersEl.textContent !== totalText) playersEl.textContent = totalText;
+    // Element OLMAYAN artık düğümleri süpür: index.html'deki
+    // "<!-- Entries populated by JS -->" yorumu ve şablon boşlukları. Görünürde
+    // etkileri yok (flex kapsayıcı boşluk-metnini öğe saymaz) ama kapsayıcıyı
+    // yalnızca havuz satırlarından oluşur halde tutmak, satır indekslemesini
+    // ileride de kanıtlanabilir biçimde güvenli kılar.
+    for (let i = listEl.childNodes.length - 1; i >= 0; i--) {
+        const node = listEl.childNodes[i];
+        if (node.nodeType !== 1) listEl.removeChild(node);
     }
+
+    setLeaderboardPlayerCount(data.totalPlayers);
 }
 
-function initializeDefaultLeaderboard() {
-    const listEl = $('hud-leaderboard-list');
-    if (!listEl) return;
+// ── BOŞ DURUM ───────────────────────────────────────────────────────────────
+// Eskiden burada UYDURMA bir sıralama vardı ("SnakeKing99 — 45k", "You — #8").
+// İki sorun üretiyordu:
+//   1. Oyuncuya gerçekmiş gibi görünen sahte veri gösteriyordu.
+//   2. innerHTML ile kurulduğu için etiketler arasında METİN düğümleri
+//      bırakıyordu; satır havuzu bu düğümleri veri satırı sanıp
+//      paintLeaderboardRow içinde null dereference'a düşüyordu (ilk sıralama
+//      paketinde atılan TypeError). Artık tek, nötr bir mesaj satırı çizilir
+//      ve havuz onu ASLA yeniden kullanmaz (dataset işareti yok →
+//      isPooledLeaderboardRow false → satır yeniden kurulur).
+function renderLeaderboardEmptyState(listEl, message) {
+    const existing = listEl.firstElementChild;
+    const alreadyEmptyState = listEl.children.length === 1
+        && existing?.classList.contains('leaderboard-empty');
 
-    listEl.innerHTML = `
-        <div class="leaderboard-entry rank-1">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="rank-crown">👑</span>
-                <span class="player-name">SnakeKing99</span>
-            </div>
-            <span class="player-score">45k</span>
-        </div>
-        <div class="leaderboard-entry">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="rank-number">2</span>
-                <span class="player-name">ViperPro</span>
-            </div>
-            <span class="player-score">38k</span>
-        </div>
-        <div class="leaderboard-entry">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="rank-number">3</span>
-                <span class="player-name">NoodleDanger</span>
-            </div>
-            <span class="player-score">31k</span>
-        </div>
-        <div class="leaderboard-entry rank-you">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="rank-number">8</span>
-                <span class="player-name">You</span>
-            </div>
-            <span class="player-score" id="hud-your-score">0</span>
-        </div>
-    `;
+    if (alreadyEmptyState) {
+        // Aynı durumdayız: yalnızca metin değiştiyse yaz (gereksiz reflow yok).
+        if (existing.textContent !== message) existing.textContent = message;
+        return;
+    }
+
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'leaderboard-empty';
+    emptyEl.textContent = message;
+    // replaceChildren: veri satırları dahil TÜM içeriği tek işlemde değiştirir.
+    listEl.replaceChildren(emptyEl);
 }
 
 // Minimap is now managed entirely by Phaser JS (Game.js drawMinimap function)

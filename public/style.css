@@ -2226,6 +2226,17 @@ input:checked + .settings-slider:before {
     color: var(--hud-primary-container);
 }
 
+/* Boş durum: sıralama paketi henüz gelmedi ya da haritada sıralanacak oyuncu
+   yok. Sahte oyuncu satırlarının yerini alan tek, nötr mesaj satırı. */
+.leaderboard-empty {
+    padding: 8px;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--hud-on-surface-variant);
+    opacity: 0.7;
+}
+
 /* Minimap: Phaser tarafında çizilir (Game.js drawMinimap) — DOM elemanı yok. */
 
 /* ═══════════════════════════════════════════════
