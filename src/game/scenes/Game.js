@@ -60,12 +60,12 @@ const FOOD_EAT_DESTROY_DIST = 6;    // px — kafa merkezine bu kadar yaklaşın
 
 // ── TAHMİN UZLAŞTIRMA (pending-consumption) ──────────────────────────────────
 // Oyuncu bir yemi tahminle yediğinde, sunucu onayına (FOOD_REMOVE) kadar
-// pending katmanında tutulur. Sunucu bu süre içinde onaylamazsa (nadir sınır
-// durumu: kafa tahmini otoriteden birkaç px sapmış) tahmin REDDEDİLMİŞ sayılır:
-// spekülatif skor geri alınır ve yem orijinal konumunda yumuşakça geri getirilir
-// (sert ışınlama YOK). Süre, en kötü RTT + sunucu tick'ini rahatça aşar.
+// pending katmanında tutulur; onay gelince kayıt düşer (çift sayım olmaz).
+// Bu süre yalnızca kaydın ne kadar bekletileceğini belirler — süre dolması
+// tahminin REDDEDİLDİĞİ anlamına GELMEZ, yalnızca onayın geciktiği anlamına
+// gelir. Bu yüzden süre aşımında skor geri alınmaz ve yem diriltilmez
+// (bkz. update() içindeki ayrıntılı not).
 const FOOD_PREDICTION_TIMEOUT_MS = 1000;
-const FOOD_RESTORE_FADE_MS = 200; // reddedilen yemin geri gelirken fade-in süresi
 
 // SUNUCU AYNASI — game-server ScoreConfig.SCORE_PER_SEGMENT. Boost/shrink ile
 // bir segment kaybında HUD skoru bu kadar düşürülür (GÖREV 2.4, gerçek-zamanlı).
@@ -106,8 +106,8 @@ export class Game extends Phaser.Scene {
         this.foods = new Map();
         this.eatingFoods = new Map();
         // Pending-consumption katmanı: tahminle yenmiş ama sunucu onayı beklenen
-        // yemler. foodId → { value, origX, origY, colorFrame, predictedAtMs }.
-        // Onay (FOOD_REMOVE) gelince silinir; timeout'ta reddedilip geri getirilir.
+        // yemler. foodId → { predictedAtMs }. Onay (FOOD_REMOVE) gelince silinir;
+        // süre aşımında yalnızca kayıt düşer (skor/yem geri alınmaz).
         this.pendingConsumption = new Map();
         this.foodBlitter = null; // Tüm yemler için tek havuzlanmış Blitter (tek draw call)
         this.pendingSegmentMutations = new Map();
@@ -875,11 +875,25 @@ export class Game extends Phaser.Scene {
             }
         });
 
-        // 300 px: 45 px yeme yarıçapı + ~200 ms gecikme × 225 px/s ≈ 90 px + güvenlik payı
+        // ── GÖRSEL UÇUŞ ile SKOR KREDİSİ AYRI EŞİKLER KULLANIR ──────────────
+        // Animasyon geniş bir pencerede çalışabilir (yem, yiyen yılana doğru
+        // uçarken hoş görünür). Ama SKOR yalnızca yemi gerçekten BİZİM
+        // yediğimize dair sağlam kanıt varsa eklenmelidir.
+        //
+        // ESKİ HATA: kredi eşiği de 300 * scale idi — büyük yılanda ~1800 px.
+        // Yoğun ölüm-düşümü kümesinde (çok botlu test) oyuncu, RAKİPLERİN
+        // yediği yemlere sürekli "en yakın yılan" oluyor ve başkasının yemi
+        // için puan alıyordu. Kredi artık sunucunun KENDİ ölçütünü kullanır:
+        // yem, oyuncunun gerçek yeme yarıçapı içinde miydi (FoodConfig.eatRadiusPx
+        // aynası) — sunucunun yemeyi kabul ettiği tek koşul budur.
         if (closestSnake && minDistance < 300 * closestSnake.scale) {
             this._beginFoodEatingFlight(foodId, food, closestSnake);
-            // Tahmin edilemeden sunucu onayıyla gelen oyuncu yemesi de puan kazandırır
-            if (closestSnake.isPlayerControlled) this.addPlayerScoreForFood(food.value);
+            const creditRadius = foodEatRadiusPx(closestSnake.scale);
+            if (closestSnake.isPlayerControlled && minDistance <= creditRadius) {
+                // Tahmin EDİLEMEYEN (ör. ön-yay kapısı nedeniyle arkada kalan)
+                // ama sunucunun yediği yemler puanı buradan alır.
+                this.addPlayerScoreForFood(food.value);
+            }
         } else {
             bob.destroy();
         }
@@ -918,23 +932,10 @@ export class Game extends Phaser.Scene {
         updateHUDScore(this.playerScore);
     }
 
-    // Reddedilen tahmin (sunucu onaylamadı) sonrası yemi orijinal konumunda
-    // yumuşak fade-in ile GERİ getirir (sert ışınlama yok). rec: pending kaydı.
-    _restoreFoodNode(foodId, rec) {
-        if (this.foods.has(foodId)) return; // zaten mevcutsa (yarış) dokunma
-        // Yuvarlama YOK — reddedilen tahmin geri alınırken yem TAM olarak
-        // alındığı alt-piksel konuma döner (aksi halde geri dönüş, düzeltilen
-        // ±0.5 px kaymayı yeniden üretirdi).
-        const bob = this.ensureFoodBlitter().create(rec.origX, rec.origY, rec.colorFrame);
-        bob.alpha = 0;
-        this.foods.set(foodId, {
-            bob,
-            value: rec.value,
-            colorFrame: rec.colorFrame,
-            shimmerPhase: this.seededRandom(foodId * 13) * Math.PI * 2,
-            fadeInMsLeft: FOOD_RESTORE_FADE_MS,
-        });
-    }
+    // (_restoreFoodNode KALDIRILDI — zamanlayıcıya dayalı yem dirilmesi, sunucuda
+    // artık var olmayan yemi client'ta geri getirip yenemeyen "hayalet yem"
+    // üretiyordu. Uzlaştırma artık yalnızca sunucunun otoriter FoodCollection
+    // anlık görüntüsü üzerinden yapılır; bkz. update() içindeki süre aşımı notu.)
 
     clearFoods() {
         if (this.foodBlitter) {
@@ -1321,15 +1322,9 @@ export class Game extends Phaser.Scene {
             if (!bob) continue;
 
             // GÖREV 2: faz-kaymalı alpha nabzı (senkron olmayan canlı parıltı).
-            let alpha = FOOD_SHIMMER_MIN_ALPHA
+            // (fade-in dalı kaldırıldı — tek üreticisi olan _restoreFoodNode artık yok.)
+            bob.alpha = FOOD_SHIMMER_MIN_ALPHA
                 + FOOD_SHIMMER_AMP * (0.5 + 0.5 * Math.sin(nowMs * shimmerOmega + food.shimmerPhase));
-            // Geri getirilen (reddedilmiş tahmin) yemin yumuşak fade-in çarpanı.
-            if (food.fadeInMsLeft !== undefined) {
-                food.fadeInMsLeft -= delta;
-                if (food.fadeInMsLeft <= 0) food.fadeInMsLeft = undefined;
-                else alpha *= (1 - food.fadeInMsLeft / FOOD_RESTORE_FADE_MS);
-            }
-            bob.alpha = alpha;
 
             // Commit YALNIZCA oyuncu için ve birleşik eşikte (yemin kalıcı orijin
             // konumuna göre — sunucu geometrisiyle senkron). Rakiplerin yemesi
@@ -1358,29 +1353,39 @@ export class Game extends Phaser.Scene {
         for (const { foodId, food } of predictedEats) {
             if (this.pendingConsumption.has(foodId)) continue; // aynı kare tekrar önlemi
             this.foods.delete(foodId);
-            // Reddedilme (timeout) durumunda birebir geri getirebilmek için yemin
-            // orijin/renk verisini sakla (bob uçuşta yok edilecek).
-            this.pendingConsumption.set(foodId, {
-                value: food.value,
-                origX: food.bob.x,
-                origY: food.bob.y,
-                colorFrame: food.colorFrame,
-                predictedAtMs: nowMs,
-            });
+            // Kayıt artık YALNIZCA bir "onay bekliyor" işaretidir: sunucu
+            // FOOD_REMOVE'u geldiğinde çift sayımı önler ve süre aşımında
+            // düşürülür. Yemi diriltmek için orijin/renk saklamaya gerek YOK
+            // (dirilme kaldırıldı — bkz. aşağıdaki süre aşımı notu).
+            this.pendingConsumption.set(foodId, { predictedAtMs: nowMs });
             this._beginFoodEatingFlight(foodId, food, mySnake);
             this.addPlayerScoreForFood(food.value); // predictedEats her zaman oyuncunun yılanıdır
         }
 
-        // Bekleyen tahminlerin timeout denetimi: sunucu FOOD_PREDICTION_TIMEOUT_MS
-        // içinde onaylamadıysa tahmin REDDEDİLMİŞ say → skoru geri al, yemi
-        // orijinal konumunda yumuşak fade-in ile geri getir (sert ışınlama yok).
+        // ── BEKLEYEN TAHMİNLERİN SÜRE AŞIMI ─────────────────────────────────
+        // Süre dolduğunda kayıt SADECE DÜŞÜRÜLÜR: skor geri alınmaz, yem geri
+        // getirilmez.
+        //
+        // NEDEN (iki hatanın ortak kök nedeni): eski davranış, onay gecikmesini
+        // "sunucu reddetti" sanıp skoru geri alıyor ve yemi YENİDEN OLUŞTURUYORDU.
+        // Oysa gecikme reddin kanıtı DEĞİL, yalnızca gecikmenin kanıtıdır —
+        // sunucu yemi gerçekte yemiştir. Yoğun ölüm-düşümü kümelerinde
+        // (çok botlu test) FoodMutationCollection paketleri büyüyüp gönderim
+        // kuyruğu şiştiğinde onay 1000 ms'i rahatça aşıyordu ve sonuç:
+        //   1. Skor, sunucu puanı verdiği halde geri alınıyordu (skor DÜŞÜYOR).
+        //   2. Sunucuda ARTIK VAR OLMAYAN yem client'ta diriliyordu (hayalet).
+        // Üstelik kendi kendini besliyordu: dirilen yem this.foods'a geri
+        // girdiğinden kafa hâlâ üzerindeyken bir sonraki karede yeniden tahmin
+        // ediliyor (+değer), 1000 ms sonra yine geri alınıyor (−değer) ve yine
+        // diriltiliyordu → asla yenemeyen, sonsuza dek salınan yem.
+        //
+        // Sunucu OTORİTERDİR: yanlış bir tahmin varsa doğru durum zaten bir
+        // sonraki tam FoodCollection anlık görüntüsüyle uzlaştırılır
+        // (onFoodCollection, gelen listede olmayan yemleri siler / eksikleri
+        // ekler). Zamanlayıcıya dayalı dirilme bu yolun yerini alamaz.
         if (this.pendingConsumption.size > 0) {
             for (const [foodId, rec] of this.pendingConsumption) {
                 if (nowMs - rec.predictedAtMs < FOOD_PREDICTION_TIMEOUT_MS) continue;
-                this.playerScore = Math.max(0, this.playerScore - (Number.isFinite(rec.value) ? rec.value : 0));
-                this.foodsEaten = Math.max(0, this.foodsEaten - 1);
-                updateHUDScore(this.playerScore);
-                this._restoreFoodNode(foodId, rec);
                 this.pendingConsumption.delete(foodId);
             }
         }
