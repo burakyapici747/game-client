@@ -1,5 +1,6 @@
 import StartGame from './game/main';
 import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu } from './ui/overlays.js';
+import { serverProbe, latencyTier } from './network/ServerProbe.js';
 
 // ─── Mobile input state (read by Game.js every frame) ───────────────────────
 window.mobileInput = {
@@ -10,9 +11,8 @@ window.mobileInput = {
     boostActive:       false,
 };
 
-// En son ölçülen menü ping'leri (serverId -> ms). Connecting ekranı, oyun-içi
-// heartbeat kalibre olana kadar bu değeri başlangıç göstergesi olarak kullanır.
-const menuPingByServerId = new Map();
+// Menü ping'leri artık ServerProbe (src/network/ServerProbe.js) içinde tutulur;
+// Connecting ekranı ilk göstergeyi window.gameSettings.menuPingMs üzerinden alır.
 
 document.addEventListener('DOMContentLoaded', async () => {
     const uiLayer          = document.getElementById('ui-layer');
@@ -23,8 +23,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const confirmServerBtn = document.getElementById('confirm-server-btn');
     const serverList       = document.getElementById('server-list');
     const nicknameInput    = document.getElementById('nickname-input');
+    const serverIndicator  = document.getElementById('selected-server-indicator');
+    const indicatorName    = document.getElementById('selected-server-name');
+    const indicatorPing    = document.getElementById('selected-server-ping');
 
     let selectedServer = null;   // config'ten gelen sunucu objesi {id, name, ip, port, wsUrl}
+    // Kullanici listeden elle secim yaptiysa otomatik (en dusuk ping) secim
+    // ARTIK onun uzerine yazmaz — aksi halde kullanicinin tercihi arka plandaki
+    // bir olcum turuyla sessizce degisirdi.
+    let serverChosenManually = false;
     let gameStarted    = false;
     let gameInstance   = null;
     let teardownFns    = [];     // boot sırasında takılan observer/listener temizleyicileri
@@ -34,9 +41,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // public/config.json'dan yüklenir ve DOM'a dinamik enjekte edilir.
     const config = await loadClientConfig();
     window.gameConfig = config;
+    // Baslangic secimi config varsayilani; ilk olcum turu bitince EN DUSUK
+    // PING'li sunucuyla degistirilir (bkz. refreshServerPings).
     selectedServer = config.servers.find(s => s.id === config.defaultServerId) || config.servers[0];
     renderServerList(config.servers);
-    measureServerPings(); // sayfa açılır açılmaz arka planda ilk ölçüm
+    updateServerIndicator();
+    refreshServerPings(); // sayfa açılır açılmaz arka planda ilk ölçüm
 
     // Sunucu kartları (referans: server_list.html) — globe ikonu + bölge adı +
     // durum alt yazısı solda; latency-tier renkli ping + sinyal ikonu sağda.
@@ -91,8 +101,106 @@ document.addEventListener('DOMContentLoaded', async () => {
                 serverList.querySelectorAll('.server-item').forEach(i => i.classList.remove('selected'));
                 li.classList.add('selected');
                 selectedServer = server;
+                serverChosenManually = true;
+                // Gosterge elle secimi ANINDA yansitir (olculmus ping ile birlikte).
+                updateServerIndicator();
             });
             serverList.appendChild(li);
+        }
+    }
+
+    /**
+     * Sunucu gecikmelerini tazeler ve UI'yi gunceller.
+     *
+     * Soket acilip acilmayacagina ServerProbe karar verir: TTL icindeki degerler
+     * onbellekten servis edilir, ayni sunucu icin ucusta olan bir olcum varsa
+     * ona katilir. Yani bu fonksiyonu tekrar tekrar cagirmak (orn. her modal
+     * acilisi) YENI baglanti URETMEZ.
+     *
+     * @param {boolean} force TTL'i yok say (kullanicinin acik tazeleme istegi).
+     */
+    async function refreshServerPings(force = false) {
+        const items = [...serverList.querySelectorAll('.server-item')];
+
+        // Yalnizca GERCEKTEN olculecek kartlara "…" bas; onbellekten gelecekler
+        // zaten dolu, onlari bosaltmak goz kirpma efekti yaratirdi.
+        for (const item of items) {
+            const id = item.dataset.serverId;
+            if (!id) continue;
+            if (force || !serverProbe.isFresh(id)) {
+                const pingEl = item.querySelector('.server-ping');
+                if (pingEl) pingEl.textContent = '…';
+            }
+        }
+        if (!selectedServer || force || !serverProbe.isFresh(selectedServer.id)) {
+            updateServerIndicator({ measuring: true });
+        }
+
+        await serverProbe.probeAll(config.servers, { force });
+
+        for (const item of items) {
+            const id = item.dataset.serverId;
+            const pingEl = item.querySelector('.server-ping');
+            const statusEl = item.querySelector('.server-status');
+            if (!id || !pingEl || !statusEl) continue;
+
+            const result = serverProbe.getResult(id);
+            if (result?.online) {
+                pingEl.textContent = `${result.rttMs}ms`;
+                statusEl.textContent = 'Online';
+                statusEl.classList.add('active');
+            } else {
+                pingEl.textContent = '--';
+                statusEl.textContent = 'Offline';
+                statusEl.classList.remove('active');
+            }
+            item.dataset.tier = latencyTier(result?.online ? result.rttMs : null);
+        }
+
+        // ── OTOMATIK SECIM: en dusuk gecikmeli cevrimici sunucu ───────────────
+        // Kullanici listeden elle secim yaptiysa dokunulmaz.
+        if (!serverChosenManually) {
+            const best = serverProbe.pickLowestLatency(config.servers);
+            if (best && best.id !== selectedServer?.id) {
+                selectedServer = best;
+                serverList.querySelectorAll('.server-item').forEach((i) => {
+                    i.classList.toggle('selected', i.dataset.serverId === best.id);
+                });
+            }
+        }
+
+        updateServerIndicator();
+    }
+
+    /**
+     * Nickname ekranindaki "hangi sunucudasin" gostergesini gunceller.
+     * Hem otomatik secimde hem elle secimde cagrilir.
+     */
+    function updateServerIndicator({ measuring = false } = {}) {
+        if (!serverIndicator || !indicatorName || !indicatorPing) return;
+
+        if (!selectedServer) {
+            indicatorName.textContent = 'Selecting…';
+            indicatorPing.textContent = '';
+            serverIndicator.dataset.tier = 'offline';
+            return;
+        }
+
+        indicatorName.textContent = selectedServer.name;
+
+        const result = serverProbe.getResult(selectedServer.id);
+        if (measuring && !result) {
+            indicatorPing.textContent = '…';
+            serverIndicator.dataset.tier = 'measuring';
+        } else if (result?.online) {
+            indicatorPing.textContent = `${result.rttMs}ms`;
+            serverIndicator.dataset.tier = latencyTier(result.rttMs);
+        } else if (result) {
+            indicatorPing.textContent = 'Offline';
+            serverIndicator.dataset.tier = 'offline';
+        } else {
+            indicatorPing.textContent = '…';
+            serverIndicator.dataset.tier = 'measuring';
         }
     }
 
@@ -100,7 +208,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const closeServersModal = () => serversModal.classList.add('hidden');
     serversBtn.addEventListener('click', () => {
         serversModal.classList.remove('hidden');
-        measureServerPings(); // her açılışta ping değerlerini tazele
+        // KRITIK: burada YENI soket acilmaz. refreshServerPings TTL icindeki
+        // sonuclari onbellekten servis eder; yalnizca degerler bayatladiysa
+        // olcum yapilir. Eski kod her acilista sunucu basina bir WebSocket
+        // aciyordu ve her el sikismasi sunucuda ~138 KB'lik FoodCollection
+        // gonderimi tetikliyordu (bkz. ServerProbe.js bas yorumu).
+        refreshServerPings();
     });
     closeServersBtn.addEventListener('click', closeServersModal);
     confirmServerBtn.addEventListener('click', closeServersModal);
@@ -260,8 +373,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             serverUrl: selectedServer?.wsUrl,
             serverName: selectedServer?.name || 'Unknown',
             // Connecting ekranının ilk PING göstergesi (heartbeat kalibre olana dek)
-            menuPingMs: menuPingByServerId.get(selectedServer?.id) ?? null,
+            menuPingMs: serverProbe.getResult(selectedServer?.id)?.rttMs ?? null,
         };
+
+        // TEK AKTIF BAGLANTI GARANTISI: oyun soketi acilmadan hemen once tum
+        // olcum soketleri kapatilir ve yeni olcum acilmasi kilitlenir. Boylece
+        // NetworkManager.connect() calistiginda oturumda baska WebSocket kalmaz.
+        serverProbe.lock();
 
         // Dismiss the mobile on-screen keyboard BEFORE Phaser boots. Phaser's
         // RESIZE scale mode snapshots the parent's bounds once at boot and only
@@ -329,62 +447,8 @@ async function loadClientConfig() {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SERVER PING MEASUREMENT (pre-login, background)
-// Her sunucuya geçici bir WebSocket açıp handshake süresini ölçer. Handshake
-// ≈ TCP kurulumu (1 RTT) + WS upgrade (1 RTT) olduğundan süre ikiye bölünerek
-// tek yön + dönüş (ping) yaklaşımı elde edilir. Ölçüm bitince soket kapatılır;
-// in-flight guard (dataset.pinging) aynı sunucuya paralel ölçümü engeller.
-// ─────────────────────────────────────────────────────────────────────────────
-function measureServerPings() {
-    document.querySelectorAll('.server-item').forEach(item => {
-        const rawUrl = item.dataset.server;
-        const pingEl = item.querySelector('.server-ping');
-        const statusEl = item.querySelector('.server-status');
-        if (!rawUrl || !pingEl || !statusEl || item.dataset.pinging === '1') return;
-
-        // Sunucu WS endpoint'i /ws path'inde yaşıyor — normalize et.
-        const url = rawUrl.endsWith('/ws') ? rawUrl : rawUrl.replace(/\/+$/, '') + '/ws';
-
-        item.dataset.pinging = '1';
-        pingEl.textContent = '…';
-
-        let ws = null;
-        let settled = false;
-        const t0 = performance.now();
-
-        const finish = (ok) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeoutId);
-            item.dataset.pinging = '';
-            try { ws?.close(); } catch (_) { /* önemsiz */ }
-            if (ok) {
-                const rtt = Math.max(1, Math.round((performance.now() - t0) / 2));
-                pingEl.textContent = `${rtt}ms`;
-                statusEl.textContent = 'Online';
-                statusEl.classList.add('active');
-                if (item.dataset.serverId) menuPingByServerId.set(item.dataset.serverId, rtt);
-                // Latency tier → kart üzerindeki ping/sinyal rengi (bkz. style.css)
-                item.dataset.tier = rtt < 60 ? 'good' : rtt < 120 ? 'ok' : rtt < 200 ? 'high' : 'bad';
-            } else {
-                pingEl.textContent = '--';
-                statusEl.textContent = 'Offline';
-                statusEl.classList.remove('active');
-                item.dataset.tier = 'offline';
-            }
-        };
-
-        const timeoutId = setTimeout(() => finish(false), 4000);
-        try {
-            ws = new WebSocket(url);
-            ws.onopen = () => finish(true);
-            ws.onerror = () => finish(false);
-        } catch (_) {
-            finish(false);
-        }
-    });
-}
+// (Ölçüm mantığı src/network/ServerProbe.js'e taşındı — tek sahiplik noktası,
+//  onbellek + TTL, soket çoğaltma koruması ve toplu kapatma orada.)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS PANEL (gear button — always active, all devices)

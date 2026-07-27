@@ -308,6 +308,85 @@ button {
     border-bottom-width: 2px;
 }
 
+/* ── Auto-selected server readout (login card) ─────────────────────────────
+   Bilgi satiri, EYLEM DEGIL: bu yuzden butonlarin 3D/pill dilinden bilincli
+   olarak ayrilir ve nickname input'uyla ayni "gomulu yuzey" dilini kullanir
+   (--menu-surface-lowest + inset golge). Boylece gorsel hiyerarsi korunur:
+   PLAY birincil, Servers ikincil, bu satir onlarin altinda sessiz bir durum
+   gostergesi olarak okunur.
+   Renkler sunucu listesi kartlariyla AYNI latency tier paletinden gelir. */
+.server-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 18px;
+    font-family: 'Quicksand', var(--font-body), sans-serif;
+    font-size: 0.9rem;
+    background: var(--menu-surface-lowest);
+    border-radius: 999px;
+    box-shadow: inset 0 3px 5px -1px rgba(0, 0, 0, 0.45);
+    /* Ping degeri degistiginde renk gecisi yumusak olsun. */
+    transition: color var(--transition-fast);
+}
+
+.server-indicator-globe {
+    flex-shrink: 0;
+    /* Ikon, satirin tier rengini miras alir (currentColor). */
+    opacity: 0.9;
+}
+
+.server-indicator-label {
+    color: var(--menu-text-muted);
+    font-weight: 500;
+}
+
+.server-indicator-name {
+    color: var(--menu-text);
+    font-weight: 700;
+}
+
+/* Ad ile ping arasindaki ayirici nokta. */
+.server-indicator-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.5;
+}
+
+.server-indicator-ping {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Latency tier renkleri — .server-item[data-tier] ile BIREBIR ayni palet.
+   Renk .server-indicator uzerinde tanimlanir; globe ikonu, ayirici nokta ve
+   ping degeri currentColor uzerinden bunu miras alir. */
+.server-indicator[data-tier="good"]      { color: #b7f700; }  /* primary-container */
+.server-indicator[data-tier="ok"]        { color: #a0d800; }  /* primary-fixed-dim */
+.server-indicator[data-tier="high"]      { color: #fdd400; }  /* secondary-container */
+.server-indicator[data-tier="bad"]       { color: #ffb4ab; }  /* error */
+.server-indicator[data-tier="offline"]   { color: #ffb4ab; }
+.server-indicator[data-tier="measuring"] { color: var(--menu-text-muted); }
+
+/* Olcum surerken hafif nabiz — "calisiyor" hissi, dikkat dagitmadan. */
+.server-indicator[data-tier="measuring"] .server-indicator-ping {
+    animation: server-indicator-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes server-indicator-pulse {
+    0%, 100% { opacity: 0.45; }
+    50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .server-indicator[data-tier="measuring"] .server-indicator-ping {
+        animation: none;
+    }
+}
+
 /* ═══════════════════════════════════════════════
    SERVERS MODAL (reference: server_list.html)
    ═══════════════════════════════════════════════ */
@@ -1900,6 +1979,18 @@ input:checked + .settings-slider:before {
         font-size: 0.95rem;
     }
 
+    /* Dar ekranda "Connected to" etiketi satiri kirar; sadece bolge + ping
+       kalsin — bilgi yogunlugu korunur, satir tek satirda kalir. */
+    .server-indicator {
+        font-size: 0.82rem;
+        padding: 9px 14px;
+        gap: 6px;
+    }
+
+    .server-indicator-label {
+        display: none;
+    }
+
     .menu-footer-links {
         gap: 10px 14px;
     }
@@ -1970,6 +2061,17 @@ input:checked + .settings-slider:before {
         padding: 8px 20px;
         font-size: 0.9rem;
         border-bottom-width: 4px;
+    }
+
+    /* Landscape mobilde dikey alan kritik — satiri sikistir ve etiketi gizle. */
+    .server-indicator {
+        padding: 7px 14px;
+        font-size: 0.8rem;
+        gap: 6px;
+    }
+
+    .server-indicator-label {
+        display: none;
     }
 
     .play-btn {

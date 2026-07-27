@@ -59,6 +59,21 @@
                         PLAY
                     </button>
 
+                    <!-- Auto-selected server readout. Populated by
+                         src/main.js -> updateServerIndicator(); the data-tier
+                         attribute drives the latency colour (see style.css),
+                         reusing the same tiers as the server list cards. -->
+                    <div id="selected-server-indicator" class="server-indicator" data-tier="measuring">
+                        <svg class="server-indicator-globe" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="9"></circle>
+                            <path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"></path>
+                        </svg>
+                        <span class="server-indicator-label">Connected to</span>
+                        <span id="selected-server-name" class="server-indicator-name">Selecting…</span>
+                        <span class="server-indicator-dot" aria-hidden="true"></span>
+                        <span id="selected-server-ping" class="server-indicator-ping">…</span>
+                    </div>
+
                     <button id="servers-btn" class="servers-btn">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                             <path d="M4 5h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM4 13h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"></path>
