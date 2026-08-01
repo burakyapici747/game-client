@@ -157,7 +157,25 @@ export class Game extends Phaser.Scene {
         // Steering deadzone/epsilon guard'inin son TAAHHUT edilen aci degeri (rad).
         // Bu acidan MIN_ROTATION_RADIUS ya da ANGLE_EPSILON altinda kalan girdi
         // ne yerel tahmini ne de agi gunceller. Respawn'da sifirlanmali.
+        // Spawn'da sunucunun verdigi baslangic yonuyle TOHUMLANIR (onStartGame).
         this._lastCommittedAngleRad = null;
+
+        // Sunucunun StartInformation'da verdigi baslangic yonu (rad). Girdi
+        // katmani, oyuncu gercekten yon verene kadar bu acida kalir.
+        this._spawnHeadingRad = null;
+
+        // ── POINTER STEERING ARMING (masaustu) ──────────────────────────────
+        // input.activePointer spawn aninda oyuncunun SON fare konumunu tasir —
+        // cogu zaman PLAY dugmesinin oldugu yer ya da fare hic canvas'a
+        // girmediyse (0, 0). Eski akis ilk update() karesinde o bayat noktaya
+        // dogru bir aci hesaplayip HEM yerel tahmine HEM aga gonderiyordu:
+        // yilan, sunucunun verdigi spawn yonunu birakip aninda imlecin oldugu
+        // yone donuyordu ("spawn'da yanlis yone bakma").
+        //
+        // Artik pointer yalnizca oyuncu fareyi GERCEKTEN oynattiktan sonra
+        // direksiyonu devralir; o ana kadar sunucunun spawn yonu korunur ve
+        // aga aci paketi uretilmez.
+        this._pointerSteeringArmed = false;
 
         this.gameStarted = false;
         this.initialDataFlags = { startInfo: false, entities: false };
@@ -176,6 +194,14 @@ export class Game extends Phaser.Scene {
         document.addEventListener('visibilitychange', this._onVisibilityChange);
         this.events.once('shutdown', () =>
             document.removeEventListener('visibilitychange', this._onVisibilityChange));
+
+        // Fare GERÇEKTEN oynadığında direksiyonu pointer'a devret (bkz.
+        // _pointerSteeringArmed). Referans saklanır ki shutdown'da kaldırılabilsin —
+        // inline arrow'lar off() ile sökülemez ve restart'ta üst üste birikir.
+        this._onPointerMove = () => { this._pointerSteeringArmed = true; };
+        this.input.on('pointermove', this._onPointerMove, this);
+        this.events.once('shutdown', () =>
+            this.input.off('pointermove', this._onPointerMove, this));
 
         this.events.on('start_game', this.onStartGame, this);
         this.events.on('self_position', this.onSelfPosition, this);
@@ -407,12 +433,45 @@ export class Game extends Phaser.Scene {
         this.myId = clientId;
         this.initialDataFlags.startInfo = true;
 
+        // ── GİRDİ / TAHMİN TAMPONLARINI SPAWN ONAYINDA SIFIRLA ──────────────
+        // Bu paket "yeni tur başlıyor" demektir. Önceki tura (ya da bağlantı
+        // öncesi kareye) ait gecikmeli girdiler kuyrukta kalırsa, spawn'dan
+        // hemen sonra eski bir açı uygulanır ve yılan bir anlığına yanlış yöne
+        // sapar. Kuyruk + son uygulanan girdi + taahhüt edilen açı burada
+        // tamamen düşürülür.
+        this._inputDelayQueue = [];
+        this._lastDelayedInput = null;
+        this._lastCommittedAngleRad = null;
+        this._pointerSteeringArmed = false;
+
         const startX = Number(startInfo?.x);
         const startY = Number(startInfo?.y);
         const startSegmentCount = Number(startInfo?.segmentCount ?? startInfo?.segment_count);
         const startScale = Number(startInfo?.scale ?? 1.0);
         const worldRadius = Number(startInfo?.worldRadius ?? startInfo?.world_radius);
         const startDirection = Number(startInfo?.startDirection ?? startInfo?.start_direction ?? 0);
+
+        // ── GİRDİ KATMANINI SUNUCUNUN SPAWN YÖNÜNE TOHUMLA ──────────────────
+        // Sunucu yılanı rastgele bir yöne bakar halde yaratır (bkz. server
+        // Game.createPlayer → start_direction) ve kendi simülasyonunda hem
+        // currentAngle hem targetAngle bu yöndedir. Client aynı yönde
+        // başlamazsa iki simülasyon daha ilk kareden ayrışır: sunucu düz
+        // giderken client döner, aradaki fark reconciliation'a hata olarak
+        // yansır ve ilk saniyelerde düzeltme olarak geri boşalır.
+        //
+        // 0 rad'a ya da uydurma bir vektöre ASLA düşülmez: değer okunamazsa
+        // tohumlama yapılmaz ve girdi katmanı yılanın kendi head.rotation'ını
+        // (Snake ctor'da yine sunucu açısıyla kurulmuştur) kullanır.
+        const spawnHeadingRad = Number.isFinite(startDirection)
+            ? Snake.decodeServerAngle(startDirection)
+            : null;
+        if (Number.isFinite(spawnHeadingRad)) {
+            this._spawnHeadingRad = spawnHeadingRad;
+            // Deadzone/epsilon guard'ının referansı da spawn yönüdür: oyuncu
+            // fareyi oynatana kadar "değişiklik yok" kabul edilir, açı paketi
+            // üretilmez ve yerel tahmin sunucuyla aynı yönde kalır.
+            this._lastCommittedAngleRad = spawnHeadingRad;
+        }
 
         if (Number.isFinite(worldRadius)) {
             this.worldRadius = worldRadius;
@@ -456,7 +515,7 @@ export class Game extends Phaser.Scene {
             this.boundaryGraphics.setDepth(500);
         }
 
-        this.ensurePlayerSnake(
+        const mySnake = this.ensurePlayerSnake(
             clientId,
             Number.isFinite(startX) ? startX : 0,
             Number.isFinite(startY) ? startY : 0,
@@ -464,6 +523,16 @@ export class Game extends Phaser.Scene {
             Number.isFinite(startScale) ? startScale : undefined,
             startDirection
         );
+
+        // Kamerayı spawn konumuna LERP'SİZ oturt. startFollow(…, 0.15, 0.15)
+        // yumuşatmalı olduğundan, kamera bir önceki scroll konumundan (restart'ta
+        // (0,0)) yeni kafaya doğru gözle görülür şekilde SÜZÜLÜRDÜ. centerOn
+        // scroll'u tek adımda yazar; yumuşatma bir sonraki kareden itibaren
+        // normal takip için devrede kalır.
+        const spawnHead = mySnake?.getHead();
+        if (spawnHead) {
+            this.cameras.main.centerOn(spawnHead.x, spawnHead.y);
+        }
 
         // ── SIRALAMA: YER TUTUCUYU HANDSHAKE'TE KAPAT ───────────────────────
         // Normal akışta sunucu sıralamayı bu zarfın İÇİNDE gönderir ve
@@ -711,7 +780,22 @@ export class Game extends Phaser.Scene {
             Number.isFinite(y) ? y : 0
         );
         this.flushPendingSegmentMutations(entityId, snake);
-        snake.updateSelfPositionFromServer(selfPosition);
+
+        // İlk otoriter kare LERP'SİZ uygulanır; true dönerse bu KARE baseline'dı.
+        const didTeleport = snake.updateSelfPositionFromServer(selfPosition);
+        if (didTeleport) {
+            // Kamera da aynı karede ışınlanır. startFollow yumuşatması burada
+            // devrede olsaydı, yılan otoriter konuma anında oturup kamera ona
+            // ~1 sn boyunca süzülürdü — spawn'daki kayma hissinin görsel yarısı.
+            const head = snake.getHead();
+            if (head) this.cameras.main.centerOn(head.x, head.y);
+
+            // Baseline anında gecikmeli girdi kuyruğu da düşürülür: spawn ile
+            // ilk otoriter kare arasında sıraya girmiş açılar, artık geçersiz
+            // olan spawn-öncesi tahmine aitti.
+            this._inputDelayQueue = [];
+            this._lastDelayedInput = null;
+        }
     }
 
     onRemoveEntity(removeEntity) {
@@ -767,6 +851,14 @@ export class Game extends Phaser.Scene {
         const existingSnake = this.snakes.get(entityId);
         const nickname = window.gameSettings?.nickname || '';
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
+            // Yılan, StartInformation'dan ÖNCE işlenen bir pakette (ör. ilk
+            // SelfPosition) yaratılmış olabilir; o yolda açı GEÇİLMEZ ve yılan
+            // 0 rad ile — sağa bakar halde — kurulur. Buraya bir sunucu yönü
+            // geldiyse geriye dönük uygulanır; applyServerHeading yalnızca bir
+            // kez etki eder, sonraki çağrılar oyuncunun dönüşünü bozmaz.
+            if (angleRaw !== undefined) {
+                existingSnake.applyServerHeading(angleRaw);
+            }
             if (segmentCount !== undefined) {
                 existingSnake.syncSegmentCountFromServer(segmentCount);
             }
@@ -788,6 +880,14 @@ export class Game extends Phaser.Scene {
         }
 
         const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw, nickname);
+        // Açı bu yolda GEÇİLDİYSE yılan zaten sunucu yönüyle kurulmuştur; yönü
+        // "uygulanmış" işaretle ki sonradan gelen bir StartInformation tekrarı
+        // (applyServerHeading) oyuncunun o ana kadarki dönüşünü geri almasın.
+        // angleRaw === undefined ise yön HENÜZ bilinmiyor demektir ve bayrak
+        // false kalır — StartInformation geldiğinde geriye dönük uygulanır.
+        if (angleRaw !== undefined) {
+            playerSnake._hasServerHeading = true;
+        }
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
             playerSnake.scale = scale;
             playerSnake._updateSegmentScaling(); // görsel boyut = sunucu scale, ilk kareden itibaren
@@ -1249,9 +1349,27 @@ export class Game extends Phaser.Scene {
                     } else {
                         // Parmak yoksa yönü koru VE paket gönderme (eskiden her frame
                         // head.rotation gönderiliyordu — gereksiz trafik).
+                        // SPAWN'DA: _lastCommittedAngleRad, onStartGame'de sunucunun
+                        // start_direction'ı ile tohumlanmıştır — yani joystick'e
+                        // dokunulmadan önce yılan tam da sunucunun simüle ettiği
+                        // yönde ilerler. Joystick zaten merkezde (joystickActive
+                        // false) olduğundan ek bir "re-center" gerekmez.
                         targetAngleRad = this._lastCommittedAngleRad ?? head.rotation;
                         sendAngle = false;
                     }
+                } else if (!this._pointerSteeringArmed) {
+                    // ── Masaüstü, spawn: fare HENÜZ oynatılmadı ───────────────
+                    // activePointer bayat bir konum taşıyor (PLAY düğmesinin
+                    // yeri ya da fare canvas'a hiç girmediyse 0,0). Ondan bir
+                    // açı türetmek yılanı spawn yönünden koparırdı. Sunucunun
+                    // verdiği yönde düz devam et ve açı paketi ÜRETME —
+                    // sunucu zaten aynı hedef açıyla simüle ediyor, iki taraf
+                    // ayrışmaz. Boost yine de okunur (tıklama anlamlı bir girdi).
+                    isBoosting = this.input.activePointer.isDown;
+                    targetAngleRad = this._spawnHeadingRad
+                        ?? this._lastCommittedAngleRad
+                        ?? head.rotation;
+                    sendAngle = false;
                 } else {
                     // ── Desktop: mouse ────────────────────────────────────────
                     this.pointer = this.input.activePointer;

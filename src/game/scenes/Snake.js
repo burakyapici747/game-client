@@ -125,6 +125,21 @@ export class Snake {
         this.hasServerState = false;
         this.hasSelfServerState = false;
 
+        // ── SPAWN BASELINE (yalnızca oyuncunun kendi yılanı) ─────────────────
+        // İlk otoriter SelfPosition karesi işlenene kadar false. İki şeyi yönetir:
+        //   1. İlk kare LERP'SİZ uygulanır (ışınlanma) — sim, sprite, path ve
+        //      kamera tek adımda otoriter konuma oturur.
+        //   2. Baseline kurulana kadar reconciliation TAMAMEN kapalıdır. Aksi
+        //      halde spawn öncesi/asenkron tahmin geçmişi üzerinden hata birikip
+        //      baseline'dan hemen sonra toplu bir düzeltme olarak boşalıyordu —
+        //      "2-3 sn sonra ani kayma / agresif lerp"in kök nedeni.
+        this._hasSpawnBaseline = false;
+
+        // Sunucunun verdiği başlangıç yönü uygulandı mı? Yılan, StartInformation'dan
+        // ÖNCE gelen bir pakette yaratılırsa açısız (0 rad) kurulur; bu bayrak
+        // yönün sonradan bir kez düzeltilebilmesini sağlar (bkz. applyServerHeading).
+        this._hasServerHeading = false;
+
         // ── Logical simulation state (player-controlled) ─────────────────
         // sim = tahmin edilen OTORITER-YEREL pozisyon. updateFromInput
         // entegre eder, reconciliation düzeltmeleri BURAYA uygulanır.
@@ -551,6 +566,8 @@ export class Snake {
         this._lastSnapshotAt = 0;
         this.hasServerState = false;
         this.hasSelfServerState = false;
+        this._hasSpawnBaseline = false;
+        this._hasServerHeading = false;
         this.lastReconciledSequenceId = 0;
     }
 
@@ -686,8 +703,24 @@ export class Snake {
         // Segment büyüme/çöküş animasyonları (Issue #3) — konumlandırmadan sonra,
         // ölçeği/opaklığı bu karenin dt'siyle ilerlet.
         this._updateSegmentLifecycle(this._delta || 16.67);
-        const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
-        this._updateEyes(worldPoint.x, worldPoint.y);
+        // Gözler imlece bakar — ANCAK masaüstünde, spawn'da fare henüz
+        // oynatılmamışsa activePointer bayat bir konum taşır (bkz.
+        // Game._pointerSteeringArmed) ve yılan hareket yönüne giderken gözleri
+        // alakasız bir noktaya kayardı. O aşamada gözler hareket yönüne bakar.
+        // Mobil davranışı DEĞİŞMEZ: dokunmatik akışta koşul hiç kurulmaz.
+        const pointerSteeringPending = this.isPlayerControlled
+            && !window.mobileInput?.enabled
+            && this.scene._pointerSteeringArmed === false;
+        if (pointerSteeringPending) {
+            this._updateEyes(
+                this.head.x + Math.cos(this.movementAngle) * 100,
+                this.head.y + Math.sin(this.movementAngle) * 100
+            );
+        } else {
+            const worldPoint = this.scene.cameras.main.getWorldPoint(
+                this.scene.input.activePointer.x, this.scene.input.activePointer.y);
+            this._updateEyes(worldPoint.x, worldPoint.y);
+        }
         if (this.nicknameText) {
             this.nicknameText.setPosition(this.head.x, this.head.y - 35 * this.scale);
         }
@@ -760,6 +793,11 @@ export class Snake {
     // the head: hysteresis + dead zones + exponential blend + px/s cap.
     _reconcilePlayerWithServer(delta) {
         if (!this.hasSelfServerState) return;
+        // Baseline kurulmadan düzeltme YOK. İlk otoriter kare ışınlanma ile
+        // uygulanır (_establishSpawnBaseline); ondan önce elde güvenilir bir
+        // tahmin geçmişi yoktur ve ölçülen "hata" gerçekte spawn ile ilk paket
+        // arasındaki mesafedir — uygulanırsa spawn'da toplu bir kayma üretir.
+        if (!this._hasSpawnBaseline) return;
 
         // Hard snap only on absurd desync (death, respawn, teleport).
         const rawDx = this.selfServerTarget.x - this.sim.x;
@@ -1170,6 +1208,82 @@ export class Snake {
         });
     }
 
+    /**
+     * Sunucunun verdiği başlangıç yönünü (ham ağ açısı) yılana uygular.
+     *
+     * Yılan, StartInformation'dan ÖNCE işlenen bir pakette yaratılmış olabilir;
+     * o durumda 0 rad (sağa bakar) ile kurulur ve ilk girdi paketine kadar
+     * yanlış yöne bakar. Bu metot yönü GERİYE DÖNÜK olarak düzeltir.
+     *
+     * YALNIZCA BİR KEZ uygular (_hasServerHeading): oyuncu dönmeye başladıktan
+     * sonra gelen geç bir StartInformation tekrarının yılanı geri çevirmesini
+     * önler.
+     */
+    applyServerHeading(rawAngle) {
+        if (this._hasServerHeading || !Number.isFinite(Number(rawAngle))) return false;
+
+        const angle = this._decodeServerAngle(Number(rawAngle));
+        if (!Number.isFinite(angle)) return false;
+
+        this.movementAngle = angle;
+        this.networkTarget.angle = angle;
+        this.selfServerTarget.angle = angle;
+        this.selfServerTargetHeading = angle;
+        if (this.head) this.head.rotation = angle;
+
+        // Gövde, yılanın kafanın ARKASINDA uzandığı varsayımıyla kurulur; yön
+        // değiştiğinde eski path bayat kalır ve segmentler bir kare boyunca
+        // yanlış tarafa savrulur. Kafanın yeni yönüne göre yeniden kur.
+        if (this.head) {
+            this._initPathWarmup(this.head.x, this.head.y);
+            this._positionSegmentsByPath();
+        }
+
+        this._hasServerHeading = true;
+        return true;
+    }
+
+    /**
+     * SPAWN BASELINE — ilk otoriter kare LERP'SİZ uygulanır (ışınlanma).
+     *
+     * Neden: normal akışta sprite sim'i üstel yumuşatmayla izler ve sim de
+     * reconciliation ile kademeli düzeltilir. Spawn anında iki katman da
+     * otoriter konumdan sapmış olabilir (tahmin, StartInformation ile ilk
+     * SelfPosition arasında geçen sürede zaten ilerlemiştir). O farkı
+     * yumuşatarak kapatmak, oyunun ilk saniyesinde görünür bir kayma üretir.
+     * Baseline'da fark SIFIRLANIR: tüm katmanlar tek adımda hizalanır.
+     *
+     * @returns {boolean} bu çağrıda baseline kurulduysa true (kamerayı ışınlamak
+     *                    için Game.onSelfPosition bunu kullanır).
+     */
+    _establishSpawnBaseline(x, y) {
+        this.sim.x = x;
+        this.sim.y = y;
+        this.vel.x = 0;
+        this.vel.y = 0;
+
+        this.selfServerTarget.x = x;
+        this.selfServerTarget.y = y;
+
+        if (this.head) {
+            // Görsel katman da ANINDA hizalanır — üstel yumuşatma devreye girmez.
+            this.head.setPosition(x, y);
+            this._pathFollower.x = x;
+            this._pathFollower.y = y;
+            // Gövde path'i spawn konumundan yeniden kurulur; segmentler ilk
+            // karede doğru yerde olur (aksi halde eski konumdan sürüklenirlerdi).
+            this._initPathWarmup(x, y);
+            this._positionSegmentsByPath();
+        }
+
+        // Tahmin geçmişi ve birikmiş hata bayat: baseline ÖNCESİ örneklere göre
+        // ölçülmüş hatalar yeni otoriter konuma uygulanamaz.
+        this._resetReconciliationState();
+
+        this._hasSpawnBaseline = true;
+        return true;
+    }
+
     updateSelfPositionFromServer(entityData) {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
@@ -1179,6 +1293,22 @@ export class Snake {
         if (Number.isFinite(scaleVal) && scaleVal > 0) {
             this.scale = scaleVal;
             this._updateSegmentScaling();
+        }
+
+        // ── İLK OTORİTER KARE: LERP YOK, IŞINLA ─────────────────────────────
+        // Baseline kurulup çıkılır; bu karede hata ÖLÇÜLMEZ (ölçecek geçmiş
+        // yok) ve reconciliation çalışmaz. Yumuşatma 2. paketten itibaren
+        // devreye girer.
+        if (!this._hasSpawnBaseline && Number.isFinite(x) && Number.isFinite(y)) {
+            if (Number.isFinite(serverSeqId) && serverSeqId > 0) {
+                this.lastReconciledSequenceId = serverSeqId;
+            }
+            this.selfServerTargetHeading = this.head ? this.head.rotation : 0;
+            this.serverDebugMarker?.setPosition(x, y);
+            this.serverDebugDot?.setPosition(x, y);
+            this._establishSpawnBaseline(x, y);
+            this.hasSelfServerState = true;
+            return true;
         }
 
         if (Number.isFinite(x) && Number.isFinite(y)) {
@@ -1220,9 +1350,13 @@ export class Snake {
         }
 
         this.hasSelfServerState = true;
+        return false;
     }
 
-    _decodeServerAngle(rawAngle) {
+    // Statik: Game.js spawn yönünü bir Snake örneği OLMADAN çözebilsin diye
+    // (onStartGame, yılan yaratılmadan önce girdi katmanını sunucunun verdiği
+    // başlangıç yönüne göre tohumlamak zorunda — bkz. _lastCommittedAngleRad).
+    static decodeServerAngle(rawAngle) {
         // Bu projede client -> server açı 0..250 sıkıştırılmış aralıkta gönderiliyor.
         // Server aynı formatı dönüyorsa önce onu çöz.
         if (Number.isInteger(rawAngle) && rawAngle >= 0 && rawAngle <= 252) {
@@ -1236,6 +1370,10 @@ export class Snake {
 
         // Aksi durumda derece kabul et.
         return Phaser.Math.DegToRad(rawAngle);
+    }
+
+    _decodeServerAngle(rawAngle) {
+        return Snake.decodeServerAngle(rawAngle);
     }
 
     getHead() { return this.head; }
