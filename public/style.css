@@ -2215,46 +2215,49 @@ input:checked + .settings-slider:before {
 .hud-leaderboard-pod {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 16px;
-    border-radius: 16px;
-    width: 256px;
+    gap: 5px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    width: 220px;
     font-family: 'Quicksand', sans-serif;
 }
 
 .hud-leaderboard-pod.hud-bubbly-panel {
-    background-color: rgba(50, 32, 83, 0.85);
+    background-color: rgba(39, 20, 72, 0.55);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(235, 221, 255, 0.08);
+    box-shadow: 0 2px 12px rgba(26, 15, 46, 0.3);
 }
 
 .leaderboard-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
 .leaderboard-title {
     font-family: 'Quicksand', sans-serif;
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 28px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 18px;
     text-transform: uppercase;
-    tracking-wider: 1.25px;
+    letter-spacing: 1.5px;
     color: var(--hud-primary);
 }
 
 .leaderboard-icon {
     color: var(--hud-secondary-container);
-    font-size: 20px;
+    font-size: 16px;
     font-variation-settings: 'FILL' 1;
 }
 
 .leaderboard-info {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 700;
-    line-height: 16px;
+    line-height: 14px;
     color: var(--hud-on-surface-variant);
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
 #hud-players {
@@ -2265,46 +2268,49 @@ input:checked + .settings-slider:before {
 .leaderboard-entries {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 3px;
 }
 
 .leaderboard-entry {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px;
-    border-radius: 8px;
-    font-size: 12px;
-    line-height: 16px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 15px;
 }
 
 .leaderboard-entry.rank-1 {
-    background-color: var(--hud-surface-container-lowest);
+    background-color: rgba(21, 1, 54, 0.5);
 }
 
 .leaderboard-entry.rank-you {
     border-top: 1px solid var(--hud-surface-container-highest);
-    padding-top: 16px;
-    margin-top: 8px;
+    padding-top: 8px;
+    margin-top: 4px;
 }
 
 .rank-number, .rank-crown {
-    min-width: 16px;
+    min-width: 14px;
     text-align: center;
     color: var(--hud-on-surface-variant);
     font-weight: 700;
-    line-height: 16px;
+    line-height: 15px;
 }
 
 .rank-crown {
-    font-size: 16px;
+    font-size: 13px;
 }
 
 .player-name {
     flex: 1;
-    margin-left: 8px;
+    margin-left: 6px;
     color: var(--hud-on-surface);
     font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .leaderboard-entry.rank-1 .player-name {
@@ -2331,9 +2337,9 @@ input:checked + .settings-slider:before {
 /* Boş durum: sıralama paketi henüz gelmedi ya da haritada sıralanacak oyuncu
    yok. Sahte oyuncu satırlarının yerini alan tek, nötr mesaj satırı. */
 .leaderboard-empty {
-    padding: 8px;
-    font-size: 12px;
-    line-height: 16px;
+    padding: 4px;
+    font-size: 10px;
+    line-height: 14px;
     text-align: center;
     color: var(--hud-on-surface-variant);
     opacity: 0.7;
@@ -2383,47 +2389,47 @@ input:checked + .settings-slider:before {
         line-height: 24px;
     }
 
-    /* Leaderboard: subtle but readable */
+    /* Leaderboard: compact for mobile field-of-view */
     .hud-leaderboard-pod {
-        width: 168px;
-        padding: 10px 12px;
-        gap: 4px;
-        border-radius: 12px;
+        width: 148px;
+        padding: 7px 8px;
+        gap: 3px;
+        border-radius: 10px;
     }
 
     .leaderboard-header {
-        margin-bottom: 2px;
+        margin-bottom: 1px;
     }
 
     .leaderboard-title {
-        font-size: 12px;
-        line-height: 16px;
+        font-size: 10px;
+        line-height: 14px;
         letter-spacing: 1px;
     }
 
     .leaderboard-icon {
-        font-size: 14px;
+        font-size: 12px;
     }
 
     .leaderboard-info {
-        font-size: 10px;
-        line-height: 14px;
-        margin-bottom: 2px;
+        font-size: 9px;
+        line-height: 12px;
+        margin-bottom: 1px;
     }
 
     .leaderboard-entries {
-        gap: 4px;
+        gap: 2px;
     }
 
     .leaderboard-entry {
-        padding: 4px 6px;
-        font-size: 10px;
-        line-height: 14px;
+        padding: 2px 4px;
+        font-size: 9px;
+        line-height: 13px;
     }
 
     .leaderboard-entry.rank-you {
-        padding-top: 8px;
-        margin-top: 4px;
+        padding-top: 5px;
+        margin-top: 2px;
     }
 }
 

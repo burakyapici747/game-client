@@ -165,7 +165,7 @@ function createPooledLeaderboardRow() {
     const left = document.createElement('div');
     left.style.display = 'flex';
     left.style.alignItems = 'center';
-    left.style.gap = '8px';
+    left.style.gap = '4px';
 
     const rankEl = document.createElement('span');
     rankEl.className = 'rank-number';

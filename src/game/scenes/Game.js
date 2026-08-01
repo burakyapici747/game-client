@@ -103,7 +103,7 @@ const AOIDebugConfig = {
 // Perde kalktıktan sonraki siyahtan-açılma süresi (ms). Kısa tutulur: amaç
 // bir "sahne geçişi" hissi vermek değil, hizalanmış ilk karenin ani belirmesini
 // yumuşatmak. Girdi tam da bu süre dolduğunda açılır (bkz. _revealGameplay).
-const REVEAL_FADE_MS = 180;
+const REVEAL_FADE_MS = 250;
 
 export class Game extends Phaser.Scene {
     constructor() {
@@ -1235,9 +1235,6 @@ export class Game extends Phaser.Scene {
     onLeaderboardUpdate(leaderboardUpdate) {
         if (!leaderboardUpdate) return;
 
-        // Geçerli bir paket işlendi: "Connecting…" yer tutucusuna bir daha
-        // dönülmez. BOŞ liste de geçerlidir — "0 oyuncu" anlamına gelir ve
-        // aşağıda boş çerçeve olarak çizilir (bkz. updateHUDLeaderboard).
         this.leaderboardReady = true;
 
         const rawEntries = Array.isArray(leaderboardUpdate.entries) ? leaderboardUpdate.entries : [];
@@ -1246,13 +1243,23 @@ export class Game extends Phaser.Scene {
             score: Number(entry?.score ?? 0),
         }));
 
-        // protobufjs camelCase üretir; snake_case yedeği savunma amaçlı.
         const selfRank = Number(
             leaderboardUpdate.selfRank ?? leaderboardUpdate.self_rank ?? 0);
         const selfScore = Number(
             leaderboardUpdate.selfScore ?? leaderboardUpdate.self_score ?? 0);
         const totalPlayers = Number(
             leaderboardUpdate.totalPlayers ?? leaderboardUpdate.total_players ?? 0);
+
+        // TEK DOĞRULUK KAYNAGI: sunucunun otoriter selfScore'u client
+        // tahmini playerScore'u düzeltir. Bu sayede HUD skor podu (#hud-score)
+        // ve sıralamadaki kendi satırımız (#hud-your-score) her zaman aynı
+        // değeri gösterir. Client tahmini (yem yeme/segment kaybı) paketler
+        // arasında anlık güncelleme sağlar; leaderboard paketi geldiğinde
+        // birikerek oluşan fark burada sıfırlanır.
+        if (Number.isFinite(selfScore)) {
+            this.playerScore = selfScore;
+            updateHUDScore(this.playerScore);
+        }
 
         updateHUDLeaderboard({
             entries,
@@ -1300,7 +1307,6 @@ export class Game extends Phaser.Scene {
     }
 
     onDisconnected() {
-        console.log("Bağlantı koptu!");
         this.gameStarted = false;
 
         // Perde HENÜZ kalkmadıysa (reveal öncesi kopma) burada kaldırılmalı:
