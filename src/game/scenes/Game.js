@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Snake } from './Snake';
+import { VOID_BACKGROUND_COLOR } from './Preloader';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
 import {
@@ -257,6 +258,12 @@ export class Game extends Phaser.Scene {
         this.baseZoom = this.computeBaseZoom();
         this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
 
+        // Kamera harita dışına çıkabildiği için (bkz. onStartGame →
+        // removeBounds) zemin rengi ızgara dokusuyla AYNI olmalı. Motorun
+        // varsayılan #202020 gri zemini, ızgara karosunun kaplayamadığı
+        // alt-piksel kenarlarda gri bir şerit olarak görünürdü.
+        this.cameras.main.setBackgroundColor(VOID_BACKGROUND_COLOR);
+
         // ── Zoom-independent UI camera ──────────────────────────────────────
         // Camera zoom scales scrollFactor(0) objects too: with mobile baseZoom
         // ~0.5 the whole HUD (grid background, FPS text, minimap, joystick/
@@ -410,11 +417,28 @@ export class Game extends Phaser.Scene {
         if (Number.isFinite(worldRadius)) {
             this.worldRadius = worldRadius;
             const worldSize = worldRadius * 2;
-            this.cameras.main.setBounds(0, 0, worldSize, worldSize);
-            // Physics world bounds'u kamera sınırından çok büyük tut:
-            // cameras.main.setBounds() bazı Phaser sürümlerinde physics.world.setBounds()'ı
-            // tetikler ve snake head body sınırda sıkışır. Bunu önlemek için fizik sınırını
-            // görsel sınırın çok ötesine alıyoruz — ölüm kontrolü sunucu tarafından yapılıyor.
+
+            // ── KAMERA SINIRI YOK (oyuncu HER ZAMAN ekran merkezinde) ────────
+            // Eskiden burada setBounds(0, 0, worldSize, worldSize) vardı.
+            // Phaser, useBounds açıkken her preRender'da scrollX/scrollY'yi
+            // clampX/clampY ile sınırın içine kelepçeler. Sonuç: oyuncu haritanın
+            // kenarına veya köşesine yaklaştığında kamera durur, yılan ekranın
+            // ortasından ayrılıp kenara doğru kayar — takip "kopmuş" hissi verir.
+            //
+            // removeBounds() useBounds'u kapatır; kamera artık kafayı harita
+            // dışına taşsa bile merkezde tutar. Sınır DIŞINDA kalan alan boş
+            // kalmaz: ızgara arka planı her karede kameranın worldView'ine göre
+            // yeniden konumlanır (bkz. update() → this.grid) ve kameranın zemin
+            // rengi ızgarayla aynı tondur (bkz. create() → VOID_BACKGROUND_COLOR),
+            // dolayısıyla siyah boşluk/yırtılma oluşmaz.
+            this.cameras.main.removeBounds();
+
+            // Physics world bounds'u görsel sınırın çok ötesinde tut ki arcade
+            // body'ler kenarda sıkışmasın (ölüm kontrolü sunucuda yapılıyor).
+            // NOT: bu çağrı artık kameradan bağımsızdır — eskiden setBounds'un
+            // bazı Phaser sürümlerinde physics.world.setBounds'u tetiklemesine
+            // karşı bir önlemdi; kamera sınırı kalktıktan sonra da gerekli,
+            // çünkü aksi halde fizik dünyası canvas boyutuna düşer.
             const physicsPadding = worldRadius * 2;
             this.physics.world.setBounds(
                 -physicsPadding, -physicsPadding,
@@ -769,7 +793,15 @@ export class Game extends Phaser.Scene {
             playerSnake._updateSegmentScaling(); // görsel boyut = sunucu scale, ilk kareden itibaren
         }
         this.snakes.set(entityId, playerSnake);
+
+        // Kamera kafayı takip eder ve HER ZAMAN ekran merkezine kilitler.
+        // followOffset (0, 0) → hedef tam merkezde; removeBounds() (bkz.
+        // onStartGame) sayesinde harita kenarında da merkezden kaymaz.
         this.cameras.main.startFollow(playerSnake.getHead(), true, 0.15, 0.15);
+        this.cameras.main.setFollowOffset(0, 0);
+        // Savunma amaçlı: sahne yeniden başlarken kamera örneği yeniden
+        // kullanılırsa önceki turdan kalan sınır burada da düşürülür.
+        this.cameras.main.removeBounds();
         this.cameras.main.setRoundPixels(false);
         return playerSnake;
     }

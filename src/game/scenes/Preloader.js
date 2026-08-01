@@ -1,5 +1,13 @@
 import Phaser from 'phaser';
 
+// Izgara dokusunun zemin rengi — TEK DOGRULUK KAYNAGI.
+// Hem 'grid32' dokusunu üreten makeNeonSquareGrid hem de ana kameranın arka
+// plan rengi (bkz. Game.js) bunu kullanır. Kamera artık harita sınırlarının
+// DIŞINA çıkabildiği için ikisinin aynı renk olması şart: aksi halde harita
+// kenarında, ızgara karosunun kaplamadığı her alt-piksel boşluk motorun
+// varsayılan gri zemini (#202020) olarak yanıp sönerdi.
+export const VOID_BACKGROUND_COLOR = 0x1a063b;
+
 export class Preloader extends Phaser.Scene {
   constructor() { super('Preloader'); }
 
@@ -52,7 +60,7 @@ function makeSolid(scene, key, w, h, color) {
 
 function makeNeonSquareGrid(scene, key, size) {
   const squareLineColor = 0xc2cad5;
-  const backgroundColor = 0x1a063b;
+  const backgroundColor = VOID_BACKGROUND_COLOR;
   const gridCellSize = 64; // 256x256 pixel squares
   const strokeWidth = 1; // Thin lines
   const lineOpacity = 0.2; // 40% opacity for rgba(194, 202, 173, 0.4)
