@@ -13,6 +13,7 @@ import "server/upgrade/segment-mutation.proto";
 import "server/upgrade/food.proto";
 import "server/upgrade/food-mutation.proto";
 import "server/upgrade/death-notification.proto";
+import "server/upgrade/leaderboard.proto";
 
 message ServerEnvelope {
   oneof payload {
@@ -26,4 +27,9 @@ message ServerEnvelope {
   SegmentMutationCollection segment_mutation_collection = 11;
   FoodCollection food_collection = 12;
   FoodMutationCollection food_mutation_collection = 13;
+  // Siralama yayini — oneof DISINDA, cunku normal snapshot zarfina
+  // eklenerek gonderilir (ayri paket/round-trip yok). Yalnizca throttle
+  // penceresi acikken ve siralama degistiginde doldurulur; diger tick'lerde
+  // alan hic yazilmaz (proto3: sifir bayt).
+  LeaderboardUpdate leaderboard_update = 14;
 }

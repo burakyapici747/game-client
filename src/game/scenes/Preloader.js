@@ -18,10 +18,10 @@ export class Preloader extends Phaser.Scene {
     generateCircleTexture(this, 'eye10', 16, 0xffffff, 0x000000, 1.5);
     generateCircleTexture(this, 'pupil4', 8, 0x000000);
 
-    // Food glow dot spritesheet: 16 renk varyantı, her biri 16×16 px
-    makeFoodDotSpritesheet(this, 'food_dot', 16);
-    // Large food glow dot: 24×24 px
-    makeFoodDotSpritesheet(this, 'food_dot_large', 24);
+    // GÖREV 1+2: Tüm yemler artık TEK, parlayan DAİRE dokusu kullanır (polygon
+    // şekiller kaldırıldı). 16 canlı renk varyantı, additive-blend'e uygun neon
+    // radyal parıltı. Tek spritesheet → tek Blitter → tüm yemler tek draw call.
+    makeGlowCircleSpritesheet(this, 'food_glow', 26);
 
     // Set linear filtering for smooth scaled rendering
     ['snake_body48', 'snake_head48', 'eye10', 'pupil4'].forEach(k => {
@@ -101,10 +101,12 @@ function generateCircleTexture(scene, key, size, fillColor, strokeColor = null, 
   g.destroy();
 }
 
-// 16 renkli parlayan food dot spritesheet üretici.
-// Her frame `size` × `size` piksel, tüm frame'ler yatay olarak dizilir.
-// Blitter Bob'ları frame index ile hangi rengi göstereceklerini seçer.
-function makeFoodDotSpritesheet(scene, key, size) {
+// GÖREV 1+2: 16 renkli PARLAYAN DAİRE spritesheet üretici (tek şekil = daire).
+// Her frame `size`×`size` px; tüm frame'ler yatay dizilir. Blitter Bob'ları
+// frame index ile renk seçer. Tek radyal geçiş (çekirdek → doygun renk →
+// saydam hale) additive blend altında canlı neon parıltı verir; kenarlar
+// tamamen saydam olduğundan çakışan yemler yıkanmaz (temiz katmanlama).
+function makeGlowCircleSpritesheet(scene, key, size) {
   const FOOD_COLORS = [
     '#FF4444', '#FF8833', '#FFDD33', '#AAFF33',
     '#33FF66', '#33FFBB', '#33DDFF', '#3388FF',
@@ -116,62 +118,34 @@ function makeFoodDotSpritesheet(scene, key, size) {
   const totalWidth = size * frameCount;
   const tex = scene.textures.createCanvas(key, totalWidth, size);
   const ctx = tex.getContext();
-  const cx = size / 2;
   const cy = size / 2;
   const outerRadius = size / 2 - 1;
-  const midRadius = outerRadius * 0.55;
-  const innerRadius = outerRadius * 0.25;
 
   for (let i = 0; i < frameCount; i++) {
     const offsetX = i * size;
+    const cx = offsetX + size / 2;
     const color = FOOD_COLORS[i];
 
-    // Parse hex color to RGB
     const r = parseInt(color.slice(1, 3), 16);
     const g = parseInt(color.slice(3, 5), 16);
     const b = parseInt(color.slice(5, 7), 16);
+    // Beyaza yakın parlak çekirdek — daha canlı/göz alıcı görünüm.
+    const brightR = Math.min(255, r + 130);
+    const brightG = Math.min(255, g + 130);
+    const brightB = Math.min(255, b + 130);
 
-    // Dış glow (çok soluk)
-    const gradOuter = ctx.createRadialGradient(
-      offsetX + cx, cy, midRadius,
-      offsetX + cx, cy, outerRadius
-    );
-    gradOuter.addColorStop(0, `rgba(${r},${g},${b},0.45)`);
-    gradOuter.addColorStop(1, `rgba(${r},${g},${b},0.0)`);
-    ctx.fillStyle = gradOuter;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius);
+    grad.addColorStop(0.00, `rgba(${brightR},${brightG},${brightB},1.0)`); // parlak çekirdek
+    grad.addColorStop(0.35, `rgba(${r},${g},${b},0.95)`);                  // doygun renk disk
+    grad.addColorStop(0.70, `rgba(${r},${g},${b},0.35)`);                  // yumuşak glow
+    grad.addColorStop(1.00, `rgba(${r},${g},${b},0.0)`);                   // saydam kenar
+    ctx.fillStyle = grad;
     ctx.fillRect(offsetX, 0, size, size);
-
-    // Orta glow
-    const gradMid = ctx.createRadialGradient(
-      offsetX + cx, cy, innerRadius,
-      offsetX + cx, cy, midRadius
-    );
-    gradMid.addColorStop(0, `rgba(${r},${g},${b},0.9)`);
-    gradMid.addColorStop(1, `rgba(${r},${g},${b},0.3)`);
-    ctx.fillStyle = gradMid;
-    ctx.beginPath();
-    ctx.arc(offsetX + cx, cy, midRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Parlak merkez (beyaza yakın)
-    const gradInner = ctx.createRadialGradient(
-      offsetX + cx, cy, 0,
-      offsetX + cx, cy, innerRadius
-    );
-    const brightR = Math.min(255, r + 100);
-    const brightG = Math.min(255, g + 100);
-    const brightB = Math.min(255, b + 100);
-    gradInner.addColorStop(0, `rgba(${brightR},${brightG},${brightB},1.0)`);
-    gradInner.addColorStop(1, `rgba(${r},${g},${b},0.85)`);
-    ctx.fillStyle = gradInner;
-    ctx.beginPath();
-    ctx.arc(offsetX + cx, cy, innerRadius, 0, Math.PI * 2);
-    ctx.fill();
   }
 
   tex.refresh();
 
-  // Phaser Spritesheet frame tanımlaması: her frame `size`×`size`
+  // Phaser Spritesheet frame tanımlaması: her frame `size`×`size`.
   for (let i = 0; i < frameCount; i++) {
     tex.add(i, 0, i * size, 0, size, size);
   }

@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package server;
+
+option java_outer_classname = "LeaderboardOuterClass";
+
+// Tek bir siralama satiri. Sira, entries listesindeki INDEX ile belirlenir
+// (index 0 => rank 1); ayrica bir rank alani tasinmaz (gereksiz bayt).
+message LeaderboardEntry {
+  uint32 player_id = 1;
+  string nickname = 2;
+  // Skor uint32 — uint64 protobufjs tarafinda Long nesnesine cozulur ve
+  // client'ta ekstra donusum gerektirirdi. Sunucu totalScore'u (long) tasarken
+  // int aralıgina kelepceler (bkz. LeaderboardSystem.clampScore).
+  uint32 score = 3;
+}
+
+// Siralama yayini. 5 saniyelik throttle ile ve YALNIZCA siralama degistiginde
+// gonderilir (bkz. LeaderboardSystem / LeaderboardConfig).
+message LeaderboardUpdate {
+  // Top-N (LeaderboardConfig.TOP_ENTRY_COUNT = 10) sirali liste. Client ilk
+  // 5'i gosterir; kalan 5 kenar durumlar (oyuncu 6-10. siradayken listeden
+  // dusme/yeniden girme) icin pay birakir.
+  repeated LeaderboardEntry entries = 1;
+
+  // Haritadaki toplam aktif oyuncu sayisi (HUD'daki "Players: N").
+  uint32 total_players = 2;
+
+  // ── ALICIYA OZEL ALANLAR ────────────────────────────────────────────────
+  // Bu iki alan her oyuncu icin FARKLI doldurulur (entries listesi ortaktir).
+  // Oyuncu Top-5 disindaysa client, sabitlenmis "#12 You" satirini bu
+  // degerlerle cizer — client'in tum oyuncu listesini bilmesine gerek kalmaz.
+  // self_rank 1-tabanlidir; 0 = siralanmamis/bilinmiyor (ol/henuz spawn olmadi).
+  uint32 self_rank = 3;
+  uint32 self_score = 4;
+}

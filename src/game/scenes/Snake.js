@@ -1,6 +1,15 @@
 import Phaser from 'phaser';
 
 const SnakeConfig = {
+    // ── Boyut senkronu (SUNUCU ile BIREBIR) ─────────────────────────────
+    // Sunucu: game-server com/common/SnakeGeometryConfig.java →
+    // HEAD_RADIUS_PX / SEGMENT_RADIUS_PX. Texture'lar 48x48 px daire
+    // (snake_head48 / snake_body48, origin 0.5) → görünen yarıçap =
+    // 24 * scale px. Bu değerler değişirse SUNUCUDAKİ config de değişmeli;
+    // aksi halde görsel temas ile sunucu ölüm anı ayrışır.
+    HEAD_RADIUS: 24,
+    SEGMENT_RADIUS: 24,
+
     PHYS_CONST: 60,
     BASE_SPEED_FACTOR: 3.75,
     SPEED_REDUCTION_PER_SCALE: 0.5 / 106,
@@ -13,6 +22,29 @@ const SnakeConfig = {
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
     REMOTE_INTERPOLATION_FACTOR: 0.35,
+
+    // ── Frame-rate decoupling / 120Hz+ support ──────────────────────────
+    // KÖK NEDEN (120Hz micro-tremor): Arcade physics varsayılanı
+    // fixedStep=true @60Hz — 120/144Hz ekranda render döngüsü fizik
+    // adımından 2+ kat hızlı koşar; kafa her iki frame'de bir AYNI
+    // pozisyonda çizilir, sonra çift adım sıçrar (merdiven aliasing'i).
+    // Çözüm: kafa artık fizik body ile DEĞİL, manuel entegrasyonla
+    // (capped dt, saniye-normalize) mantıksal `sim` pozisyonunda simüle
+    // edilir; sprite ise sim'i frame-rate-agnostik üstel yumuşatmayla
+    // izleyen SAF GÖRSEL katmandır: alpha = 1 - exp(-RATE * dtSec).
+    MAX_SIM_DT_MS: 50,            // entegrasyon dt tavanı (GC/sekme spike koruması)
+    VISUAL_SMOOTHING_RATE: 22,    // 1/s — τ≈45ms: 60/120/144Hz'de aynı his
+    VISUAL_SNAP_DISTANCE: 200,    // px — bu üstü fark görsel katmanda anında kapanır
+
+    // ── Remote snapshot-buffer interpolation ────────────────────────────
+    // Uzak yılanlar son iki SUNUCU SNAPSHOT'ı arasında render zamanına göre
+    // lerp edilir: renderTime = now - interpolationDelay. Delay, ölçülen
+    // paket aralığına adaptiftir (×2, min/max kelepçeli). Buffer açlığında
+    // eski üstel takip (REMOTE_INTERPOLATION_FACTOR) devreye girer.
+    INTERP_DELAY_MIN_MS: 60,
+    INTERP_DELAY_MAX_MS: 250,
+    INTERP_DELAY_INTERVAL_FACTOR: 2.0,
+    SNAPSHOT_BUFFER_MS: 1000,     // tutulan snapshot penceresi
 
     // ── Time-aligned reconciliation (v2) ─────────────────────────────────
     // The old model compared the head's position NOW against a server sample
@@ -34,6 +66,13 @@ const SnakeConfig = {
     RECONCILIATION_MAX_CORRECTION_SPEED: 300, // px/s cap — corrections stay sub-perceptual
     RECON_HARD_SNAP_DISTANCE: 800,   // death/respawn/teleport only
 
+    // ── Segment ekleme/çıkarma yumuşak animasyonları (game feel) ─────────
+    // Büyüme: yeni segment ölçek/opaklık 0'dan başlar, üstel yaklaşımla 1'e
+    //   çıkar → scale = 1 - exp(-k·t) (kare-bağımsız artımlı biçim).
+    // Çıkış: çıkarılan segment anında yok edilmez; yerinde 1→0 çöker (~180ms).
+    SEGMENT_GROW_RATE: 14,        // 1/s — büyüme üstel oranı (τ≈71ms)
+    SEGMENT_DESPAWN_MS: 180,      // çıkış çöküş süresi (ms)
+
     // ── Segment isolation (anti-cascade) ────────────────────────────────
     // The body path is sampled from a low-pass "follower" of the head, not
     // the head itself. Reconciliation micro-corrections on the head are
@@ -50,13 +89,25 @@ const SnakeConfig = {
 };
 
 export class Snake {
+    // SUNUCU FORMÜLÜNÜN AYNASI — game-server SnakeDynamicsSystem.calculateScale:
+    // Math.min(6.0, 1.0 + (segmentCount - 2) / 106.0). Burada değişiklik
+    // yapılacaksa sunucuyla birlikte yapılmalı.
+    static calculateScaleFromSegmentCount(segmentCount) {
+        return Math.min(6.0, 1.0 + (segmentCount - 2) / 106.0);
+    }
+
     constructor(scene, isPlayerControlled, x, y, initialSegmentCount = SnakeConfig.INITIAL_SEGMENT_COUNT, initialAngleRaw = 0, nickname = '') {
         this.scene = scene;
         this.config = SnakeConfig;
         this.isPlayerControlled = isPlayerControlled;
         this.alive = true;
         this.sct = this._normalizeSegmentCount(initialSegmentCount);
-        this.scale = 0.5;
+        // İlk scale, sunucunun SnakeDynamicsSystem.calculateScale(segmentCount)
+        // formülünün BIREBIR aynısıyla hesaplanır — ilk snapshot gelmeden önce
+        // de görsel boyut sunucu hitbox'ıyla eşittir. (Eski sabit 0.5, sunucu
+        // minimumu ~1.28 iken yılanı yarı boyutta çizip boyut asimetrisi
+        // yaratıyordu; sonraki paketler zaten sunucu scale'ini uygular.)
+        this.scale = Snake.calculateScaleFromSegmentCount(this.sct);
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
@@ -64,17 +115,36 @@ export class Snake {
         this.lastReconciledSequenceId = 0;
         
         const initialAngle = this._decodeServerAngle(initialAngleRaw);
+        // MANTIKSAL HAREKET AÇISI — yılanın fiilen gittiği yön. Movement
+        // sistemi (updateFromInput) bunu günceller, velocity bundan türetilir
+        // ve head.rotation her frame buna AYNEN eşitlenir (mirror).
+        this.movementAngle = initialAngle;
         this.networkTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTarget = { x: x, y: y, angle: initialAngle };
         this.selfServerTargetHeading = initialAngle;
         this.hasServerState = false;
         this.hasSelfServerState = false;
 
+        // ── Logical simulation state (player-controlled) ─────────────────
+        // sim = tahmin edilen OTORITER-YEREL pozisyon. updateFromInput
+        // entegre eder, reconciliation düzeltmeleri BURAYA uygulanır.
+        // head sprite'ı sim'i üstel yumuşatmayla izleyen görsel katmandır.
+        this.sim = { x: x, y: y };
+        this.vel = { x: 0, y: 0 };
+
+        // ── Remote snapshot buffer (remote-controlled) ───────────────────
+        this._snapshots = [];                 // {t, x, y, angle} (performance.now)
+        this._packetIntervalEmaMs = null;     // sunucu paket aralığı EMA'sı
+        this._lastSnapshotAt = 0;
+
         // Time-aligned reconciliation state (player-controlled only)
         this._predHistory = [];               // ring of {t, x, y} (performance.now)
         this._smoothedError = { x: 0, y: 0 }; // EMA of time-aligned prediction error
         this._correcting = false;             // hysteresis latch
         this.segments = [];
+        // Çıkış animasyonundaki (çökmekte olan) segmentler — this.segments'ten
+        // ÇIKARILMIŞ ama henüz görsel olarak yok olmamış ghost'lar: { sprite, t }.
+        this._despawningSegments = [];
         this.segmentPrimaryColor = 0xD4AF37;
         this.segmentSecondaryColor = 0x2B2B2B;
         this.segmentStripeWidth = 3;
@@ -133,14 +203,23 @@ export class Snake {
             : this.segmentSecondaryColor;
     }
 
-    _createSegmentSprite(index, x, y) {
+    _createSegmentSprite(index, x, y, animateIn = false) {
         // registerWorld: world-space objects render via the zoomed main camera
         // only — the zoom-1 UI camera must ignore them (see Game.js).
-        return this.scene.registerWorld(
+        const seg = this.scene.registerWorld(
             this.scene.add.sprite(x, y, 'snake_body48')
                 .setOrigin(0.5)
                 .setTint(this._getSegmentColor(index))
         );
+        // _animScale: this.scale ile ÇARPILAN büyüme/çöküş çarpanı (0..1).
+        // animateIn=true → 0'dan başlar, _updateSegmentLifecycle ile 1'e büyür.
+        seg._animScale = animateIn ? 0 : 1;
+        seg._growing = animateIn;
+        if (animateIn) {
+            seg.setScale(0);
+            seg.setAlpha(0);
+        }
+        return seg;
     }
 
     _refreshSegmentDepths() {
@@ -260,8 +339,10 @@ export class Snake {
         for (let i = 0; i < normalizedAddCount; i++) {
             const spawnPos = this._resolveSegmentSpawnPositionBehindTail();
             const segmentIndex = this.segments.length;
-            const segment = this._createSegmentSprite(segmentIndex, spawnPos.x, spawnPos.y);
-            segment.setScale(this.scale); // Scale new segments immediately
+            // animateIn: yeni segment 0 ölçek/opaklıktan başlayıp yumuşakça büyür
+            // (Issue #3 — ani "pop" yerine üstel yaklaşım). Ölçek artık
+            // _updateSegmentLifecycle tarafından this.scale ile sürülür.
+            const segment = this._createSegmentSprite(segmentIndex, spawnPos.x, spawnPos.y, true);
             this.segments.push(segment);
         }
 
@@ -277,11 +358,58 @@ export class Snake {
         const removeCount = Math.min(normalizedRemoveCount, this.segments.length);
         for (let i = 0; i < removeCount; i++) {
             const segment = this.segments.pop();
-            segment?.destroy();
+            this._beginSegmentDespawn(segment); // ani yok etme yerine yerinde çöküş (Issue #3)
         }
 
         this.sct = this.segments.length;
         this._refreshSegmentDepths();
+    }
+
+    // Segmenti this.segments'ten çıkarıp yerinde 1→0 çöküşe alır (anında değil).
+    // this.segments'ten çıkarıldığı için gövde path'ini artık takip etmez —
+    // en son konumunda küçülüp solar, tamamlanınca _updateSegmentLifecycle
+    // sprite'ı yok eder.
+    _beginSegmentDespawn(seg) {
+        if (!seg) return;
+        if (!seg.active) { seg.destroy?.(); return; }
+        seg._growing = false;
+        this._despawningSegments.push({ sprite: seg, t: seg._animScale ?? 1 });
+    }
+
+    // Her karede çağrılır: büyüyen segmentleri 1'e yaklaştırır, çökenleri 0'a
+    // indirip yok eder. dtMs frame-rate agnostiktir.
+    _updateSegmentLifecycle(dtMs) {
+        const dtSec = Math.min(dtMs, this.config.MAX_SIM_DT_MS) / 1000;
+
+        // Büyüme: scale = 1 - exp(-k·t) — artımlı, kare-bağımsız üstel yaklaşım.
+        const growAlpha = 1 - Math.exp(-this.config.SEGMENT_GROW_RATE * dtSec);
+        for (let i = 0; i < this.segments.length; i++) {
+            const seg = this.segments[i];
+            if (!seg || !seg.active || !seg._growing) continue;
+            seg._animScale += (1 - seg._animScale) * growAlpha;
+            if (seg._animScale > 0.995) {
+                seg._animScale = 1;
+                seg._growing = false;
+            }
+            seg.setScale(this.scale * seg._animScale);
+            seg.setAlpha(seg._animScale);
+        }
+
+        // Çıkış: 1→0 doğrusal çöküş (~SEGMENT_DESPAWN_MS), tamamlanınca yok et.
+        if (this._despawningSegments.length > 0) {
+            const shrinkStep = dtMs / this.config.SEGMENT_DESPAWN_MS;
+            for (let i = this._despawningSegments.length - 1; i >= 0; i--) {
+                const d = this._despawningSegments[i];
+                d.t -= shrinkStep;
+                if (d.t <= 0 || !d.sprite || !d.sprite.active) {
+                    d.sprite?.destroy();
+                    this._despawningSegments.splice(i, 1);
+                } else {
+                    d.sprite.setScale(this.scale * d.t);
+                    d.sprite.setAlpha(d.t);
+                }
+            }
+        }
     }
 
     applySegmentMutationFromServer(mutation) {
@@ -311,15 +439,20 @@ export class Snake {
         this.head = this.scene.registerWorld(this.scene.add.sprite(x, y, 'snake_head48')
             .setOrigin(0.5));
         this.head.rotation = angle;
-        if (this.isPlayerControlled) {
-            this.scene.physics.world.enable(this.head);
-            this.head.body.setSize(40, 40).setOffset(-20, -20);
-            this.head.body.setCollideWorldBounds(false); // Ölüm kontrolü sunucu tarafında — fizik sınırı snake'i bloke etmemeli
-        }
+        // NOT: kafada artık Arcade physics body YOK. Body yalnızca hız
+        // entegrasyonu için kullanılıyordu (client'ta collider yok; ölüm
+        // sunucuda, yem yeme mesafe kontrolüyle). Arcade'in fixedStep@60Hz
+        // adımı 120Hz+ ekranlarda merdiven aliasing'i (micro-tremor) üretiyordu.
+        // Entegrasyon artık updateFromInput içinde manuel (capped dt) yapılır,
+        // sprite pozisyonu postPhysicsUpdate'te sim'den görsel yumuşatmayla türetilir.
         for (let i = 0; i < this.sct; i++) {
             const seg = this._createSegmentSprite(i, x, y);
             this.segments.push(seg);
         }
+        // İlk kare dahil doğru boyut: constructor'da hesaplanan (sunucu
+        // formülüne eş) scale sprite'lara hemen uygulanır — daha önce ilk
+        // snapshot gelene kadar scale=1 texture boyutunda çiziliyordu.
+        this._updateSegmentScaling();
         this._refreshSegmentDepths();
         this._initPathWarmup(x, y);
         this.trail = this.scene.add.particles(this.head.x, this.head.y, 'px32', {
@@ -353,12 +486,22 @@ export class Snake {
     }
 
     destroy() {
+        // İdempotent: aynı objeye ikinci destroy çağrısı no-op.
+        if (this._destroyed) return;
+        this._destroyed = true;
+
         this.alive = false;
-        if (this.isPlayerControlled && this.head?.body) {
-            this.head.body.velocity.set(0, 0);
+        if (this.vel) {
+            this.vel.x = 0;
+            this.vel.y = 0;
         }
+
+        // 1) Sahnedeki HER görsel düğümü söküp yok et — gizleme değil, imha.
         this.head?.destroy();
         this.segments.forEach(seg => seg?.destroy());
+        // Çıkış animasyonundaki ghost segmentler de imha edilir (sızıntı önleme).
+        this._despawningSegments?.forEach(d => d.sprite?.destroy());
+        this._despawningSegments = [];
         this.trail?.destroy();
         this.eyeL?.destroy();
         this.eyeR?.destroy();
@@ -367,7 +510,48 @@ export class Snake {
         this.nicknameText?.destroy();
         this.serverDebugMarker?.destroy();
         this.serverDebugDot?.destroy();
+        this.head = null;
+        this.trail = null;
+        this.eyeL = null; this.eyeR = null;
+        this.pupilL = null; this.pupilR = null;
+        this.nicknameText = null;
+
+        // 2) NÜKLEER BUFFER SIFIRLAMA — geri dönüştürülmüş entity id'leri
+        // (respawn aynı id'yi geri alabilir) için SIFIR miras garantisi.
+        // Segment dizisi ve gövde path'i pristine boş duruma döner; aynı id
+        // için gelecek EntityFull tamamen boş tuvalden inşa edilir.
         this.segments = [];
+        this.sct = 0;
+        this.path = [];
+        this.pathSegLens = [];
+        this.totalPathLen = 0;
+        this._pathFollower = null;
+
+        // 3) İnterpolasyon / tahmin buffer'ları — eski yaşamın yörünge verisi
+        // yeni yaşama sızamaz. TÜM alanlar null-guard'lı: burada korumasız
+        // `this._remoteVel.x = 0` (revert edilmiş ileri-projeksiyon özelliğine
+        // ait, constructor'da artık TANIMSIZ bir alan) TypeError fırlatıyordu.
+        // destroy() yarıda kalınca yılan snakes map'inden silinemiyor ve
+        // ayrılan oyuncular yeniden karşılaşmada KALICI görünmez kalıyordu
+        // (console: "Cannot set properties of undefined (setting 'x')" —
+        // hem RemoveEntity hem EntityFull yolunda).
+        if (this._predHistory) this._predHistory.length = 0;
+        if (this._smoothedError) {
+            this._smoothedError.x = 0;
+            this._smoothedError.y = 0;
+        }
+        this._correcting = false;
+        if (this._remoteVel) {
+            this._remoteVel.x = 0;
+            this._remoteVel.y = 0;
+        }
+        this._remoteLastPacketAt = 0;
+        if (this._snapshots) this._snapshots.length = 0;
+        this._packetIntervalEmaMs = null;
+        this._lastSnapshotAt = 0;
+        this.hasServerState = false;
+        this.hasSelfServerState = false;
+        this.lastReconciledSequenceId = 0;
     }
 
     setNickname(nickname) {
@@ -388,7 +572,7 @@ export class Snake {
     }
 
     updateFromInput(targetAngleRad, isBoosting, delta, sequenceId = 0) {
-        if (!this.alive || !this.isPlayerControlled || !this.head?.body) return;
+        if (!this.alive || !this.isPlayerControlled || !this.head) return;
 
         const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
         const effectiveBoosting = isBoosting && canBoost;
@@ -401,23 +585,44 @@ export class Snake {
         const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
         this.turnSpeed = turn;
 
-        // targetAngleRad radyan cinsinden; Angle.Wrap ile kısa yay seçilir.
-        // Phaser'ın rotation setter'ı zaten WrapAngle uygular, ayrıca normalize etmeye gerek yok.
-        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.head.rotation);
-        const maxTurn = this.turnSpeed * (delta / 1000);
-        this.head.rotation += Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+        // dt SANIYE cinsinden ve TAVANLI: GC duraksaması / sekme dönüşü gibi
+        // dev delta spike'ları tek frame'de ışınlanma üretmesin — kalan fark
+        // reconciliation tarafından zamana yayılarak kapatılır. 60/120/144Hz
+        // hepsi aynı sürekli-zaman entegrasyonundan geçer (frame-rate agnostik).
+        const dtSec = Math.min(delta, this.config.MAX_SIM_DT_MS) / 1000;
 
-        this.scene.physics.velocityFromRotation(this.head.rotation, this.speed, this.head.body.velocity);
+        // 1) Movement sistemi MANTIKSAL açıyı günceller (hız-sınırlı dönüş).
+        const diff = Phaser.Math.Angle.Wrap(targetAngleRad - this.movementAngle);
+        const maxTurn = this.turnSpeed * dtSec;
+        this.movementAngle = Phaser.Math.Angle.Wrap(
+            this.movementAngle + Phaser.Math.Clamp(diff, -maxTurn, maxTurn));
+
+        // 2) Mantıksal SIM pozisyonu manuel entegre edilir — Arcade fixed-step
+        //    yok, render frame'i başına tam bir sürekli-zaman adımı var.
+        this.vel.x = Math.cos(this.movementAngle) * this.speed;
+        this.vel.y = Math.sin(this.movementAngle) * this.speed;
+        this.sim.x += this.vel.x * dtSec;
+        this.sim.y += this.vel.y * dtSec;
+
+        // 3) Görsel açı = mantıksal hareket açısı. Doğrudan ayna; mouse'a
+        //    bakan hiçbir atama yok. (Pozisyon burada YAZILMAZ — sprite,
+        //    postPhysicsUpdate'teki görsel yumuşatma katmanında sim'i izler.)
+        this.head.rotation = this.movementAngle;
     }
 
     // Reconcile / interpolate — update() içinde çağrılır (physics step öncesi)
     postUpdate(delta = 16.67) {
         if (!this.alive || !this.head?.active) return;
-        if (this.isPlayerControlled) {
-            this._reconcilePlayerWithServer(delta);
-        } else {
+        if (!this.isPlayerControlled) {
             this._interpolateRemoteSnake(delta);
         }
+        // _reconcilePlayerWithServer BURADA ÇAĞRILMAZ. Phaser frame sırası:
+        // [fizik adımı] → [scene.update: burası] → [fizik write-back] → render.
+        // Burada düzeltme uygulamak (setPosition + updateFromGameObject) body'yi
+        // adım ÖNCESİ pozisyona sıfırlayıp o frame'in İLERİ hareketini siliyordu:
+        // düzeltme olan her frame'de yılan movementAngle yönünde ilerleyemiyor,
+        // hata yönünde kayıyordu — dönüşlerdeki "kafa yoldan ayrık" görüntüsünün
+        // kök nedeni. Düzeltme artık postPhysicsUpdate'te (write-back SONRASI).
         // _sampleHeadToPath, _positionSegmentsByPath ve _updateEyes artık
         // Phaser'ın postupdate event'inde çağrılıyor (physics step SONRASI, render ÖNCESİ).
         // Bu sayede segmentler ve gözler head'in o frame'deki gerçek fiziksel pozisyonunu
@@ -436,15 +641,37 @@ export class Snake {
         // Remote snakes: their head is already interpolation-smoothed, extra
         // filtering would only add lag — follow exactly.
         if (this.isPlayerControlled) {
-            const k = this._frameAdjustedFactor(this.config.PATH_SMOOTHING_FACTOR, this._delta || 16.67);
+            const dMs = this._delta || 16.67;
+
+            // 1) Reconciliation: hata SIM pozisyonuna uygulanır (sprite'a değil).
+            this._reconcilePlayerWithServer(dMs);
+
+            // 2) GÖRSEL KATMAN — sprite, mantıksal sim'i frame-rate-agnostik
+            //    üstel yumuşatmayla izler: alpha = 1 - exp(-RATE * dt).
+            //    60/120/144Hz'de birebir aynı zaman sabiti (τ≈45ms) → aynı his;
+            //    reconciliation mikro-düzeltmeleri ve entegrasyon dt jitter'ı
+            //    render'a ulaşamadan filtrelenir.
+            const dtSec = Math.min(dMs, this.config.MAX_SIM_DT_MS) / 1000;
+            const alpha = 1 - Math.exp(-this.config.VISUAL_SMOOTHING_RATE * dtSec);
+            const gapX = this.sim.x - this.head.x;
+            const gapY = this.sim.y - this.head.y;
+            if (Math.hypot(gapX, gapY) > this.config.VISUAL_SNAP_DISTANCE) {
+                // Teleport/respawn/hard-snap: görsel katman sürüklenmesin.
+                this.head.setPosition(this.sim.x, this.sim.y);
+            } else {
+                this.head.setPosition(this.head.x + gapX * alpha, this.head.y + gapY * alpha);
+            }
+
+            const k = this._frameAdjustedFactor(this.config.PATH_SMOOTHING_FACTOR, dMs);
             this._pathFollower.x += (this.head.x - this._pathFollower.x) * k;
             this._pathFollower.y += (this.head.y - this._pathFollower.y) * k;
 
-            // Record the final post-physics position into the prediction
-            // history ring — server packets are compared against this
-            // (time-aligned) instead of against the current position.
+            // Record the final post-correction SIM position into the prediction
+            // history ring — server packets are compared against the LOGICAL
+            // trajectory (time-aligned), never the smoothed visual, so the
+            // visual layer stays completely outside the control loop.
             const now = performance.now();
-            this._predHistory.push({ t: now, x: this.head.x, y: this.head.y });
+            this._predHistory.push({ t: now, x: this.sim.x, y: this.sim.y });
             const cutoff = now - this.config.RECON_HISTORY_MS;
             while (this._predHistory.length > 0 && this._predHistory[0].t < cutoff) {
                 this._predHistory.shift();
@@ -456,6 +683,9 @@ export class Snake {
 
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
+        // Segment büyüme/çöküş animasyonları (Issue #3) — konumlandırmadan sonra,
+        // ölçeği/opaklığı bu karenin dt'siyle ilerlet.
+        this._updateSegmentLifecycle(this._delta || 16.67);
         const worldPoint = this.scene.cameras.main.getWorldPoint(this.scene.input.activePointer.x, this.scene.input.activePointer.y);
         this._updateEyes(worldPoint.x, worldPoint.y);
         if (this.nicknameText) {
@@ -472,6 +702,47 @@ export class Snake {
     _interpolateRemoteSnake(delta) {
         if (!this.hasServerState) return;
 
+        // ── Snapshot-buffer interpolation (birincil yol) ────────────────
+        // Render, sunucu zamanının ~interpDelay kadar GERİSİNDE oynatılır:
+        // renderTime her zaman iki gerçek snapshot arasına düşer → uzak yılan
+        // ekstrapolasyonsuz, paket-varış ritminden bağımsız, her Hz'de sabit
+        // hızda akar. Delay ölçülen paket aralığına adaptiftir (×FACTOR):
+        // tek geciken paket bile buffer'ı kurutamaz.
+        const buf = this._snapshots;
+        if (buf.length >= 2) {
+            let interpDelay = this.config.INTERP_DELAY_MIN_MS;
+            if (Number.isFinite(this._packetIntervalEmaMs)) {
+                interpDelay = Phaser.Math.Clamp(
+                    this._packetIntervalEmaMs * this.config.INTERP_DELAY_INTERVAL_FACTOR,
+                    this.config.INTERP_DELAY_MIN_MS,
+                    this.config.INTERP_DELAY_MAX_MS
+                );
+            }
+            const renderTime = performance.now() - interpDelay;
+
+            if (renderTime <= buf[buf.length - 1].t) {
+                for (let i = buf.length - 2; i >= 0; i--) {
+                    if (buf[i].t <= renderTime) {
+                        const a = buf[i];
+                        const b = buf[i + 1];
+                        const span = b.t - a.t;
+                        const f = span > 0 ? Phaser.Math.Clamp((renderTime - a.t) / span, 0, 1) : 1;
+                        this.head.x = Phaser.Math.Linear(a.x, b.x, f);
+                        this.head.y = Phaser.Math.Linear(a.y, b.y, f);
+                        this.head.rotation = a.angle
+                            + Phaser.Math.Angle.Wrap(b.angle - a.angle) * f;
+                        return;
+                    }
+                }
+                // renderTime buffer başlangıcından eski (yeni spawn/AOI girişi):
+                // aşağıdaki üstel takip en eski hedefe yaklaştırır.
+            }
+            // renderTime en yeni snapshot'tan ileri = buffer açlığı (paket
+            // gecikti). Ekstrapolasyon YOK — fallback üstel takip devralır.
+        }
+
+        // ── Fallback: frame-rate-agnostik üstel takip ───────────────────
+        // (buffer henüz dolmadı ya da açlıkta) — eski davranış, dt-normalize.
         const interpFactor = this._frameAdjustedFactor(this.config.REMOTE_INTERPOLATION_FACTOR, delta);
         this.head.x = Phaser.Math.Linear(this.head.x, this.networkTarget.x, interpFactor);
         this.head.y = Phaser.Math.Linear(this.head.y, this.networkTarget.y, interpFactor);
@@ -491,11 +762,12 @@ export class Snake {
         if (!this.hasSelfServerState) return;
 
         // Hard snap only on absurd desync (death, respawn, teleport).
-        const rawDx = this.selfServerTarget.x - this.head.x;
-        const rawDy = this.selfServerTarget.y - this.head.y;
+        const rawDx = this.selfServerTarget.x - this.sim.x;
+        const rawDy = this.selfServerTarget.y - this.sim.y;
         if (Math.hypot(rawDx, rawDy) > this.config.RECON_HARD_SNAP_DISTANCE) {
-            this.head.setPosition(this.selfServerTarget.x, this.selfServerTarget.y);
-            this.head.body?.updateFromGameObject();
+            this.sim.x = this.selfServerTarget.x;
+            this.sim.y = this.selfServerTarget.y;
+            this.head.setPosition(this.sim.x, this.sim.y); // görsel katman da anında hizalanır
             this._resetReconciliationState();
             return;
         }
@@ -535,12 +807,30 @@ export class Snake {
         const ux = cx / mag;
         const uy = cy / mag;
 
-        this.head.setPosition(this.head.x + ux * step, this.head.y + uy * step);
-        this.head.body?.updateFromGameObject();
+        // ── HIZ KORUMA: düzeltme yılanı FRENLEYEMEZ ─────────────────────────
+        // Dönüşlerde sunucu istemcinin arkını ~½RTT geriden izler; düzeltme
+        // vektörünün hareket yönüne (movementAngle) TERS bileşeni net ekran
+        // hızını düşürüyordu ("dönüşte yavaşlama"). Geri bileşen, frame'in
+        // velocity adımının %15'iyle sınırlanır — hata yanal/ileri bileşenle
+        // ve zamana yayılarak kapanır, skaler hız gözle görülür düşmez.
+        const hx = Math.cos(this.movementAngle);
+        const hy = Math.sin(this.movementAngle);
+        let corrLon = (ux * step) * hx + (uy * step) * hy;
+        const corrLat = -(ux * step) * hy + (uy * step) * hx;
+        const velStepLen = (this.speed || 225) * (delta / 1000);
+        corrLon = Math.max(corrLon, -0.15 * velStepLen);
+        const appliedX = corrLon * hx - corrLat * hy;
+        const appliedY = corrLon * hy + corrLat * hx;
+
+        // Düzeltme MANTIKSAL sim'e uygulanır — sprite'a asla doğrudan yazılmaz.
+        // Görsel katman (postPhysicsUpdate) bu kaymayı üstel yumuşatmayla emer:
+        // paket başına pozisyon "pop"u fiziksel olarak imkânsız hale gelir.
+        this.sim.x += appliedX;
+        this.sim.y += appliedY;
 
         // Consume the applied portion of the error…
-        this._smoothedError.x -= ux * step;
-        this._smoothedError.y -= uy * step;
+        this._smoothedError.x -= appliedX;
+        this._smoothedError.y -= appliedY;
 
         // …and shift the prediction history by the same amount. Server packets
         // still in flight were computed against the UNCORRECTED trajectory; if
@@ -548,9 +838,10 @@ export class Snake {
         // fixed and the head over-corrects (classic reconciliation
         // rubber-banding). Shifting keeps future error measurements
         // self-consistent with the correction already applied.
+        // (GERÇEKTEN uygulanan — geri bileşeni kırpılmış — vektör kadar kaydır.)
         for (let i = 0; i < this._predHistory.length; i++) {
-            this._predHistory[i].x += ux * step;
-            this._predHistory[i].y += uy * step;
+            this._predHistory[i].x += appliedX;
+            this._predHistory[i].y += appliedY;
         }
     }
 
@@ -594,11 +885,22 @@ export class Snake {
         if (hasTarget) {
             const target = this.isPlayerControlled ? this.selfServerTarget : this.networkTarget;
             this.head.setPosition(target.x, target.y);
+            if (this.isPlayerControlled) {
+                // Mantıksal sim de otoriter konuma taşınır — görsel katman ve
+                // sim ayrışık kalırsa dönüşte tek yönlü sürüklenme oluşurdu.
+                this.sim.x = target.x;
+                this.sim.y = target.y;
+            }
             if (!this.isPlayerControlled && Number.isFinite(target.angle)) {
                 this.head.rotation = target.angle;
             }
-            this.head.body?.updateFromGameObject();
         }
+
+        // Uzak yılan snapshot buffer'ı bayat — sekme gizliyken biriken eski
+        // örnekler dönüşte geriye doğru interpolasyon (geri sarma) üretmesin.
+        this._snapshots.length = 0;
+        this._packetIntervalEmaMs = null;
+        this._lastSnapshotAt = 0;
 
         // Path geçmişi artık bayat — kafanın güncel konumundan yeniden kur ve
         // segmentleri hemen yerine oturt.
@@ -704,17 +1006,90 @@ export class Snake {
                 seg.rotation = p.angle;
             }
         }
+        // Konum entegrasyonundan SONRA rijit boyun kısıtı (bkz. _clampNeckToHead).
+        this._enforceNeckJoint(spacing);
     }
 
+    // ── RİJİT BOYUN EKLEMİ (kafa ↔ segment[0]) ───────────────────────────────
+    // Yukarıdaki stub matematiği kafa↔segment[0] mesafesini zaten TAM `spacing`
+    // yapar; bu yüzden normal akışta bu fonksiyon bir NO-OP'tur (tolerans içi).
+    // Yine de son bir sert kısıt olarak durur: path'in dejenere olduğu (hard
+    // resync, respawn, teleport, tek noktaya çökmüş path) karelerde segment[0]
+    // kafadan kopamaz. Yalnızca BOYUN düzeltilir — segment[0] zaten doğru
+    // konumdayken hiçbir yazma yapılmadığından gövdenin geri kalanının
+    // yay-uzunluğu geometrisi bozulmaz.
+    _enforceNeckJoint(spacing) {
+        const neck = this.segments[0];
+        if (!neck || !neck.active || !this.head?.active) return;
+
+        const dx = neck.x - this.head.x;
+        const dy = neck.y - this.head.y;
+        const dist = Math.hypot(dx, dy);
+
+        // Dejenere durum: boyun kafanın tam üstünde → yönü hareket açısından türet
+        // (kafanın TAM arkasına yerleştir).
+        if (dist < 0.0001) {
+            neck.setPosition(
+                this.head.x - Math.cos(this.head.rotation) * spacing,
+                this.head.y - Math.sin(this.head.rotation) * spacing
+            );
+            return;
+        }
+
+        // Zaten hedef aralıktaysa dokunma (stub yolunda beklenen durum).
+        if (Math.abs(dist - spacing) < 0.01) return;
+
+        // Yönü koru, mesafeyi tam `spacing`e kilitle.
+        const inv = spacing / dist;
+        neck.setPosition(this.head.x + dx * inv, this.head.y + dy * inv);
+    }
+
+    // Yay uzunluğu KAFANIN GERÇEK konumundan ölçülür (path[0]'dan DEĞİL).
+    //
+    // KÖK NEDEN (boost'ta boyun esnemesi): path[0], kafayı üstel olarak izleyen
+    // _pathFollower'dır. Bu alçak-geçiren filtre kararlı durumda kafanın
+    // GERİSİNDE v·dt kadar sabit bir gecikme taşır (PATH_SMOOTHING_FACTOR=0.5)
+    // ve bu gecikme HIZLA ORANTILIDIR: taban hızda ~3.75px, boost'ta (2× hız)
+    // ~7.5px. Segmentler yay uzunluğuyla path[0]'dan ölçüldüğünden segment↔
+    // segment aralıkları tam `spacing` kalıyor, ama kafa↔segment[0] aralığı
+    // `spacing + v·dt` oluyordu → boost'a girince YALNIZCA boyun uzuyordu
+    // (12.5+3.75=16.25px → 12.5+7.5=20px, %23; 120Hz'de %27).
+    //
+    // NOT: sunucu tarafında bu sorun YOKTUR — TailSystem.sampleHeadToPath ham
+    // kafa konumunu her tick örnekler (follower yok), dolayısıyla path[0] zaten
+    // kafanın kendisidir. Sapma tamamen client'ın görsel filtresinden gelir.
+    //
+    // ÇÖZÜM: kafa → path[0] arasına sanal bir "stub" parça eklenir, yay uzunluğu
+    // buradan itibaren sayılır. Böylece segment[0] hız ne olursa olsun kafadan
+    // TAM `spacing` uzaklıkta kalır; follower gecikmesi stub içinde soğurulur.
+    // _pathFollower'ın anti-cascade filtresi path'in ŞEKLİ için aynen korunur —
+    // yalnızca ölçümün başlangıç noktası değişir.
     _pointAndAngleAtDistance(distanceFromHead) {
         if (!this.head.active) {
             return { x: 0, y: 0, angle: 0 };
         }
         if (distanceFromHead <= 0 || this.path.length === 0) {
-            const a = this.path[0] ?? new Phaser.Math.Vector2(this.head.x, this.head.y);
-            return { x: a.x, y: a.y, angle: this.head.rotation };
+            return { x: this.head.x, y: this.head.y, angle: this.head.rotation };
         }
         let d = distanceFromHead;
+
+        // Öncü stub: kafa → path[0]. Follower gecikmesini soğurur.
+        const p0 = this.path[0];
+        if (p0) {
+            const stubLen = Math.hypot(p0.x - this.head.x, p0.y - this.head.y);
+            if (stubLen > 0.0001) {
+                if (d <= stubLen) {
+                    const t = d / stubLen;
+                    return {
+                        x: Phaser.Math.Linear(this.head.x, p0.x, t),
+                        y: Phaser.Math.Linear(this.head.y, p0.y, t),
+                        angle: Phaser.Math.Angle.Between(this.head.x, this.head.y, p0.x, p0.y)
+                    };
+                }
+                d -= stubLen;
+            }
+        }
+
         for (let i = 0; i < this.pathSegLens.length; i++) {
             const segLen = this.pathSegLens[i];
             if (d <= segLen) {
@@ -755,13 +1130,43 @@ export class Snake {
             this._updateSegmentScaling();
         }
 
+        // ── Snapshot buffer besleme ─────────────────────────────────────
+        // Her sunucu örneği zaman damgasıyla saklanır; render tarafı iki
+        // snapshot ARASINDA (renderTime = now - delay) lerp eder. Paket
+        // aralığı EMA'sı adaptif interpolation delay için ölçülür.
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+            const now = performance.now();
+            if (this._lastSnapshotAt > 0) {
+                const interval = now - this._lastSnapshotAt;
+                if (interval > 0 && interval < 1000) {
+                    this._packetIntervalEmaMs = this._packetIntervalEmaMs === null
+                        ? interval
+                        : this._packetIntervalEmaMs * 0.8 + interval * 0.2;
+                }
+            }
+            this._lastSnapshotAt = now;
+
+            this._snapshots.push({
+                t: now,
+                x: x,
+                y: y,
+                angle: this.networkTarget.angle
+            });
+            const cutoff = now - this.config.SNAPSHOT_BUFFER_MS;
+            while (this._snapshots.length > 2 && this._snapshots[0].t < cutoff) {
+                this._snapshots.shift();
+            }
+        }
+
         this.hasServerState = true;
     }
 
     _updateSegmentScaling() {
         if (this.head) this.head.setScale(this.scale);
         this.segments.forEach(seg => {
-            if (seg && seg.active) seg.setScale(this.scale);
+            // Büyüme animasyonundaki segmentin ölçeği _animScale ile çarpılır —
+            // aksi halde sunucu scale güncellemesi büyüme "pop"unu geri getirirdi.
+            if (seg && seg.active) seg.setScale(this.scale * (seg._animScale ?? 1));
         });
     }
 

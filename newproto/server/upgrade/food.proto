@@ -6,10 +6,24 @@ option java_outer_classname = "FoodOuterClass";
 
 message FoodData {
   uint32 food_id = 1;
-  uint32 x = 2;
-  uint32 y = 3;
-  // field 4 (scale) kaldırıldı — tüm yemler eşit değerde.
-  reserved 4;
+  // ── ALT-PIKSEL KONUM (uint32 -> float) ────────────────────────────────────
+  // ESKI: uint32 => yem konumu TAM PIKSEL izgarasina yuvarlaniyordu. Yilan
+  // govdesi ise float ile (entity-collection.xs/ys, self-position.x/y) alt
+  // piksel hassasiyetinde ciziliyor. Bu asimetri, boost ile dusen yemin
+  // govde merkez cizgisinden eksen basina ±0.5 px (kosegen ~0.71 px) kaymis
+  // gorunmesine yol aciyordu — "yem izin biraz ustunde/altinda" hatasi.
+  // Ayni kok neden entity pozisyonlari icin daha once duzeltilmisti
+  // (bkz. Unit.worldXToPxF); yem yolu atlanmisti.
+  // NOT: uint32 (varint) -> float (fixed32) WIRE-UYUMSUZ bir degisikliktir;
+  // sunucu ve client BIRLIKTE deploy edilmelidir. Alan numaralari korunur.
+  float x = 2;
+  float y = 3;
+  // field 4 (scale) ve field 5 (shape) kaldırıldı — tüm yemler artık düz
+  // parlayan DAİRE; şekil çeşitliliği (polygon) kaldırıldı.
+  reserved 4, 5;
+  // Bu yemin yendiğinde kazandırdığı skor. Ambient yemler sabit değerde;
+  // ölüm/eject sonrası düşen yemler daha yüksek ve değişken değer taşır.
+  uint32 value = 6;
 }
 
 message FoodCollection {

@@ -17,8 +17,87 @@ import {
 
 // Note: updateHUDLeaderboard is called with empty array [] to trigger
 // the default mockup data initialization in overlays.js
-
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
+
+// ── YEM DOKUSU (GÖREV 1: hepsi parlayan DAİRE) ───────────────────────────────
+// Polygon şekiller kaldırıldı; tüm yemler tek 'food_glow' dairesi kullanır.
+const FOOD_GLOW_TEXTURE = 'food_glow';
+
+// ── YEM ŞİMMER/GLOW (GÖREV 2) ────────────────────────────────────────────────
+// Yüksek performanslı parıltı: 4000 yem için parçacık-emitter YERİNE (bu, node
+// başına emitter/parçacık maliyetiyle 120fps'i çökertirdi) tek havuzlanmış
+// Blitter + additive blend + her yeme faz-kaymalı alpha nabzı (twinkle). Ekstra
+// draw-call YOK (Blitter tek çizim); maliyet mevcut yem döngüsünde bir sin/alpha.
+const FOOD_SHIMMER_HZ = 1.6;      // nabız frekansı (saniyedeki döngü)
+const FOOD_SHIMMER_MIN_ALPHA = 0.62; // en sönük an
+const FOOD_SHIMMER_AMP = 0.38;    // 0.62 → 1.0 arası salınım
+
+// ── BİRLEŞİK YEME + MAGNET EŞİĞİ (client ⇄ server sözleşmesi) ────────────────
+// SUNUCU AYNASI — game-server FoodConfig.eatRadiusPx ile BİREBİR:
+//   radius = min(MAX, BASE · (1 + (scale-1)·GAIN))
+// Bu, HEM çekim (R_magnet) HEM de yeme (R_eat) eşiğidir — TEK, birleşik değer
+// (rubber-band önlemi). GÖREV 3: menzil ~%30 büyütüldü (BASE 45→60, MAX 100→130)
+// → suck-in daha erken tetiklenir, yeme daha akıcı hissedilir. Sunucu FoodConfig
+// ile SİMETRİK güncellendi (desync yok).
+const FOOD_EAT_RADIUS_BASE_PX = 60.0;
+const FOOD_EAT_RADIUS_SCALE_GAIN = 0.35;
+const FOOD_EAT_RADIUS_MAX_PX = 130.0;
+function foodEatRadiusPx(scale) {
+    const s = (Number.isFinite(scale) && scale > 0) ? scale : 1.0;
+    return Math.min(FOOD_EAT_RADIUS_MAX_PX,
+        FOOD_EAT_RADIUS_BASE_PX * (1 + (s - 1) * FOOD_EAT_RADIUS_SCALE_GAIN));
+}
+
+// ── MANYETİK YEME UÇUŞU ──────────────────────────────────────────────────────
+// Basit ve anlık: yem eşiğe girdiği anda kafa MERKEZİNE frame-rate-agnostik
+// üstel lerp ile SNAP eder (eğri/gecikmeli ivme yok — hedef her frame güncel
+// kafa merkezi olduğundan kafa yemi geçse bile yem asla arkada süzülmez/orbit
+// yapmaz), eşzamanlı olarak ölçek ZAMANA bağlı (mesafeye DEĞİL) ~100ms'de 0'a
+// çöker. Ölçek biter ya da yem kafa merkezine değer değmez sprite yok edilir.
+const FOOD_MAGNET_SNAP_RATE = 30;   // üstel çekim: k = 1 - e^(-30·dt) (~%39/frame @60fps)
+const FOOD_EAT_SHRINK_MS = 100;     // ölçek 1 → 0 çöküş süresi (80–120ms bandı)
+const FOOD_EAT_DESTROY_DIST = 6;    // px — kafa merkezine bu kadar yaklaşınca imha
+
+// ── TAHMİN UZLAŞTIRMA (pending-consumption) ──────────────────────────────────
+// Oyuncu bir yemi tahminle yediğinde, sunucu onayına (FOOD_REMOVE) kadar
+// pending katmanında tutulur; onay gelince kayıt düşer (çift sayım olmaz).
+// Bu süre yalnızca kaydın ne kadar bekletileceğini belirler — süre dolması
+// tahminin REDDEDİLDİĞİ anlamına GELMEZ, yalnızca onayın geciktiği anlamına
+// gelir. Bu yüzden süre aşımında skor geri alınmaz ve yem diriltilmez
+// (bkz. update() içindeki ayrıntılı not).
+const FOOD_PREDICTION_TIMEOUT_MS = 1000;
+
+// SUNUCU AYNASI — game-server ScoreConfig.SCORE_PER_SEGMENT. Boost/shrink ile
+// bir segment kaybında HUD skoru bu kadar düşürülür (GÖREV 2.4, gerçek-zamanlı).
+const CLIENT_SCORE_PER_SEGMENT = 50;
+
+// ── AOI DEBUG OVERLAY (sunucu görünürlük sınırının görselleştirilmesi) ──────
+// Sunucu algoritması: AOICalculationSystem.fill3x3AOI — AOI, oyuncunun
+// KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 3x3 sektörlük
+// bloktur ve sektör GRID'ine hizalıdır: kafa bir sektör çizgisini geçtiği
+// anda sınır bir sektör kayar (sürekli kayan bir kutu DEĞİLDİR — despawn
+// eşiğini doğrulamak için bunu aynen çizmek gerekir).
+// SENKRON SÖZLEŞMESİ: SECTOR_COUNT_* ve AOI_SECTOR_RADIUS sunucudaki
+// MapConfig.SECTOR_COUNT_X/Y (30) ve fill3x3AOI (±1) ile BIREBIR aynı
+// tutulmalıdır. Sektör boyutu = dünya boyutu / 30 ≈ 666.67px.
+// Y-EKSENİ NOTU: sunucu sektör satırını metre uzayında (Y-yukarı) hesaplar,
+// client piksel uzayında (Y-aşağı) çizer; grid tam 30 satır olduğundan sınır
+// çizgileri çakışır ve "oyuncunun sektörü ± 1" bloğu ayna-değişmezidir —
+// piksel uzayında çizilen dikdörtgen geometrik olarak birebir doğrudur.
+const AOIDebugConfig = {
+    SHOW_AOI_DEBUG: false,     // başlangıç durumu (O tuşu ile aç/kapa)
+    TOGGLE_KEY: 'keydown-O',
+    SECTOR_COUNT_X: 30,        // sunucu: MapConfig.SECTOR_COUNT_X
+    SECTOR_COUNT_Y: 30,        // sunucu: MapConfig.SECTOR_COUNT_Y
+    AOI_SECTOR_RADIUS: 1,      // sunucu: fill3x3AOI → merkez ± 1 sektör
+    OUTLINE_COLOR: 0x39ff14,   // neon yeşil
+    OUTLINE_ALPHA: 0.9,
+    OUTLINE_WIDTH: 2,
+    FILL_ALPHA: 0.03,          // gameplay görsellerini örtmeyecek kadar soluk
+    CURRENT_SECTOR_ALPHA: 0.35, // oyuncunun mevcut sektörü (ince iç çizgi)
+    DASH_LENGTH: 14,
+    GAP_LENGTH: 10,
+};
 
 export class Game extends Phaser.Scene {
     constructor() {
@@ -26,9 +105,11 @@ export class Game extends Phaser.Scene {
         this.snakes = new Map();
         this.foods = new Map();
         this.eatingFoods = new Map();
-        this.predictedEatenFoodIds = new Set(); // Client-side eat prediction: foods eaten before server confirms
-        this.foodBlitter = null;       // Normal food (scale=1), 16px glow dot
-        this.foodBlitterLarge = null;   // Large food (scale>1), 24px glow dot
+        // Pending-consumption katmanı: tahminle yenmiş ama sunucu onayı beklenen
+        // yemler. foodId → { predictedAtMs }. Onay (FOOD_REMOVE) gelince silinir;
+        // süre aşımında yalnızca kayıt düşer (skor/yem geri alınmaz).
+        this.pendingConsumption = new Map();
+        this.foodBlitter = null; // Tüm yemler için tek havuzlanmış Blitter (tek draw call)
         this.pendingSegmentMutations = new Map();
         this.myId = null;
         this.networkManager = null;
@@ -41,9 +122,14 @@ export class Game extends Phaser.Scene {
         this.minimapGraphics = null;
         this.worldRadius = 0;
 
-        // Client-side score tracking: her yenen yem grubu +10 puan
+        // Client-side score tracking: yenen yemin sunucudan gelen value'suna göre puan
         this.playerScore = 0;
         this.foodsEaten = 0;
+
+        // AOI debug overlay durumu
+        this.aoiDebugGraphics = null;
+        this.showAoiDebug = AOIDebugConfig.SHOW_AOI_DEBUG;
+        this._aoiDebugLastSector = { cx: -1, cy: -1 }; // sektör değişmedikçe yeniden çizme
     }
 
     create() {
@@ -53,17 +139,24 @@ export class Game extends Phaser.Scene {
         this.snakes = new Map();
         this.foods = new Map();
         this.eatingFoods = new Map();
-        this.predictedEatenFoodIds = new Set();
+        this.pendingConsumption = new Map();
         this.pendingSegmentMutations = new Map();
         this.myId = null;
         this.foodBlitter = null;
-        this.foodBlitterLarge = null;
         this.grid = null;
         this.boundaryGraphics = null;
         this.worldRadius = 0;
 
         this.playerScore = 0;
         this.foodsEaten = 0;
+
+        // Input-delay kuyruğu — restart'ta önceki tura ait girdiler sızmasın.
+        this._inputDelayQueue = [];
+        this._lastDelayedInput = null;
+        // Steering deadzone/epsilon guard'inin son TAAHHUT edilen aci degeri (rad).
+        // Bu acidan MIN_ROTATION_RADIUS ya da ANGLE_EPSILON altinda kalan girdi
+        // ne yerel tahmini ne de agi gunceller. Respawn'da sifirlanmali.
+        this._lastCommittedAngleRad = null;
 
         this.gameStarted = false;
         this.initialDataFlags = { startInfo: false, entities: false };
@@ -94,14 +187,18 @@ export class Game extends Phaser.Scene {
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
+        this.events.on('leaderboard_update', this.onLeaderboardUpdate, this);
 
         // NetworkManager'ın pong başına yaydığı yumuşatılmış (EMA) RTT değeri.
         // Connecting overlay'i açıksa oradaki PING metriği de canlı güncellenir.
         this.currentPingMs = null;
-        this.events.on('ping_update', (ms) => {
+        // Stored reference (arrow) so it can be removed on shutdown — inline
+        // arrow'lar off() ile kaldirilamaz ve restart'ta ust uste birikir.
+        this._onPingUpdate = (ms) => {
             this.currentPingMs = ms;
             updateConnectingPing(ms);
-        }, this);
+        };
+        this.events.on('ping_update', this._onPingUpdate, this);
 
         // Restart/kapanışta açık kalan HTML overlay'leri temizle.
         this.events.once('shutdown', () => hideAllGameOverlays());
@@ -110,6 +207,29 @@ export class Game extends Phaser.Scene {
         // fiziksel pozisyonuyla senkronize edilir. update() içinde physics henüz
         // çalışmadığından oradan çağrılmak 1 frame gecikmeye (esniyor hissi) yol açıyordu.
         this.events.on('postupdate', this._onPostUpdate, this);
+
+        // ── LISTENER TEARDOWN (respawn +2 / cift-islem fix) ──────────────────
+        // scene.restart() ayni scene ornegini ve ayni this.events emitter'ini
+        // yeniden kullanir; Phaser Systems.shutdown() ozel dinleyicileri
+        // KALDIRMAZ. create() her respawn'da yeniden kostugundan, asagidaki
+        // .on() kayitlari temizlenmezse her yasamda bir kopya daha birikir:
+        // tek 'segment_mutation_collection' paketi iki (sonra uc...) kez islenir
+        // -> yem basina +2, hem yerel hem uzak yilanlarda sisme. Her yasamin
+        // dinleyicilerini kendi shutdown'inda sokerek TAM BIR set garanti edilir.
+        this.events.once('shutdown', () => {
+            this.events.off('start_game', this.onStartGame, this);
+            this.events.off('self_position', this.onSelfPosition, this);
+            this.events.off('entity_collection', this.onEntityCollection, this);
+            this.events.off('segment_mutation_collection', this.onSegmentMutationCollection, this);
+            this.events.off('food_collection', this.onFoodCollection, this);
+            this.events.off('food_mutation_collection', this.onFoodMutationCollection, this);
+            this.events.off('remove_entity', this.onRemoveEntity, this);
+            this.events.off('disconnected', this.onDisconnected, this);
+            this.events.off('death_notification', this.onDeathNotification, this);
+            this.events.off('leaderboard_update', this.onLeaderboardUpdate, this);
+            this.events.off('ping_update', this._onPingUpdate, this);
+            this.events.off('postupdate', this._onPostUpdate, this);
+        });
 
         this.networkManager.connect();
 
@@ -151,6 +271,21 @@ export class Game extends Phaser.Scene {
         this.scale.on('resize', this.handleResize, this);
         this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
 
+        // ── AOI debug overlay ───────────────────────────────────────────────
+        // Dünya uzayında çizilir (registerWorld → ana kamera render eder,
+        // UI kamerası yok sayar); zoom/scroll ile birlikte hareket eder.
+        this.aoiDebugGraphics = this.registerWorld(
+            this.add.graphics().setDepth(4500).setVisible(this.showAoiDebug)
+        );
+        this.input.keyboard?.on(AOIDebugConfig.TOGGLE_KEY, () => {
+            this.showAoiDebug = !this.showAoiDebug;
+            this.aoiDebugGraphics?.setVisible(this.showAoiDebug);
+            this._aoiDebugLastSector.cx = -1; // yeniden açılışta zorunlu tam çizim
+            this._aoiDebugLastSector.cy = -1;
+            if (!this.showAoiDebug) this.aoiDebugGraphics?.clear();
+            console.log(`[AOI-DEBUG] Overlay ${this.showAoiDebug ? 'AÇIK' : 'KAPALI'}`);
+        });
+
         // ── Mobile controls (Phaser GameObjects — no DOM) ───────────────────
         // Built directly in the scene so it has zero dependency on src/main.js
         // timing/DOM and renders with this.add.circle()/this.add.zone(), as
@@ -173,8 +308,11 @@ export class Game extends Phaser.Scene {
 
         this.registerHUD(this.minimapGraphics);
 
-        // Initialize default leaderboard
-        updateHUDLeaderboard([]);
+        // Bağlantı öncesi yer tutucu liste. null → overlays.js mockup'ı çizer;
+        // ilk gerçek 'leaderboard_update' paketi geldiğinde tamamen değişir.
+        // (Eskiden [] geçiliyordu; artık boş dizi GEÇERLİ bir "0 oyuncu"
+        // sıralaması anlamına geldiği için yer tutucu ile karışmamalı.)
+        updateHUDLeaderboard(null);
 
         // Bağlantı ekranı artık Phaser içinde çizilmiyor — HTML/CSS overlay
         // (bkz. index.html #connecting-overlay + src/ui/overlays.js).
@@ -330,6 +468,16 @@ export class Game extends Phaser.Scene {
             }
         }
 
+        // GECICI TANI LOGU: sunucunun [FULLY-DATA-TX] loguyla birebir karsilastir.
+        // Ayni entity id icin X (TX) != Y (RX) ise bozulma TELDE/serialize'da,
+        // esitse mismatch client render/merge tarafinda. Test bitince false yap.
+        const DEBUG_LOG_FULLY_DATA_RX = true;
+        if (DEBUG_LOG_FULLY_DATA_RX) {
+            for (const [fid, cnt] of fullyDataMap) {
+                console.log(`[FULLY-DATA-RX] Received FULLY_DATA for entity ${fid} with ${cnt} segments`);
+            }
+        }
+
         for (let i = 0; i < entityIds.length; i++) {
             const rawId = entityIds[i];
             const entityId = this.toId(rawId);
@@ -358,6 +506,32 @@ export class Game extends Phaser.Scene {
             }
 
             let snake = this.snakes.get(entityId);
+
+            // ── RESPAWN / YENIDEN-GORUNURLUK OVERWRITE ───────────────────────
+            // Sunucu FULLY_DATA'yi (segment sayısı dahil) yalnızca görünürlük
+            // GEÇİŞLERİNDE yollar: yeni oyuncu, respawn (entity id geri
+            // dönüştürülmüş olabilir!) veya AOI'ye yeniden giriş. Elimizde aynı
+            // id için cache'lenmiş bir yılan varsa bu ESKİ YAŞAMIN (ya da bayat
+            // görünümün) kalıntısıdır — remove paketi kaçmış/yarışmış olabilir.
+            // Önceki gövdeden TEK BİR görsel segment bile miras almamak için
+            // objeyi tamamen yok edip sıfırdan, sunucunun bildirdiği taze
+            // segment sayısıyla kurarız (merge/append DEĞİL).
+            if (snake && fullyDataMap.has(lookupId)) {
+                // ── SERT SINIR KURALI (EntityFull = pazarlıksız yeniden kurulum) ──
+                // EntityFull/FULLY_DATA bir MERGE işlemi DEĞİLDİR ve hiçbir
+                // koşulda merge'e dönüşemez. Bu id için cache'te bir obje varsa
+                // (respawn/geri dönüştürülmüş id, AOI yeniden girişi, kaçmış
+                // RemoveEntity — sebep fark etmez) önce TAM ve BLOKE EDİCİ
+                // nükleer temizlik koşar: kayıt silme + sprite/buffer/animasyon
+                // imhası + bekleyen delta kuyruğunun boşaltılması
+                // (bkz. _nuclearCleanEntity — kayıt silme imhadan ÖNCE gelir,
+                // imha hatası dahi kaydı geri getiremez). Ardından yılan
+                // sunucunun mutlak verisiyle SIFIRDAN inşa edilir. Eski
+                // yaşamdan tek bir segment sprite'ı, path noktası ya da
+                // interpolasyon buffer'ı yeni yaşama taşınamaz.
+                this._nuclearCleanEntity(entityId);
+                snake = null;
+            }
 
             if (!snake) {
                 const remoteNickname = fullyDataNicknameMap.get(lookupId) || '';
@@ -394,6 +568,18 @@ export class Game extends Phaser.Scene {
             const entityId = this.toId(mutation?.entityId ?? mutation?.entity_id);
             if (entityId === null) return;
 
+            // GÖREV 2.4: Oyuncunun KENDİ yılanı segment KAYBEDERSE (boost/shrink →
+            // sunucu drainOneSegment), HUD skorunu gerçek-zamanlı düşür. Sunucu
+            // ScoreConfig.SCORE_PER_SEGMENT aynası. Segment EKLEME'de skor DEĞİŞMEZ
+            // (puan yem yenirken addPlayerScoreForFood ile eklenir; çift sayım olmaz).
+            if (entityId === this.myId) {
+                const removed = this._parseRemovedSegmentCount(mutation);
+                if (removed > 0) {
+                    this.playerScore = Math.max(0, this.playerScore - removed * CLIENT_SCORE_PER_SEGMENT);
+                    updateHUDScore(this.playerScore);
+                }
+            }
+
             const snake = this.snakes.get(entityId);
             if (!snake) {
                 this.queuePendingSegmentMutation(entityId, mutation);
@@ -402,6 +588,17 @@ export class Game extends Phaser.Scene {
 
             snake.applySegmentMutationFromServer(mutation);
         });
+    }
+
+    // Bir segment mutasyonundan çıkarılan segment sayısını çözer (SEGMENT_REMOVE
+    // değilse 0). Tip kodlaması Snake.applySegmentMutationFromServer ile aynıdır:
+    // SEGMENT_REMOVE = 'SEGMENT_REMOVE' veya sayısal 1.
+    _parseRemovedSegmentCount(mutation) {
+        const type = mutation?.mutationType ?? mutation?.mutation_type;
+        const isRemove = type === 'SEGMENT_REMOVE' || type === 1;
+        if (!isRemove) return 0;
+        const count = Number(mutation?.removedSegmentCount ?? mutation?.removed_segment_count ?? 0);
+        return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
     }
 
     onFoodCollection(foodCollection) {
@@ -415,11 +612,9 @@ export class Game extends Phaser.Scene {
             }
         }
 
-        for (const [foodId, foodBobs] of this.foods) {
+        for (const [foodId, food] of this.foods) {
             if (incomingFoodIds.has(foodId)) continue;
-            // foodBobs is an array of Blitter.Bob — iterate and destroy each one individually
-            const bobsArray = Array.isArray(foodBobs) ? foodBobs : [foodBobs];
-            bobsArray.forEach(bob => bob.destroy());
+            food.bob?.destroy();
             this.foods.delete(foodId);
         }
     }
@@ -469,13 +664,50 @@ export class Game extends Phaser.Scene {
     onRemoveEntity(removeEntity) {
         const entityId = this.toId(removeEntity?.entityId ?? removeEntity?.clientId);
         if (entityId === null) return;
+        this._nuclearCleanEntity(entityId);
+    }
+
+    /**
+     * NÜKLEER TEMİZLİK — bir entity id'sine ait TÜM client-side ayak izini yok
+     * eder. Hem despawn'da (onRemoveEntity: ölüm broadcast'i + AOI-çıkış paketi)
+     * hem de mevcut bir id için yeni EntityFull geldiğinde (respawn/geri
+     * dönüştürülmüş id — onEntityCollection) çağrılır. Sıfır miras garantisi:
+     *  1. Bekleyen delta mutasyon kuyruğu (pendingSegmentMutations) silinir.
+     *  2. Bu yılana uçmakta olan yem animasyonları (eatingFoods) — hedef obje
+     *     yok olacağından bob sprite'ları ANINDA imha edilir; aksi halde bir
+     *     frame boyunca ölü referansa lerp etmeye çalışırlardı.
+     *  3. snake.destroy(): her segment sprite'ı, kafa, gözler, trail particle
+     *     emitter'ı, nickname text'i sahneden sökülür VE yılanın tüm iç
+     *     buffer'ları (path, interpolasyon/velocity/tahmin geçmişi) sıfırlanır
+     *     (bkz. Snake.destroy — hard reset).
+     *  4. snakes map'inden id kaldırılır → aynı id için bir sonraki EntityFull
+     *     tamamen boş tuvalden inşa edilir.
+     */
+    _nuclearCleanEntity(entityId) {
         this.pendingSegmentMutations.delete(entityId);
 
         const snake = this.snakes.get(entityId);
         if (!snake) return;
 
-        snake.destroy();
+        // KRİTİK SIRALAMA: kayıt silme ÖNCE, görsel imha SONRA (try/catch).
+        // destroy() içindeki herhangi bir hata artık map silmesini engelleyemez;
+        // id her koşulda kayıtlardan düşer ve bir sonraki EntityFull temiz
+        // "yeni yılan kur" yolundan geçer. (Önceki sıralama, destroy'daki tek
+        // bir TypeError'ın yarı-ölü objeyi map'te bırakıp oyuncuları kalıcı
+        // görünmez yapmasına neden oluyordu.)
         this.snakes.delete(entityId);
+
+        try {
+            this.eatingFoods.forEach((data, foodId) => {
+                if (data.targetSnake === snake) {
+                    data.sprite?.destroy();
+                    this.eatingFoods.delete(foodId);
+                }
+            });
+            snake.destroy();
+        } catch (err) {
+            console.error(`[NUCLEAR-CLEAN] entity ${entityId} imhasında hata (akış devam ediyor):`, err);
+        }
     }
 
     ensurePlayerSnake(entityId, x, y, segmentCount, scale, angleRaw) {
@@ -487,6 +719,9 @@ export class Game extends Phaser.Scene {
             }
             if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
                 existingSnake.scale = scale;
+                // scale alanını değiştirmek sprite'ları otomatik boyutlamaz —
+                // görsel boyut sunucu hitbox'ıyla anında eşitlensin.
+                existingSnake._updateSegmentScaling();
             }
             if (!existingSnake.nickname) {
                 existingSnake.setNickname(nickname);
@@ -500,7 +735,10 @@ export class Game extends Phaser.Scene {
         }
 
         const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw, nickname);
-        if (scale !== undefined && !Number.isNaN(scale) && scale > 0) playerSnake.scale = scale;
+        if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
+            playerSnake.scale = scale;
+            playerSnake._updateSegmentScaling(); // görsel boyut = sunucu scale, ilk kareden itibaren
+        }
         this.snakes.set(entityId, playerSnake);
         this.cameras.main.startFollow(playerSnake.getHead(), true, 0.15, 0.15);
         this.cameras.main.setRoundPixels(false);
@@ -549,14 +787,14 @@ export class Game extends Phaser.Scene {
 
     // ── Food Rendering ──────────────────────────────────────────
     // Phaser Blitter: binlerce food objesini tek draw call ile çizen performans yapısı.
-    // Her food Bob'u oluşturulurken rastgele bir renk frame'i atanır.
+    // Rule 1: her yem tek, izole bir noktadır — kümeleme/çoklu-bob YOK, her
+    // food id'ye tam olarak bir Bob (bir şekil) karşılık gelir.
     // Koordinatlar doğrudan dünya piksel koordinatlarıdır (invScale yok).
-    
+
     seededRandom(seed) {
         const x = Math.sin(seed) * 10000;
         return x - Math.floor(x);
     }
-
 
     upsertFood(foodData) {
         const foodId = this.toFoodId(foodData?.foodId ?? foodData?.food_id);
@@ -566,66 +804,38 @@ export class Game extends Phaser.Scene {
         const y = Number(foodData?.y);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
 
-        const targetX = Math.round(x);
-        const targetY = Math.round(y);
+        // ── 1:1 DÜNYA KOORDİNATI (yuvarlama YOK) ────────────────────────────
+        // Sunucudan gelen px koordinatı doğrudan dünya uzayına yazılır. Eskiden
+        // burada Math.round vardı: sunucu zaten uint32 ile tam piksele
+        // yuvarladığı için client ikinci kez yuvarlıyordu ve alt-piksel çizilen
+        // yılan gövdesine göre yem eksen başına ±0.5 px kayıyordu. Sunucu artık
+        // float gönderiyor (food.proto: float x/y ← uint32); bu değeri yuvarlamak
+        // düzeltmeyi anında geri alırdı. Blitter dünya uzayında (registerWorld)
+        // çizildiği için ekstra render/DPI/viewport dönüşümü uygulanmaz — kamera
+        // zoom/scroll'u tüm dünya nesnelerine aynı şekilde etki eder.
+        const targetX = x;
+        const targetY = y;
 
-        const existingFood = this.foods.get(foodId);
-        if (existingFood) {
-            const bobsArray = Array.isArray(existingFood) ? existingFood : [existingFood];
-            bobsArray.forEach(bob => {
-                if (bob && bob.originalX === undefined) {
-                    bob.originalX = bob.x;
-                    bob.originalY = bob.y;
-                }
-            });
+        // Aynı foodId zaten varsa (yeniden gönderim) dokunma. Yem artık konumunu
+        // ASLA değiştirmez (yaslanma/geri-dönüş kaldırıldı) — bob.x/y kalıcı orijindir.
+        if (this.foods.has(foodId)) {
             return foodId;
         }
 
-        const scaleValue = Number(foodData?.scale ?? 1);
-        const isLarge = scaleValue > 1;
+        const value = Number(foodData?.value ?? 0);
 
-        // Normal food: 16px glow dot, Large food: 24px glow dot
-        const targetBlitter = isLarge ? this.ensureFoodBlitterLarge() : this.ensureFoodBlitter();
+        // 16 renk varyantından biri deterministik seçilir (aynı foodId → aynı renk).
+        const colorFrame = Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
+        const bob = this.ensureFoodBlitter().create(targetX, targetY, colorFrame);
 
-        const bobs = [];
-        // Deterministik kümeleme: her yiyecek ID'sine göre 2-4 arası nokta oluştur
-        // (Sunucu tarafında food sayısı 20.000'e çıktığı için max boyutu hafif optimize ediyoruz)
-        const clusterSize = 2 + Math.floor(this.seededRandom(foodId) * 3);
+        // Şimmer (twinkle) fazı: her yem farklı fazda nabız atsın diye foodId'den
+        // deterministik türetilir (senkron olmayan, canlı parıltı).
+        const shimmerPhase = this.seededRandom(foodId * 13) * Math.PI * 2;
 
-        const baseColor = Math.floor(this.seededRandom(foodId * 7) * FOOD_COLOR_COUNT);
-        
-        // 1. Ana yem parçasını tam merkeze koy.
-        const centerBob = targetBlitter.create(targetX, targetY, baseColor);
-        centerBob.originalX = targetX;
-        centerBob.originalY = targetY;
-        bobs.push(centerBob);
-
-        // 2. Diğer parçaları etrafına, daha düzenli ve organik bir dağılımla (spiral/yıldız) yay.
-        for (let i = 1; i < clusterSize; i++) {
-            // Açıyı i'ye göre asimetrik ama dengeli dağıtıp ufak bir rastgelelik ekleyelim
-            const baseAngle = (i / clusterSize) * Math.PI * 2;
-            const angleOffset = (this.seededRandom(foodId + i * 100) - 0.5) * Math.PI * 0.5;
-            const finalAngle = baseAngle + angleOffset;
-            
-            // Merkeze olan uzaklığı düzenli bir şekilde artırarak rastgele yığılmaları (kümelenme) engelle
-            const distance = 12 + (i * 6) + (this.seededRandom(foodId + i * 200) * 8);
-
-            const offsetX = Math.cos(finalAngle) * distance;
-            const offsetY = Math.sin(finalAngle) * distance;
-            
-            // Daha organik bir görüntü için %80 oranında ana renkle aynı yap, %20 ihtimalle farklı bir renk
-            let colorFrame = baseColor;
-            if (this.seededRandom(foodId + i * 300) > 0.8) {
-                colorFrame = Math.floor(this.seededRandom(foodId + i * 400) * FOOD_COLOR_COUNT);
-            }
-
-            const bob = targetBlitter.create(targetX + offsetX, targetY + offsetY, colorFrame);
-            bob.originalX = targetX + offsetX;
-            bob.originalY = targetY + offsetY;
-            bobs.push(bob);
-        }
-
-        this.foods.set(foodId, bobs);
+        // Her yem tek bir Bob. colorFrame, yem yenirken Sprite'a dönüştürmek
+        // (Bob'lar setScale desteklemez — bkz. _beginFoodEatingFlight) ve
+        // reddedilen tahminde yemi birebir geri getirmek için saklanır.
+        this.foods.set(foodId, { bob, value, colorFrame, shimmerPhase });
         return foodId;
     }
 
@@ -633,30 +843,24 @@ export class Game extends Phaser.Scene {
         const foodId = this.toFoodId(rawFoodId);
         if (foodId === null) return;
 
-        // Oyuncu kendi yılanıyla bu yemi zaten tahmin ederek yedi; sunucu sadece onaylıyor.
-        // eatingFoods animasyonu zaten devam ediyor — seti temizleyip çık.
-        if (this.predictedEatenFoodIds.has(foodId)) {
-            this.predictedEatenFoodIds.delete(foodId);
+        // FOOD_REMOVE = sunucunun yeme ONAYI. Oyuncu bunu zaten tahmin ettiyse,
+        // pending kaydını sonlandır (uçuş animasyonu zaten devam ediyor/bitti).
+        if (this.pendingConsumption.has(foodId)) {
+            this.pendingConsumption.delete(foodId);
             return;
         }
 
         // Uzak yılan tarafından yenilen yem (veya sunucu tahminimizden önce bildirdi)
-        const bobs = this.foods.get(foodId);
-        if (!bobs) return;
-
-        const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
+        const food = this.foods.get(foodId);
+        if (!food) return;
         this.foods.delete(foodId);
 
-        const centerBob = bobsArray[0];
-        if (!centerBob) {
-            bobsArray.forEach(bob => bob.destroy());
-            return;
-        }
+        const bob = food.bob;
+        if (!bob) return;
 
-        // Mıknatıs efekti bob konumunu zaten yılan kafasına doğru çekmiş olabilir.
-        // originalX/Y yerine güncel bob.x/y kullanmak çok daha isabetli bir mesafe verir.
-        const checkX = centerBob.x;
-        const checkY = centerBob.y;
+        // Yem konumu kalıcı orijindir (yaslanma yok) — en yakın yılanı buradan bul.
+        const checkX = bob.x;
+        const checkY = bob.y;
 
         let closestSnake = null;
         let minDistance  = Infinity;
@@ -671,51 +875,122 @@ export class Game extends Phaser.Scene {
             }
         });
 
-        // 300 px: 45 px yeme yarıçapı + ~200 ms gecikme × 225 px/s ≈ 90 px + güvenlik payı
+        // ── GÖRSEL UÇUŞ ile SKOR KREDİSİ AYRI EŞİKLER KULLANIR ──────────────
+        // Animasyon geniş bir pencerede çalışabilir (yem, yiyen yılana doğru
+        // uçarken hoş görünür). Ama SKOR yalnızca yemi gerçekten BİZİM
+        // yediğimize dair sağlam kanıt varsa eklenmelidir.
+        //
+        // ESKİ HATA: kredi eşiği de 300 * scale idi — büyük yılanda ~1800 px.
+        // Yoğun ölüm-düşümü kümesinde (çok botlu test) oyuncu, RAKİPLERİN
+        // yediği yemlere sürekli "en yakın yılan" oluyor ve başkasının yemi
+        // için puan alıyordu. Kredi artık sunucunun KENDİ ölçütünü kullanır:
+        // yem, oyuncunun gerçek yeme yarıçapı içinde miydi (FoodConfig.eatRadiusPx
+        // aynası) — sunucunun yemeyi kabul ettiği tek koşul budur.
         if (closestSnake && minDistance < 300 * closestSnake.scale) {
-            this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake: closestSnake });
-            // Tahmin edilemeden sunucu onayıyla gelen oyuncu yemesi de puan kazandırır
-            if (closestSnake.isPlayerControlled) this.addPlayerScoreForFood();
+            this._beginFoodEatingFlight(foodId, food, closestSnake);
+            const creditRadius = foodEatRadiusPx(closestSnake.scale);
+            if (closestSnake.isPlayerControlled && minDistance <= creditRadius) {
+                // Tahmin EDİLEMEYEN (ör. ön-yay kapısı nedeniyle arkada kalan)
+                // ama sunucunun yediği yemler puanı buradan alır.
+                this.addPlayerScoreForFood(food.value);
+            }
         } else {
-            bobsArray.forEach(bob => bob.destroy());
+            bob.destroy();
         }
     }
 
-    // Her yenen yem grubu +10 puan; HUD anında güncellenir.
-    addPlayerScoreForFood() {
-        this.playerScore += 10;
+    // Statik yem (Blitter Bob) → yenme animasyonu (Sprite) dönüşümü.
+    // NEDEN Sprite: Phaser Blitter Bob'ları setScale DESTEKLEMEZ; yemin küçülerek
+    // (scale 1→0) yok olması (Issue #2) için gerçek bir Sprite şart. Bu dönüşüm
+    // yalnızca AYNI ANDA yenmekte olan birkaç yem için yapılır — 4000 statik
+    // yemin tek-draw-call Blitter avantajı korunur.
+    _beginFoodEatingFlight(foodId, food, targetSnake) {
+        const bob = food.bob;
+        const startX = bob ? bob.x : 0;
+        const startY = bob ? bob.y : 0;
+        const frameName = bob && bob.frame ? bob.frame.name : 0;
+        if (bob) bob.destroy();
+
+        // Tek daire dokusu (frame = renk varyantı). Additive blend Blitter'la aynı
+        // canlı parıltıyı korumak için Sprite de ADD moduyla çizilir.
+        const sprite = this.registerWorld(
+            this.add.sprite(startX, startY, FOOD_GLOW_TEXTURE, frameName)
+                .setDepth(0)
+                .setBlendMode(Phaser.BlendModes.ADD)
+        );
+
+        // Ölçek çöküşü ZAMANA bağlıdır (mesafeye değil): elapsedMs 0'dan
+        // FOOD_EAT_SHRINK_MS'e sayar, scale = 1 - elapsed/süre → kafa uzaklaşsa
+        // bile yem asla yeniden büyümez, ~100ms içinde garantili yok olur.
+        this.eatingFoods.set(foodId, { sprite, targetSnake, elapsedMs: 0 });
+    }
+
+    // Yenen yemin sunucudan gelen value'suna göre puan; HUD anında güncellenir.
+    addPlayerScoreForFood(value) {
+        this.playerScore += Number.isFinite(value) ? value : 0;
         this.foodsEaten += 1;
         updateHUDScore(this.playerScore);
     }
+
+    // (_restoreFoodNode KALDIRILDI — zamanlayıcıya dayalı yem dirilmesi, sunucuda
+    // artık var olmayan yemi client'ta geri getirip yenemeyen "hayalet yem"
+    // üretiyordu. Uzlaştırma artık yalnızca sunucunun otoriter FoodCollection
+    // anlık görüntüsü üzerinden yapılır; bkz. update() içindeki süre aşımı notu.)
 
     clearFoods() {
         if (this.foodBlitter) {
             this.foodBlitter.clear();
             this.foodBlitter.destroy();
+            this.foodBlitter = null;
         }
-        if (this.foodBlitterLarge) {
-            this.foodBlitterLarge.clear();
-            this.foodBlitterLarge.destroy();
-        }
-        this.foodBlitter = null;
-        this.foodBlitterLarge = null;
         this.foods.clear();
         this.eatingFoods.clear();
-        this.predictedEatenFoodIds.clear();
+        this.pendingConsumption.clear();
     }
 
+    // Tek havuzlanmış Blitter — TÜM yemler (tek daire dokusu) tek draw call'da
+    // çizilir. Additive blend, üst üste gelen glow'ların canlı neon toplamı için.
     ensureFoodBlitter() {
         if (this.foodBlitter) return this.foodBlitter;
-        this.foodBlitter = this.registerWorld(this.add.blitter(0, 0, 'food_dot').setDepth(0));
+        this.foodBlitter = this.registerWorld(
+            this.add.blitter(0, 0, FOOD_GLOW_TEXTURE)
+                .setDepth(0)
+                .setBlendMode(Phaser.BlendModes.ADD)
+        );
         return this.foodBlitter;
     }
 
-    ensureFoodBlitterLarge() {
-        if (this.foodBlitterLarge) return this.foodBlitterLarge;
-        this.foodBlitterLarge = this.registerWorld(this.add.blitter(0, 0, 'food_dot_large').setDepth(0));
-        return this.foodBlitterLarge;
-    }
 
+    // ── SIRALAMA PAKETİ ─────────────────────────────────────────────────────
+    // Sunucu bunu 5 sn'de birden sık göndermez ve yalnızca sıralama
+    // değiştiğinde ekler (bkz. server LeaderboardSystem). Burada sadece wire
+    // formatı UI şekline çevrilir; DOM verimliliği overlays.js tarafında
+    // (satır havuzu + fark tabanlı yazma) çözülür.
+    onLeaderboardUpdate(leaderboardUpdate) {
+        if (!leaderboardUpdate) return;
+
+        const rawEntries = Array.isArray(leaderboardUpdate.entries) ? leaderboardUpdate.entries : [];
+        const entries = rawEntries.map((entry) => ({
+            name: entry?.nickname || 'Unknown',
+            score: Number(entry?.score ?? 0),
+        }));
+
+        // protobufjs camelCase üretir; snake_case yedeği savunma amaçlı.
+        const selfRank = Number(
+            leaderboardUpdate.selfRank ?? leaderboardUpdate.self_rank ?? 0);
+        const selfScore = Number(
+            leaderboardUpdate.selfScore ?? leaderboardUpdate.self_score ?? 0);
+        const totalPlayers = Number(
+            leaderboardUpdate.totalPlayers ?? leaderboardUpdate.total_players ?? 0);
+
+        updateHUDLeaderboard({
+            entries,
+            totalPlayers,
+            selfRank,
+            selfScore,
+            selfName: window.gameSettings?.nickname || 'You',
+        });
+    }
 
     onDeathNotification() {
         this.onGameOver();
@@ -727,13 +1002,16 @@ export class Game extends Phaser.Scene {
         this.gameStarted = false;
 
         // ── Post-death freeze ────────────────────────────────────────────────
-        // gameStarted=false update()'i durdurur ama arcade body son hızını
-        // korur: kafa (ve onu takip eden kamera) ölümden sonra kaymaya devam
-        // ediyordu. Ölüm anında fizik tahmini ve kamera takibi anında donar.
+        // Kafa artık fizik body ile değil manuel entegrasyonla hareket ediyor;
+        // alive=false hem updateFromInput'u hem görsel katmanı durdurur. Yine
+        // de hız vektörünü sıfırlayarak niyeti açıkça belgeliyoruz.
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
         if (mySnake) {
             mySnake.alive = false;
-            mySnake.getHead()?.body?.stop();
+            if (mySnake.vel) {
+                mySnake.vel.x = 0;
+                mySnake.vel.y = 0;
+            }
         }
         this.cameras.main.stopFollow();
 
@@ -767,10 +1045,119 @@ export class Game extends Phaser.Scene {
     }
 
 
+    // ── AOI DEBUG OVERLAY ÇİZİMİ ─────────────────────────────────────────────
+    // Sunucunun gerçek AOI'sini çizer: oyuncunun bulunduğu sektöre merkezli,
+    // GRID'e hizalı 3x3 sektör bloğu (dünya kenarlarında sunucu gibi kırpılır).
+    // Kalın kesikli dış çizgi + çok soluk iç dolgu = AOI sınırı; ince düz iç
+    // kutu = oyuncunun mevcut sektörü (kafa bu kutunun kenarını geçtiği anda
+    // AOI bir sektör kayar → uzak yılanların spawn/despawn eşiği).
+    // Sektör değişmedikçe yeniden çizilmez (Graphics her frame ucuz kalır).
+    _updateAoiDebugOverlay(mySnake) {
+        const g = this.aoiDebugGraphics;
+        if (!g || !this.worldRadius) return;
+
+        const head = mySnake?.alive ? mySnake.getHead() : null;
+        if (!head?.active) {
+            g.clear();
+            this._aoiDebugLastSector.cx = -1;
+            this._aoiDebugLastSector.cy = -1;
+            return;
+        }
+
+        const worldSize = this.worldRadius * 2;
+        const sectorW = worldSize / AOIDebugConfig.SECTOR_COUNT_X;
+        const sectorH = worldSize / AOIDebugConfig.SECTOR_COUNT_Y;
+
+        const clampSector = (v, max) => Math.max(0, Math.min(max, v));
+        const cx = clampSector(Math.floor(head.x / sectorW), AOIDebugConfig.SECTOR_COUNT_X - 1);
+        const cy = clampSector(Math.floor(head.y / sectorH), AOIDebugConfig.SECTOR_COUNT_Y - 1);
+
+        if (cx === this._aoiDebugLastSector.cx && cy === this._aoiDebugLastSector.cy) {
+            return; // sektör aynı → AOI dikdörtgeni değişmedi
+        }
+        this._aoiDebugLastSector.cx = cx;
+        this._aoiDebugLastSector.cy = cy;
+
+        // Sunucu fill3x3AOI dünya kenarında komşuları atlar → aynı kırpma.
+        const r = AOIDebugConfig.AOI_SECTOR_RADIUS;
+        const minCx = clampSector(cx - r, AOIDebugConfig.SECTOR_COUNT_X - 1);
+        const maxCx = clampSector(cx + r, AOIDebugConfig.SECTOR_COUNT_X - 1);
+        const minCy = clampSector(cy - r, AOIDebugConfig.SECTOR_COUNT_Y - 1);
+        const maxCy = clampSector(cy + r, AOIDebugConfig.SECTOR_COUNT_Y - 1);
+
+        const x0 = minCx * sectorW;
+        const y0 = minCy * sectorH;
+        const x1 = (maxCx + 1) * sectorW;
+        const y1 = (maxCy + 1) * sectorH;
+
+        g.clear();
+
+        // Çok soluk iç dolgu — gameplay görsellerini örtmez.
+        g.fillStyle(AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.FILL_ALPHA);
+        g.fillRect(x0, y0, x1 - x0, y1 - y0);
+
+        // AKTİF SEKTÖR HÜCRELERİ — sunucunun spatial hash'inin gerçek birimi.
+        // GÖRÜNÜRLÜK SEMANTİĞİ (yanlış yorumlamamak için kritik): sunucu bir
+        // yılanı sektör deposuna KAFA + HER SEGMENT için kaydeder. Uzak yılan,
+        // gövdesinin HERHANGİ bir parçası bu hücrelerden HERHANGİ birine
+        // girdiği sürece görünür kalır — kafası dış sınırın çok dışında olsa
+        // bile. Yani "kutunun dışında ama hâlâ görünüyor" çoğu zaman bug değil,
+        // kuyruğunun bir hücreye taşmasıdır. Despawn (RemoveEntity) yalnızca
+        // TÜM gövde tüm aktif hücrelerin dışına çıktığı tick'te gelir.
+        g.lineStyle(1, AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.CURRENT_SECTOR_ALPHA * 0.6);
+        for (let sy = minCy; sy <= maxCy; sy++) {
+            for (let sx = minCx; sx <= maxCx; sx++) {
+                g.strokeRect(sx * sectorW, sy * sectorH, sectorW, sectorH);
+            }
+        }
+
+        // Kesikli neon dış sınır — spawn/despawn eşiğinin kendisi.
+        g.lineStyle(AOIDebugConfig.OUTLINE_WIDTH, AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.OUTLINE_ALPHA);
+        this._strokeDashedRect(g, x0, y0, x1, y1);
+
+        // Oyuncunun mevcut sektörü — belirgin iç vurgu. Kafa bu hücreden
+        // çıktığı anda AOI bloğu bir sektör kayar (sınır sıçraması).
+        g.lineStyle(2, AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.CURRENT_SECTOR_ALPHA);
+        g.strokeRect(cx * sectorW, cy * sectorH, sectorW, sectorH);
+        g.fillStyle(AOIDebugConfig.OUTLINE_COLOR, AOIDebugConfig.FILL_ALPHA * 2);
+        g.fillRect(cx * sectorW, cy * sectorH, sectorW, sectorH);
+    }
+
+    // Phaser Graphics'te yerleşik kesikli çizgi yok — dört kenarı parça parça çiz.
+    _strokeDashedRect(g, x0, y0, x1, y1) {
+        this._strokeDashedLine(g, x0, y0, x1, y0); // üst
+        this._strokeDashedLine(g, x1, y0, x1, y1); // sağ
+        this._strokeDashedLine(g, x1, y1, x0, y1); // alt
+        this._strokeDashedLine(g, x0, y1, x0, y0); // sol
+    }
+
+    _strokeDashedLine(g, ax, ay, bx, by) {
+        const dash = AOIDebugConfig.DASH_LENGTH;
+        const gap = AOIDebugConfig.GAP_LENGTH;
+        const totalLen = Math.hypot(bx - ax, by - ay);
+        if (totalLen <= 0) return;
+        const ux = (bx - ax) / totalLen;
+        const uy = (by - ay) / totalLen;
+
+        let drawn = 0;
+        while (drawn < totalLen) {
+            const segLen = Math.min(dash, totalLen - drawn);
+            g.beginPath();
+            g.moveTo(ax + ux * drawn, ay + uy * drawn);
+            g.lineTo(ax + ux * (drawn + segLen), ay + uy * (drawn + segLen));
+            g.strokePath();
+            drawn += dash + gap;
+        }
+    }
+
     update(time, delta) {
         if (!this.gameStarted) return;
 
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+
+        if (this.showAoiDebug) {
+            this._updateAoiDebugOverlay(mySnake);
+        }
 
         if (mySnake && mySnake.alive) {
             const head = mySnake.getHead();
@@ -778,6 +1165,9 @@ export class Game extends Phaser.Scene {
             if (head?.active) {
                 let targetAngleRad;
                 let isBoosting;
+                // Deadzone / epsilon guard bunu false yaparsa: aci ne yerel tahmine
+                // ne de aga gonderilir (yalniz boost islenir).
+                let sendAngle = true;
 
                 const mob = window.mobileInput;
                 if (mob?.enabled) {
@@ -787,8 +1177,12 @@ export class Game extends Phaser.Scene {
                     isBoosting = mob.boostActive;
                     if (mob.joystickActive && mob.joystickMagnitude > 0.1) {
                         targetAngleRad = mob.joystickAngle;
+                        this._lastCommittedAngleRad = targetAngleRad;
                     } else {
-                        targetAngleRad = head.rotation; // parmak yoksa yönü koru
+                        // Parmak yoksa yönü koru VE paket gönderme (eskiden her frame
+                        // head.rotation gönderiliyordu — gereksiz trafik).
+                        targetAngleRad = this._lastCommittedAngleRad ?? head.rotation;
+                        sendAngle = false;
                     }
                 } else {
                     // ── Desktop: mouse ────────────────────────────────────────
@@ -796,11 +1190,39 @@ export class Game extends Phaser.Scene {
                     isBoosting   = this.pointer.isDown;
                     const worldPoint = this.cameras.main.getWorldPoint(this.pointer.x, this.pointer.y);
 
-                    // Dead zone: mouse head'e çok yakınsa sayısal kararsızlık oluşur.
-                    const STEER_DEAD_ZONE_PX = 35;
+                    // ── Steering deadzone + açı epsilon guard ──────────────────
+                    // Mouse head merkezine çok yakınken atan2 mikro-harekete aşırı
+                    // duyarlı olur (açı aniden ~onlarca derece sıçrar) → her frame
+                    // farklı quantize açı → sunucuya paket spam'i + görsel titreme.
+                    //  1) MIN_ROTATION_RADIUS içinde: açıyı YENİDEN HESAPLAMA ve
+                    //     paket GÖNDERME (yön korunur, yılan düz devam eder).
+                    //  2) Dışında bile: açı son TAAHHÜT edilenden ANGLE_EPSILON'dan
+                    //     az değiştiyse gönderme (mikro-float dalgalanması susar).
+                    // Fark SARILMIŞ (wrap) alınır ki ±π sınırında (ör. +179°→−179°,
+                    // gerçekte 2°'lik değişim) yapay dev fark oluşup guard'ı atlamasın.
+                    // targetAngleRad hem wire hem yerel tahmine besleneceği için,
+                    // bastırıldığında taahhüt edilen açıya sabitlenir → client ve
+                    // sunucu aynı açıyı tutar (drift yok).
+                    const MIN_ROTATION_RADIUS = 35;   // px
+                    const ANGLE_EPSILON = 0.03;       // rad (~1.7°)
                     const distToMouse = Phaser.Math.Distance.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-                    const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
-                    targetAngleRad    = distToMouse > STEER_DEAD_ZONE_PX ? rawAngleRad : head.rotation;
+
+                    if (distToMouse < MIN_ROTATION_RADIUS) {
+                        targetAngleRad = this._lastCommittedAngleRad ?? head.rotation;
+                        sendAngle = false;
+                    } else {
+                        const rawAngleRad = Phaser.Math.Angle.Between(head.x, head.y, worldPoint.x, worldPoint.y);
+                        const prev = this._lastCommittedAngleRad;
+                        if (prev !== null && prev !== undefined
+                                && Math.abs(Phaser.Math.Angle.Wrap(rawAngleRad - prev)) <= ANGLE_EPSILON) {
+                            targetAngleRad = prev;   // değişim epsilon altında — taahhüdü koru
+                            sendAngle = false;
+                        } else {
+                            targetAngleRad = rawAngleRad;
+                            this._lastCommittedAngleRad = rawAngleRad;
+                            sendAngle = true;
+                        }
+                    }
                 }
 
                 // ── Determinizm: açıyı ÖNCE ağ formatına (0-250) kuantala, sonra
@@ -812,16 +1234,40 @@ export class Game extends Phaser.Scene {
                 const wireAngle = NetworkManager.quantizeAngleDeg(Phaser.Math.RadToDeg(targetAngleRad));
                 const predictedAngleRad = Phaser.Math.DegToRad(wireAngle * 1.44);
 
-                this.networkManager.updateAndSendInput(wireAngle, isBoosting, delta);
+                // Ağa HEMEN gönder — gecikme eklenmez.
+                this.networkManager.updateAndSendInput(wireAngle, isBoosting, delta, sendAngle);
 
-                // İstemci tarafı tahminleme — sunucunun göreceği açıyla birebir aynı.
-                mySnake.updateFromInput(predictedAngleRad, isBoosting, delta, this.networkManager.nextSequenceId);
+                // ── INPUT-DELAY ALIGNMENT ─────────────────────────────────────
+                // Lokal tahmine input ~tek-yön gecikme (+18 ms gönderim/tick marjı)
+                // kadar GEÇ uygulanır: client ve server dönüşe aynı simülasyon
+                // anında başlar, dönüş sırasında sunucu arkı geride kalmaz →
+                // reconciliation'ın geri-çekme ihtiyacı (dönüşte yavaşlama hissi)
+                // büyük ölçüde hiç oluşmaz.
+                if (!this._inputDelayQueue) this._inputDelayQueue = [];
+                const oneWayMs = Phaser.Math.Clamp(
+                    (Number.isFinite(this.currentPingMs) ? this.currentPingMs : 100) / 2, 20, 120) + 18;
+                this._inputDelayQueue.push({ t: time + oneWayMs, angle: predictedAngleRad, boost: isBoosting });
+                if (this._inputDelayQueue.length > 240) this._inputDelayQueue.shift();
+
+                let applied = this._lastDelayedInput;
+                while (this._inputDelayQueue.length && this._inputDelayQueue[0].t <= time) {
+                    applied = this._inputDelayQueue.shift();
+                }
+                this._lastDelayedInput = applied;
+                const applyAngle = applied ? applied.angle : (mySnake.movementAngle ?? head.rotation);
+                const applyBoost = applied ? applied.boost : isBoosting;
+
+                // İstemci tarafı tahminleme — sunucunun göreceği açıyla birebir
+                // aynı değer, sunucuyla aynı simülasyon anında.
+                mySnake.updateFromInput(applyAngle, applyBoost, delta, this.networkManager.nextSequenceId);
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 // baseZoom: ekran boyutuna göre belirlenen taban zoom (bkz. computeBaseZoom)
                 const targetZoom = this.baseZoom / (1.0 + (mySnake.scale - 1.0) * 0.12);
                 const currentZoom = this.cameras.main.zoom;
-                const zoomLerp = 0.05;
+                // Frame-rate-agnostik üstel yumuşatma: eski sabit 0.05/frame,
+                // 120Hz'de iki kat hızlı yakınsıyordu. 3.0/s ≈ 0.05 @60fps.
+                const zoomLerp = 1 - Math.exp(-3.0 * (delta / 1000));
                 this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
             }
         }
@@ -848,126 +1294,140 @@ export class Game extends Phaser.Scene {
             }
         }
 
-        // İstemci tarafı görsel mıknatıs çekim efekti + anında yeme tahmini (Client-side food magnet + eat prediction)
-        // Sunucu ile aynı yeme yarıçapı (45 * scale px) kullanılır. Oyuncunun yılanı bu mesafede bir yeme
-        // girince yemi hemen eatingFoods'a taşırız; sunucu onayı (~100ms sonra) gelince sadece seti temizleriz.
+        // ── GÖREV 1: Birleşik eşikli yeme tahmini (rubber-band'siz) ──────────
+        // Yem KONUMU asla değişmez (yaslanma/geri-dönüş kaldırıldı). Çekim
+        // (uçuş) YALNIZCA oyuncu kafası birleşik eşiğe — foodEatRadiusPx(scale),
+        // sunucu FoodConfig.eatRadiusPx ile BİREBİR — girince tetiklenir. Sunucu
+        // da yalnızca bu yarıçapta yer; dolayısıyla client'ın çekip sunucunun
+        // yemediği bir ara-bant YOKTUR → geri-zıplama yapısal olarak imkânsız.
         const dt = delta / 1000;
-        const PULL_SPEED_FACTOR = 12.0;
-        const EAT_RADIUS_FACTOR = 45.0; // Sunucunun FoodCollisionResolveSystem'deki değeriyle birebir eşleşir
+        const nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-        // Tahmin edilen yemleri döngü dışında işlemek için toparla
+        // mySnake yukarıda (update başında) tanımlı — yeniden bildirme.
+        const myHead = (mySnake && mySnake.alive && mySnake.getHead()?.active) ? mySnake.getHead() : null;
+        const myEatRadius = myHead ? foodEatRadiusPx(mySnake.scale) : 0;
+        const myEatRadiusSq = myEatRadius * myEatRadius;
+
+        // GÖREV 2: şimmer (twinkle) faz açısal hızı — nowMs (ms) tabanlı, tüm
+        // yemler için tek kez hesaplanır; döngü içinde yem başına yalnızca bir
+        // sin + alpha yazımı kalır (4000 yemde bile <0.1ms, ekstra draw-call yok).
+        const shimmerOmega = FOOD_SHIMMER_HZ * Math.PI * 2 / 1000;
+
+        // Tahmin edilen yemleri döngü dışında işlemek için toparla (this.foods'u
+        // iterasyon sırasında değiştirmemek için).
         const predictedEats = [];
 
-        for (const [foodId, bobs] of this.foods) {
-            const bobsArray = Array.isArray(bobs) ? bobs : [bobs];
-            const centerBob = bobsArray[0];
-            if (!centerBob) continue;
+        for (const [foodId, food] of this.foods) {
+            const bob = food.bob;
+            if (!bob) continue;
 
-            const origX = centerBob.originalX !== undefined ? centerBob.originalX : centerBob.x;
-            const origY = centerBob.originalY !== undefined ? centerBob.originalY : centerBob.y;
+            // GÖREV 2: faz-kaymalı alpha nabzı (senkron olmayan canlı parıltı).
+            // (fade-in dalı kaldırıldı — tek üreticisi olan _restoreFoodNode artık yok.)
+            bob.alpha = FOOD_SHIMMER_MIN_ALPHA
+                + FOOD_SHIMMER_AMP * (0.5 + 0.5 * Math.sin(nowMs * shimmerOmega + food.shimmerPhase));
 
-            let playerEatSnake = null;   // Oyuncu yılanı yeme yarıçapındaysa
-            let remoteSnake   = null;    // Uzak yılan için mıknatıs çekimi
-            let remoteDist    = Infinity;
-
-            for (const snake of this.snakes.values()) {
-                if (!snake.alive || !snake.getHead()?.active) continue;
-                const head = snake.getHead();
-                const eatRadius = EAT_RADIUS_FACTOR * snake.scale;
-
-                const dx = head.x - origX;
-                const dy = head.y - origY;
-                const distSq = dx * dx + dy * dy;
-                if (distSq > eatRadius * eatRadius) continue;
-
-                if (snake.isPlayerControlled) {
-                    // Oyuncunun yılanı yeme menzilinde → hemen tahminle ye
-                    playerEatSnake = snake;
-                    break; // Oyuncu önceliği
-                }
-
-                const dist = Math.sqrt(distSq);
-                if (dist < remoteDist) {
-                    remoteDist  = dist;
-                    remoteSnake = snake;
-                }
-            }
-
-            if (playerEatSnake) {
-                // Sunucu onayı beklenmeden anında animasyona geç
-                predictedEats.push({ foodId, bobsArray, targetSnake: playerEatSnake });
-                continue;
-            }
-
-            if (remoteSnake) {
-                // Uzak yılan: sunucu onayı gelene kadar görsel mıknatıs çekimi uygula
-                const head = remoteSnake.getHead();
-                bobsArray.forEach(bob => {
-                    bob.x += (head.x - bob.x) * PULL_SPEED_FACTOR * dt;
-                    bob.y += (head.y - bob.y) * PULL_SPEED_FACTOR * dt;
-                });
-            } else {
-                // Menzil dışında: orijinal konuma geri dön
-                bobsArray.forEach(bob => {
-                    const oX = bob.originalX !== undefined ? bob.originalX : bob.x;
-                    const oY = bob.originalY !== undefined ? bob.originalY : bob.y;
-                    const dx = oX - bob.x;
-                    const dy = oY - bob.y;
-                    if (Math.hypot(dx, dy) > 0.1) {
-                        bob.x += dx * PULL_SPEED_FACTOR * dt;
-                        bob.y += dy * PULL_SPEED_FACTOR * dt;
-                    } else {
-                        bob.x = oX;
-                        bob.y = oY;
+            // Commit YALNIZCA oyuncu için ve birleşik eşikte (yemin kalıcı orijin
+            // konumuna göre — sunucu geometrisiyle senkron). Rakiplerin yemesi
+            // client'ta tahmin EDİLMEZ; sunucu FOOD_REMOVE'u ile onaylanır.
+            // ÖN YAY KAPISI: kafanın hareket yönüne göre ARKADA kalmış yem
+            // tahminle çekilmez (geriye doğru yankılanma görüntüsü yok) — çok
+            // yakın merkez bölgesi hariç (kafa üstünden geçen yem her yönde
+            // yenir). Sunucu arkadaki yemi yine yerse FOOD_REMOVE onayı
+            // removeFood → _beginFoodEatingFlight yolundan animasyonu başlatır.
+            if (myHead) {
+                const fx = bob.x - myHead.x;
+                const fy = bob.y - myHead.y;
+                const distSq = fx * fx + fy * fy;
+                if (distSq <= myEatRadiusSq) {
+                    const coreSq = myEatRadiusSq * 0.16; // r·0.4 içinde yön şartı aranmaz
+                    const inFrontArc = fx * Math.cos(myHead.rotation) + fy * Math.sin(myHead.rotation) >= 0;
+                    if (inFrontArc || distSq <= coreSq) {
+                        predictedEats.push({ foodId, food });
                     }
-                });
+                }
             }
         }
 
-        // Tahmin edilen yemeleri ana döngüden sonra işle (bu.foods'u güvenle değiştirebiliriz)
-        for (const { foodId, bobsArray, targetSnake } of predictedEats) {
-            if (this.predictedEatenFoodIds.has(foodId)) continue; // Aynı kare içinde tekrar tahmin önlemi
-            this.predictedEatenFoodIds.add(foodId);
+        // Tahmin edilen yemeleri işle: pending-consumption katmanına al, uçuşu
+        // başlat, skoru spekülatif ekle. Sunucu onayı FOOD_REMOVE ile gelir.
+        for (const { foodId, food } of predictedEats) {
+            if (this.pendingConsumption.has(foodId)) continue; // aynı kare tekrar önlemi
             this.foods.delete(foodId);
-            this.eatingFoods.set(foodId, { bobs: bobsArray, targetSnake });
-            this.addPlayerScoreForFood(); // predictedEats her zaman oyuncunun yılanıdır
+            // Kayıt artık YALNIZCA bir "onay bekliyor" işaretidir: sunucu
+            // FOOD_REMOVE'u geldiğinde çift sayımı önler ve süre aşımında
+            // düşürülür. Yemi diriltmek için orijin/renk saklamaya gerek YOK
+            // (dirilme kaldırıldı — bkz. aşağıdaki süre aşımı notu).
+            this.pendingConsumption.set(foodId, { predictedAtMs: nowMs });
+            this._beginFoodEatingFlight(foodId, food, mySnake);
+            this.addPlayerScoreForFood(food.value); // predictedEats her zaman oyuncunun yılanıdır
         }
 
-        // Yenen yemlerin yılan kafasına uçarak yok olması animasyonu (Deferred food eat/magnet animation)
+        // ── BEKLEYEN TAHMİNLERİN SÜRE AŞIMI ─────────────────────────────────
+        // Süre dolduğunda kayıt SADECE DÜŞÜRÜLÜR: skor geri alınmaz, yem geri
+        // getirilmez.
+        //
+        // NEDEN (iki hatanın ortak kök nedeni): eski davranış, onay gecikmesini
+        // "sunucu reddetti" sanıp skoru geri alıyor ve yemi YENİDEN OLUŞTURUYORDU.
+        // Oysa gecikme reddin kanıtı DEĞİL, yalnızca gecikmenin kanıtıdır —
+        // sunucu yemi gerçekte yemiştir. Yoğun ölüm-düşümü kümelerinde
+        // (çok botlu test) FoodMutationCollection paketleri büyüyüp gönderim
+        // kuyruğu şiştiğinde onay 1000 ms'i rahatça aşıyordu ve sonuç:
+        //   1. Skor, sunucu puanı verdiği halde geri alınıyordu (skor DÜŞÜYOR).
+        //   2. Sunucuda ARTIK VAR OLMAYAN yem client'ta diriliyordu (hayalet).
+        // Üstelik kendi kendini besliyordu: dirilen yem this.foods'a geri
+        // girdiğinden kafa hâlâ üzerindeyken bir sonraki karede yeniden tahmin
+        // ediliyor (+değer), 1000 ms sonra yine geri alınıyor (−değer) ve yine
+        // diriltiliyordu → asla yenemeyen, sonsuza dek salınan yem.
+        //
+        // Sunucu OTORİTERDİR: yanlış bir tahmin varsa doğru durum zaten bir
+        // sonraki tam FoodCollection anlık görüntüsüyle uzlaştırılır
+        // (onFoodCollection, gelen listede olmayan yemleri siler / eksikleri
+        // ekler). Zamanlayıcıya dayalı dirilme bu yolun yerini alamaz.
+        if (this.pendingConsumption.size > 0) {
+            for (const [foodId, rec] of this.pendingConsumption) {
+                if (nowMs - rec.predictedAtMs < FOOD_PREDICTION_TIMEOUT_MS) continue;
+                this.pendingConsumption.delete(foodId);
+            }
+        }
+
+        // Yenen yemin kafa merkezine üstel snap ile uçup zamanla küçülerek yok
+        // olması. Hedef her frame CANLI kafa merkezi; üstel lerp mesafenin sabit
+        // bir oranını her frame kapattığından yem kafayı asla arkadan takip
+        // etmez, orbit/looping yapmaz.
         this.eatingFoods.forEach((data, foodId) => {
-            const { bobs, targetSnake } = data;
+            const { sprite, targetSnake } = data;
+            if (!sprite || !sprite.active) {
+                this.eatingFoods.delete(foodId);
+                return;
+            }
             if (!targetSnake.alive || !targetSnake.getHead()?.active) {
-                // Yiyen yılan öldüyse veya aktif değilse yemleri hemen temizle
-                bobs.forEach(bob => bob.destroy());
+                // Yiyen yılan öldüyse/aktif değilse yemi hemen temizle.
+                sprite.destroy();
                 this.eatingFoods.delete(foodId);
                 return;
             }
 
             const head = targetSnake.getHead();
-            let allReached = true;
-            const EATING_PULL_SPEED = 18.0; // Uçuş hızı daha canlı ve hızlı olsun
 
-            bobs.forEach(bob => {
-                const dx = head.x - bob.x;
-                const dy = head.y - bob.y;
-                const dist = Math.hypot(dx, dy);
+            // Frame-rate-agnostik üstel snap: kalan mesafenin k oranı kapanır.
+            const k = 1 - Math.exp(-FOOD_MAGNET_SNAP_RATE * dt);
+            sprite.x += (head.x - sprite.x) * k;
+            sprite.y += (head.y - sprite.y) * k;
 
-                if (dist > 8.0) {
-                    bob.x += dx * EATING_PULL_SPEED * dt;
-                    bob.y += dy * EATING_PULL_SPEED * dt;
-                    allReached = false;
-                } else {
-                    bob.destroy();
-                    bob.isDestroyed = true;
-                }
-            });
+            // Zaman tabanlı ölçek çöküşü: 1 → 0, FOOD_EAT_SHRINK_MS içinde.
+            data.elapsedMs += delta;
+            const s = 1 - data.elapsedMs / FOOD_EAT_SHRINK_MS;
+            const d = Math.hypot(head.x - sprite.x, head.y - sprite.y);
 
-            // Yok edilen bob'ları listeden çıkar
-            data.bobs = bobs.filter(bob => !bob.isDestroyed);
-
-            if (allReached || data.bobs.length === 0) {
+            // Süre doldu VEYA kafa merkezine değdi → ANINDA imha (artık görsel yok).
+            if (s <= 0 || d < FOOD_EAT_DESTROY_DIST) {
+                sprite.destroy();
                 this.eatingFoods.delete(foodId);
+                return;
             }
+
+            sprite.setScale(s);
+            sprite.setAlpha(0.2 + 0.8 * s); // küçülürken hafif solma
         });
 
         // Food'lar artık statik renk frame'leri kullanıyor — animasyon döngüsü gerekmiyor.
@@ -983,8 +1443,15 @@ export class Game extends Phaser.Scene {
         }
         // Update HTML HUD with real-time stats (replaced legacy fpsText)
         // Skor burada DEĞİL, yem yendiği anda güncellenir (addPlayerScoreForFood).
+        // THROTTLE (10Hz): 120Hz+ ekranda her frame DOM yazmak layout/paint
+        // baskısıyla frame süresi jitter'ı üretiyordu — görsel akıcılığı bozan
+        // tam da bu tür düzensiz uzun frame'lerdir. Sayaç için 100ms yeterli.
         if (this.gameStarted) {
-            updateHUDStats(Math.round(fps), this.currentPingMs, coordX, coordY);
+            this._hudStatsAccumMs = (this._hudStatsAccumMs ?? 0) + delta;
+            if (this._hudStatsAccumMs >= 100) {
+                this._hudStatsAccumMs = 0;
+                updateHUDStats(Math.round(fps), this.currentPingMs, coordX, coordY);
+            }
         }
 
         if (this.minimapGraphics) {
@@ -1030,8 +1497,8 @@ export class Game extends Phaser.Scene {
 
         // Draw foods as tiny dots
         g.fillStyle(0xc2caad, 0.5); // on-surface-variant
-        for (const bobs of this.foods.values()) {
-            const bob = Array.isArray(bobs) ? bobs[0] : bobs;
+        for (const food of this.foods.values()) {
+            const bob = food.bob;
             if (!bob) continue;
 
             const wx = bob.x - this.worldRadius;
@@ -1088,9 +1555,11 @@ export class Game extends Phaser.Scene {
         this.snakes.forEach(snake => snake.hardResync());
 
         // Yarım kalmış yeme animasyonları bayat koordinatlarda titreşir — bitir.
-        this.eatingFoods.forEach(({ bobs }) => bobs.forEach(bob => bob.destroy()));
+        this.eatingFoods.forEach(({ sprite }) => sprite?.destroy());
         this.eatingFoods.clear();
-        this.predictedEatenFoodIds.clear();
+        // Bekleyen tahminler bayat: sekme dönüşünde onay/timeout mantığı anlamsız,
+        // sunucu otoriter durumu hardResync ile zaten hizalandı — kayıtları temizle.
+        this.pendingConsumption.clear();
 
         // Kamerayı yeni kafa konumuna anında taşı (lerp'le sürüklenmesin).
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
