@@ -100,6 +100,11 @@ const AOIDebugConfig = {
     GAP_LENGTH: 10,
 };
 
+// Perde kalktıktan sonraki siyahtan-açılma süresi (ms). Kısa tutulur: amaç
+// bir "sahne geçişi" hissi vermek değil, hizalanmış ilk karenin ani belirmesini
+// yumuşatmak. Girdi tam da bu süre dolduğunda açılır (bkz. _revealGameplay).
+const REVEAL_FADE_MS = 180;
+
 export class Game extends Phaser.Scene {
     constructor() {
         super('Game');
@@ -178,7 +183,18 @@ export class Game extends Phaser.Scene {
         this._pointerSteeringArmed = false;
 
         this.gameStarted = false;
-        this.initialDataFlags = { startInfo: false, entities: false };
+        // selfBaseline: oyuncunun İLK otoriter SelfPosition karesi uygulandı mı.
+        // Perde (loading veil) YALNIZCA bu da true olduğunda kalkar — aksi halde
+        // oyuncu, sunucunun çoktan ilerlettiği duruma yetişen bir yılan görürdü.
+        this.initialDataFlags = { startInfo: false, entities: false, selfBaseline: false };
+
+        // ── REVEAL PIPELINE DURUMU ──────────────────────────────────────────
+        // Girdi, fade-in TAMAMLANDIĞI anda açılır (bkz. _revealGameplay).
+        // O ana kadar tahmin çalışır ama oyuncunun fare/joystick girdisi
+        // OKUNMAZ: perde ardında verilen bir yön, perde kalkar kalkmaz
+        // beklenmedik bir dönüş olarak görünürdü.
+        this._inputEnabled = false;
+        this._revealStarted = false;
         this.networkManager = new NetworkManager(this);
         // Restart/kapanışta eski soketi sessizce kapat (yeni tura 'disconnected' sızmasın)
         this.events.once('shutdown', () => this.networkManager?.disconnect());
@@ -289,6 +305,15 @@ export class Game extends Phaser.Scene {
         // varsayılan #202020 gri zemini, ızgara karosunun kaplayamadığı
         // alt-piksel kenarlarda gri bir şerit olarak görünürdü.
         this.cameras.main.setBackgroundColor(VOID_BACKGROUND_COLOR);
+
+        // ── DÜNYA KAMERASI PERDE ARDINDA KAPALI ─────────────────────────────
+        // Sunucu, oyuncu daha yükleme ekranını izlerken yılanı simüle etmeye
+        // başlar ve konum paketleri arka planda akar. Dünya kamerası açık
+        // kalsaydı, HTML perdesinin kalktığı kare ile hizalamanın tamamlandığı
+        // kare arasında CANLI (henüz hizalanmamış) durum bir an görünebilirdi.
+        // Kamera _revealGameplay'de, hizalama BİTTİKTEN sonra açılır.
+        // (HUD'u çizen uiCamera etkilenmez; HUD'un kendi gizleme yolu var.)
+        this.cameras.main.setVisible(false);
 
         // ── Zoom-independent UI camera ──────────────────────────────────────
         // Camera zoom scales scrollFactor(0) objects too: with mobile baseZoom
@@ -770,7 +795,6 @@ export class Game extends Phaser.Scene {
         if (entityId !== this.myId) return;
 
         this.initialDataFlags.entities = true;
-        this.checkInitialDataComplete();
 
         const x = Number(selfPosition?.x);
         const y = Number(selfPosition?.y);
@@ -795,7 +819,14 @@ export class Game extends Phaser.Scene {
             // olan spawn-öncesi tahmine aitti.
             this._inputDelayQueue = [];
             this._lastDelayedInput = null;
+
+            this.initialDataFlags.selfBaseline = true;
         }
+
+        // SIRA ÖNEMLİ: perde kontrolü konum UYGULANDIKTAN SONRA yapılır.
+        // Eskiden bu çağrı metodun başındaydı; perde, oyuncunun otoriter konumu
+        // yılana yazılmadan bir kare önce kalkabiliyordu.
+        this.checkInitialDataComplete();
     }
 
     onRemoveEntity(removeEntity) {
@@ -925,13 +956,85 @@ export class Game extends Phaser.Scene {
     }
 
     checkInitialDataComplete() {
-        if (!this.gameStarted && this.initialDataFlags.startInfo && this.initialDataFlags.entities) {
-            this.gameStarted = true;
-            if (!this.grid) {
-                this.createTiledBackground();
-            }
-            this.hideLoader();
+        if (this.gameStarted) return;
+        // selfBaseline KOŞULU KRİTİK: eskiden perde, StartInformation + herhangi
+        // bir entity paketi gelir gelmez kalkıyordu. Oyuncunun KENDİ otoriter
+        // konumu henüz uygulanmamış olabildiğinden, açılışta yılan spawn
+        // noktasında duruyor ve ilk SelfPosition ile sunucunun o ana kadar
+        // ilerlettiği yere doğru fırlıyordu — bildirilen "açılışta ileri sarma".
+        if (!this.initialDataFlags.startInfo
+            || !this.initialDataFlags.entities
+            || !this.initialDataFlags.selfBaseline) {
+            return;
         }
+
+        this.gameStarted = true;
+        if (!this.grid) {
+            this.createTiledBackground();
+        }
+        this._revealGameplay();
+    }
+
+    /**
+     * PERDE → HİZALA → FADE-IN → GİRDİ sırası.
+     *
+     * Sıra bilerek bu şekilde: her adım bir öncekinin tamamlandığını varsayar.
+     *  1. HİZALA — yılan(lar) ve kamera EN SON otoriter duruma ışınlanır ve
+     *     yükleme boyunca birikmiş tüm tampon atılır. Bu adım perde HÂLÂ
+     *     kapalıyken yapılır; ışınlanma hiçbir zaman ekranda görünmez.
+     *  2. PERDEYİ KALDIR — HTML overlay gider, dünya kamerası açılır. Kamera
+     *     fade'in ilk karesinde tamamen siyah olduğundan araya hizalanmamış
+     *     tek bir kare bile giremez.
+     *  3. FADE-IN — kısa (REVEAL_FADE_MS) siyahtan açılma.
+     *  4. GİRDİ — fade BİTTİĞİ anda açılır (Phaser FADE_IN_COMPLETE).
+     */
+    _revealGameplay() {
+        if (this._revealStarted) return;
+        this._revealStarted = true;
+
+        // ── 1. HİZALA (perde hâlâ kapalı) ───────────────────────────────────
+        const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+        const snapped = mySnake?.snapToServerBaseline() ?? null;
+
+        // Uzak yılanlar da yükleme boyunca snapshot biriktirdi; aralarında
+        // interpolasyon perde kalkınca "geriye sarma" olarak görünürdü.
+        this.snakes.forEach((snake) => {
+            if (snake !== mySnake) snake.snapToServerBaseline();
+        });
+
+        // Kamera hedefe LERP'SİZ kilitlenir (startFollow yumuşatması bir
+        // sonraki kareden itibaren devreye girer).
+        const head = mySnake?.getHead();
+        const focusX = snapped?.x ?? head?.x;
+        const focusY = snapped?.y ?? head?.y;
+        if (Number.isFinite(focusX) && Number.isFinite(focusY)) {
+            this.cameras.main.centerOn(focusX, focusY);
+        }
+
+        // Yükleme sırasında sıraya girmiş gecikmeli girdiler artık geçersiz:
+        // hepsi perde ardındaki (atılmış) tahmine aitti.
+        this._inputDelayQueue = [];
+        this._lastDelayedInput = null;
+
+        // ── 2. PERDEYİ KALDIR ───────────────────────────────────────────────
+        this.hideLoader();
+        this.cameras.main.setVisible(true);
+
+        // ── 3. FADE-IN ──────────────────────────────────────────────────────
+        // fadeIn ilk karede tam siyah başlar → HTML perdesi ile kamera arasında
+        // boşluk kalmaz. (Phaser fadeIn'i içeride force=true ile başlatır, yani
+        // restart'ta asılı kalmış bir efekt varsa yeniden başlatılır.)
+        this.cameras.main.fadeIn(REVEAL_FADE_MS, 0, 0, 0);
+
+        // ── 4. GİRDİYİ FADE BİTİNCE AÇ ──────────────────────────────────────
+        // Yedek zamanlayıcı: efekt bir şekilde tamamlanmazsa (sekme arka plana
+        // alınır ve kamera efekti güncellenmezse) girdi kalıcı olarak kilitli
+        // kalmamalı. İki yoldan hangisi önce gelirse girdiyi açar; _inputEnabled
+        // idempotenttir.
+        this.cameras.main.once(
+            Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE,
+            () => { this._inputEnabled = true; });
+        this.time.delayedCall(REVEAL_FADE_MS + 250, () => { this._inputEnabled = true; });
     }
 
     toId(rawId) {
@@ -1199,6 +1302,18 @@ export class Game extends Phaser.Scene {
     onDisconnected() {
         console.log("Bağlantı koptu!");
         this.gameStarted = false;
+
+        // Perde HENÜZ kalkmadıysa (reveal öncesi kopma) burada kaldırılmalı:
+        // aşağıdaki "bağlantı koptu" yazısı canvas üzerine çizilir ve opak HTML
+        // connecting-overlay'in ARKASINDA kalırdı — oyuncu boş bir yükleme
+        // ekranına bakakalırdı. Girdiyi de aç ki kilitli kalmasın.
+        if (!this._revealStarted) {
+            this._revealStarted = true;
+            hideConnectingOverlay();
+            this.cameras.main.setVisible(true);
+            this._inputEnabled = true;
+        }
+
         hideGameHUD();
         this.clearFoods();
         if (this.boundaryGraphics) {
@@ -1338,7 +1453,23 @@ export class Game extends Phaser.Scene {
                 let sendAngle = true;
 
                 const mob = window.mobileInput;
-                if (mob?.enabled) {
+                if (!this._inputEnabled) {
+                    // ── FADE-IN SÜRÜYOR: GİRDİ KİLİTLİ ────────────────────────
+                    // Kontroller tam olarak fade tamamlandığında açılır (bkz.
+                    // _revealGameplay). Perde ardında/fade sırasında verilen bir
+                    // yön, görüntü açılır açılmaz oyuncunun istemediği ani bir
+                    // dönüş olarak görünürdü.
+                    //
+                    // Tahmin DURMAZ: sunucu bu sırada yılanı hareket ettirmeye
+                    // devam ediyor. Sunucunun bildiği hedef açıda (spawn yönü ya
+                    // da son taahhüt) düz ilerlenir — iki simülasyon ayrışmaz.
+                    // Boost da okunmaz; sunucuya hiçbir girdi paketi gitmez.
+                    isBoosting = false;
+                    targetAngleRad = this._spawnHeadingRad
+                        ?? this._lastCommittedAngleRad
+                        ?? head.rotation;
+                    sendAngle = false;
+                } else if (mob?.enabled) {
                     // ── Mobile: virtual joystick + boost button ───────────────
                     // Joystick açısı doğrudan ekran koordinatlarında atan2(dy,dx) olarak
                     // hesaplanır; kamera döndürme olmadığından world space ile örtüşür.

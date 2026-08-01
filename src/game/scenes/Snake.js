@@ -1284,6 +1284,83 @@ export class Snake {
         return true;
     }
 
+    /**
+     * REVEAL SNAP — perde kalkmadan hemen önce EN SON otoriter konuma ışınla.
+     *
+     * Neden ayrı bir adım: sunucu, oyuncu daha yükleme perdesini izlerken
+     * simülasyona başlar. O süre boyunca client'ın update() döngüsü kapalıdır
+     * (gameStarted false) — yani sim spawn noktasında beklerken selfServerTarget
+     * yüzlerce piksel ötelenir. Perde kalktığı anda reconciliation bu farkı
+     * kapatmaya çalışır: fark RECON_HARD_SNAP_DISTANCE'in altındaysa yılan
+     * ekranda hızla süzülür ("fast-forward"), üstündeyse görünür bir ışınlanma
+     * yapar. Her iki durumda da oyuncu, oyunun ilk anını bir düzeltme olarak
+     * görür.
+     *
+     * Çözüm: perde kalkmadan ÖNCE farkı sıfırla. Görsel katman, mantıksal sim,
+     * gövde path'i ve segmentler tek adımda en son otoriter konuma oturur;
+     * yükleme boyunca birikmiş TÜM tampon (tahmin geçmişi, EMA hata, uzak
+     * snapshot'lar, hız) atılır — hiçbir şey yükleme aralığı boyunca
+     * interpolasyona sokulmaz.
+     *
+     * @returns {{x:number, y:number}|null} kameranın kilitleneceği nihai konum.
+     */
+    snapToServerBaseline() {
+        if (!this.head?.active) return null;
+
+        // Oyuncunun yılanı için otoriter kaynak selfServerTarget, uzak yılanlar
+        // için networkTarget'tir. Henüz hiç paket gelmediyse mevcut konumda kal
+        // (uydurma bir koordinata ışınlanmak, olmayan bir sorunu kötüleştirirdi).
+        const hasTarget = this.isPlayerControlled ? this.hasSelfServerState : this.hasServerState;
+        const target = this.isPlayerControlled ? this.selfServerTarget : this.networkTarget;
+        const x = hasTarget && Number.isFinite(target.x) ? target.x : this.head.x;
+        const y = hasTarget && Number.isFinite(target.y) ? target.y : this.head.y;
+
+        if (this.isPlayerControlled) {
+            this.sim.x = x;
+            this.sim.y = y;
+            this.vel.x = 0;
+            this.vel.y = 0;
+            // Rotasyon: SelfPosition açı TAŞIMAZ (bkz. self-position.proto) —
+            // otoriter yön, sunucunun spawn'da verdiği ve o günden beri client
+            // girdisiyle ilerleyen movementAngle'dır. Sprite'ı ona AYNEN eşitle
+            // ki perde kalktığında görsel açı ile mantıksal açı ayrışmasın.
+            this.head.rotation = this.movementAngle;
+            this.selfServerTargetHeading = this.movementAngle;
+        } else if (Number.isFinite(target.angle)) {
+            this.head.rotation = target.angle;
+        }
+
+        this.head.setPosition(x, y);
+        this._pathFollower.x = x;
+        this._pathFollower.y = y;
+
+        // Gövdeyi kafanın ARKASINA yeniden kur ve segmentleri hemen oturt:
+        // yükleme boyunca örneklenmiş bayat path, perde kalktığında yılanı
+        // eski konuma doğru uzayan bir kuyrukla gösterirdi.
+        this._initPathWarmup(x, y);
+        this._positionSegmentsByPath();
+
+        // ── TÜM YÜKLEME-DÖNEMİ TAMPONLARINI AT ──────────────────────────────
+        // Tahmin geçmişi + EMA hata + hysteresis latch.
+        this._resetReconciliationState();
+        // Uzak yılan snapshot buffer'ı: yükleme boyunca birikmiş örnekler
+        // arasında interpolasyon, perde kalkınca geriye sarma üretirdi.
+        this._snapshots.length = 0;
+        this._packetIntervalEmaMs = null;
+        this._lastSnapshotAt = 0;
+        if (this._remoteVel) {
+            this._remoteVel.x = 0;
+            this._remoteVel.y = 0;
+        }
+        this._remoteLastPacketAt = 0;
+
+        // Baseline artık kesinlikle kurulu: reconciliation bir sonraki paketten
+        // itibaren normal (yumuşatmalı) modda çalışır.
+        this._hasSpawnBaseline = true;
+
+        return { x, y };
+    }
+
     updateSelfPositionFromServer(entityData) {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
