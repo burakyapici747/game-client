@@ -124,6 +124,17 @@ export class NetworkManager {
 
         // Sıralama: sunucu bunu 5 sn'de birden sık GÖNDERMEZ ve yalnızca
         // sıralama değiştiğinde ekler — alan çoğu pakette hiç bulunmaz.
+        //
+        // TEK İSTİSNA: handshake. Sunucu, StartInformation zarfına da o anki
+        // sıralama anlık görüntüsünü ekler (bkz. Game.buildInitialLeaderboard),
+        // böylece oyuncu 5 sn'lik yayın penceresini beklemeden listeyi görür.
+        // Alan `oneof` DIŞINDA olduğu için bu blok her iki durumu da tek yoldan
+        // karşılar; ayrı bir handshake dalı gerekmez.
+        //
+        // SIRA ÖNEMLİ: bu emit, aşağıdaki 'start_game'den ÖNCE gelir. onStartGame
+        // sıralama hâlâ boşsa "Connecting…" yer tutucusunu boş çerçeveyle
+        // değiştirir; sıralamayı önce işlemek o yedek yolun gereksiz yere
+        // çalışmasını (ve aynı karede iki kez DOM yazılmasını) önler.
         const leaderboardUpdate =
             envelope.leaderboardUpdate ?? envelope.leaderboard_update;
         if (leaderboardUpdate) {

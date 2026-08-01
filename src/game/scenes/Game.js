@@ -308,10 +308,17 @@ export class Game extends Phaser.Scene {
 
         this.registerHUD(this.minimapGraphics);
 
-        // Bağlantı öncesi yer tutucu liste. null → overlays.js mockup'ı çizer;
-        // ilk gerçek 'leaderboard_update' paketi geldiğinde tamamen değişir.
-        // (Eskiden [] geçiliyordu; artık boş dizi GEÇERLİ bir "0 oyuncu"
-        // sıralaması anlamına geldiği için yer tutucu ile karışmamalı.)
+        // Sunucudan GEÇERLİ bir sıralama paketi işlendi mi? Restart'ta Phaser
+        // sahne örneğini yeniden kullandığı için bayrak create() içinde
+        // sıfırlanmalı — aksi halde yeni turda eski turun bayrağı taşınır ve
+        // onStartGame'deki boş-çerçeve yedeği hiç çalışmaz.
+        this.leaderboardReady = false;
+
+        // Bağlantı öncesi yer tutucu liste. null → overlays.js "Connecting…"
+        // çizer; ilk gerçek 'leaderboard_update' paketi geldiğinde tamamen
+        // değişir. (Eskiden [] geçiliyordu; artık boş dizi GEÇERLİ bir
+        // "0 oyuncu" sıralaması anlamına geldiği için yer tutucu ile
+        // karışmamalı.)
         updateHUDLeaderboard(null);
 
         // Bağlantı ekranı artık Phaser içinde çizilmiyor — HTML/CSS overlay
@@ -433,6 +440,28 @@ export class Game extends Phaser.Scene {
             Number.isFinite(startScale) ? startScale : undefined,
             startDirection
         );
+
+        // ── SIRALAMA: YER TUTUCUYU HANDSHAKE'TE KAPAT ───────────────────────
+        // Normal akışta sunucu sıralamayı bu zarfın İÇİNDE gönderir ve
+        // 'leaderboard_update' bu noktadan önce işlenmiş olur (bkz.
+        // NetWorkManager.handleMessage sırası) → leaderboardReady true'dur ve
+        // burada yapılacak bir şey yoktur.
+        //
+        // Bu dal yalnızca sıralama gelmediğinde çalışır: sıralamayı handshake'e
+        // eklemeyen ESKİ bir sunucu. O durumda "Connecting…" yer tutucusu ilk
+        // periyodik yayına (5 sn'ye kadar) dek ekranda asılı kalırdı. Handshake
+        // tamamlandığına göre bağlantı aşaması bitmiştir; yer tutucu yerine
+        // nötr BOŞ ÇERÇEVE çizilir ve ilk gerçek paket onu doldurur.
+        if (!this.leaderboardReady) {
+            updateHUDLeaderboard({
+                entries: [],
+                totalPlayers: 0,
+                selfRank: 0,
+                selfScore: 0,
+                selfName: window.gameSettings?.nickname || 'You',
+            });
+        }
+
         this.checkInitialDataComplete();
     }
 
@@ -963,11 +992,18 @@ export class Game extends Phaser.Scene {
 
     // ── SIRALAMA PAKETİ ─────────────────────────────────────────────────────
     // Sunucu bunu 5 sn'de birden sık göndermez ve yalnızca sıralama
-    // değiştiğinde ekler (bkz. server LeaderboardSystem). Burada sadece wire
-    // formatı UI şekline çevrilir; DOM verimliliği overlays.js tarafında
-    // (satır havuzu + fark tabanlı yazma) çözülür.
+    // değiştiğinde ekler (bkz. server LeaderboardSystem) — TEK istisna, aynı
+    // alanın handshake zarfına da eklenmesidir (bkz. Game.buildInitialLeaderboard);
+    // ilk çağrı normalde oradan gelir. Burada sadece wire formatı UI şekline
+    // çevrilir; DOM verimliliği overlays.js tarafında (satır havuzu + fark
+    // tabanlı yazma) çözülür.
     onLeaderboardUpdate(leaderboardUpdate) {
         if (!leaderboardUpdate) return;
+
+        // Geçerli bir paket işlendi: "Connecting…" yer tutucusuna bir daha
+        // dönülmez. BOŞ liste de geçerlidir — "0 oyuncu" anlamına gelir ve
+        // aşağıda boş çerçeve olarak çizilir (bkz. updateHUDLeaderboard).
+        this.leaderboardReady = true;
 
         const rawEntries = Array.isArray(leaderboardUpdate.entries) ? leaderboardUpdate.entries : [];
         const entries = rawEntries.map((entry) => ({
