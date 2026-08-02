@@ -82,6 +82,26 @@ const SnakeConfig = {
     // per-frame alternating corrections are attenuated ~3x.
     PATH_SMOOTHING_FACTOR: 0.5,
 
+    // ── EĞRİLİK FARKINDALI PATH WARMUP ──────────────────────────────────
+    // Protokol segment koordinatı GÖNDERMEZ (yalnızca kafa x/y/açı + sct);
+    // gövde tamamen istemcide yeniden kurulur. Bir yılan AOI'ye ilk girdiğinde
+    // GEÇMİŞ yolu bilinmediğinden eski warmup düz bir ışın seriyordu — o anda
+    // dönmekte/kıvrılmakta olan yılan birkaç kare ÇUBUK gibi görünüp sonra
+    // gerçek şekline sıçrıyordu.
+    //
+    // Çözüm: ardışık sunucu snapshot'larından İŞARETLİ EĞRİLİK kestirilir ve
+    // warmup düz ışın yerine o eğrilikte bir YAY serer.
+    //     k = Δaçı / Δmesafe   [rad/piksel]
+    // Hız bilgisi gerekmez; k doğrudan geometriktir ve yay boyunca geriye
+    // gidildikçe yönü k*spacing kadar döndürmek yeterlidir.
+    WARMUP_CURVATURE_MAX: 0.030,      // rad/px kelepçe — gürültülü örnek spiral üretmesin
+    WARMUP_CURVATURE_EMA: 0.5,        // örnek başına yumuşatma ağırlığı
+    WARMUP_MIN_SAMPLE_DIST: 0.75,     // px — altındaki hareket saf açı gürültüsüdür
+    // İlk eğrilik kestirimi geldiğinde path bir kez yeniden serilir — ancak
+    // gerçek hareketle henüz bu kadar yol örneklenmemişse. Aksi halde GERÇEK
+    // geçmişin üstüne sentetik yay yazmış olurduk.
+    WARMUP_RESEED_MAX_REAL_LEN: 24,   // px
+
     // DEBUG: render a ghost marker at the raw server-authoritative head
     // position (player snake only). Visual overlay only — no effect on
     // prediction or reconciliation. Set to false to hide.
@@ -151,6 +171,16 @@ export class Snake {
         this._snapshots = [];                 // {t, x, y, angle} (performance.now)
         this._packetIntervalEmaMs = null;     // sunucu paket aralığı EMA'sı
         this._lastSnapshotAt = 0;
+
+        // ── Eğrilik kestirimi (path warmup için) ─────────────────────────
+        // _curvature: işaretli rad/piksel (+ sola dönüş). Ardışık sunucu
+        // snapshot'larından kestirilir; warmup'ta düz ışın yerine yay serer.
+        this._curvature = 0;
+        this._hasCurvature = false;
+        this._lastCurvSample = null;          // {x, y, angle}
+        // Son warmup'tan beri GERÇEK hareketle örneklenmiş yol uzunluğu.
+        // Sentetik yayın gerçek geçmişin üstüne yazılmasını engeller.
+        this._realPathLen = 0;
 
         // Time-aligned reconciliation state (player-controlled only)
         this._predHistory = [];               // ring of {t, x, y} (performance.now)
@@ -541,6 +571,12 @@ export class Snake {
         this.pathSegLens = [];
         this.totalPathLen = 0;
         this._pathFollower = null;
+        // Eğrilik kestirimi de sıfırlanır: geri dönüştürülmüş entity id ile
+        // doğan YENİ yılan, ölen yılanın dönüş yönünü miras almamalı.
+        this._curvature = 0;
+        this._hasCurvature = false;
+        this._lastCurvSample = null;
+        this._realPathLen = 0;
 
         // 3) İnterpolasyon / tahmin buffer'ları — eski yaşamın yörünge verisi
         // yeni yaşama sızamaz. TÜM alanlar null-guard'lı: burada korumasız
@@ -564,6 +600,10 @@ export class Snake {
         if (this._snapshots) this._snapshots.length = 0;
         this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
+        // Eğrilik örnek ÇİFTİ de bayat: süreksizlikten önceki örnekle sonraki
+        // arasında Δaçı/Δmesafe anlamsızdır. Kestirimin KENDİSİ (_curvature)
+        // korunur — hemen ardından gelen warmup'ın yayı için hâlâ geçerlidir.
+        this._lastCurvSample = null;
         this.hasServerState = false;
         this.hasSelfServerState = false;
         this._hasSpawnBaseline = false;
@@ -939,6 +979,10 @@ export class Snake {
         this._snapshots.length = 0;
         this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
+        // Eğrilik örnek ÇİFTİ de bayat: süreksizlikten önceki örnekle sonraki
+        // arasında Δaçı/Δmesafe anlamsızdır. Kestirimin KENDİSİ (_curvature)
+        // korunur — hemen ardından gelen warmup'ın yayı için hâlâ geçerlidir.
+        this._lastCurvSample = null;
 
         // Path geçmişi artık bayat — kafanın güncel konumundan yeniden kur ve
         // segmentleri hemen yerine oturt.
@@ -993,16 +1037,33 @@ export class Snake {
         this.path = [new Phaser.Math.Vector2(x, y)];
         this.pathSegLens = [];
         this.totalPathLen = 0;
+        // Yeni path tamamen SENTETİK — henüz tek bir gerçek örnek içermiyor.
+        this._realPathLen = 0;
+
         const spacing = this.getSegmentSpacing();
-        const needLen = (this.segments.length + 1) * spacing + 400;
+        // sct = MANTIKSAL segment sayısı. Tüm düğümler tek seferde doldurulur;
+        // gövde ilk kareden itibaren tam uzunlukta ve şekillidir.
+        const needLen = (this.sct + 1) * spacing + 400;
         const angle = this.head ? this.head.rotation : 0;
-        const dir = new Phaser.Math.Vector2(-Math.cos(angle), -Math.sin(angle));
+
+        // İşaretli eğrilik: yay boyunca GERİYE yürürken yön her adımda
+        // k*spacing kadar geri döner. Eğrilik bilinmiyorsa k=0 → sonuç eski
+        // düz ışınla BİREBİR aynıdır (davranış regresyonu yok).
+        const k = this._hasCurvature ? this._curvature : 0;
+
+        let heading = angle;
         for (let carried = 0; carried < needLen; carried += spacing) {
             const last = this.path[this.path.length - 1];
-            const next = new Phaser.Math.Vector2(last.x + dir.x * spacing, last.y + dir.y * spacing);
+            // Geriye bir adım: o noktadaki teğetin TERSİ yönünde.
+            const next = new Phaser.Math.Vector2(
+                last.x - Math.cos(heading) * spacing,
+                last.y - Math.sin(heading) * spacing
+            );
             this.path.push(next);
             this.pathSegLens.push(spacing);
             this.totalPathLen += spacing;
+            // Bir önceki (zamanda daha eski) düğümün teğeti.
+            heading -= k * spacing;
         }
     }
 
@@ -1022,6 +1083,10 @@ export class Snake {
             this.path.unshift(hp.clone());
             this.pathSegLens.unshift(dist);
             this.totalPathLen += dist;
+            // Gerçek gözlemlenen hareket birikir — bu değer büyüdükçe path
+            // artık sentetik değildir ve yeniden serilmesi YASAKLANIR
+            // (bkz. WARMUP_RESEED_MAX_REAL_LEN).
+            this._realPathLen += dist;
             const spacing = this.getSegmentSpacing();
             const maxNeeded = (this.segments.length + 2) * spacing + 600;
             while (this.totalPathLen > maxNeeded && this.path.length > 2) {
@@ -1146,6 +1211,40 @@ export class Snake {
         return { x: tail.x, y: tail.y, angle: this.head.rotation };
     }
 
+    // Ardışık iki otoriter örnekten İŞARETLİ EĞRİLİĞİ (rad/piksel) kestirir.
+    //
+    //     k = wrap(açı₂ − açı₁) / |p₂ − p₁|
+    //
+    // Hız/zaman gerekmez: k, yolun geometrik eğriliğidir; yay boyunca birim
+    // mesafede yönün ne kadar döndüğünü verir — warmup'ın ihtiyacı tam da bu.
+    //
+    // Dönüş değeri: bu çağrı İLK kestirimi ürettiyse true (path'i yeniden
+    // sermek için tetikleyici). Sonraki çağrılar EMA ile yalnızca iyileştirir.
+    _observeServerCurvature(x, y, angle) {
+        const prev = this._lastCurvSample;
+        this._lastCurvSample = { x, y, angle };
+        if (!prev) return false;
+
+        const dist = Math.hypot(x - prev.x, y - prev.y);
+        // Neredeyse duran yılanda Δaçı/Δmesafe patlar — örnekle.
+        if (dist < this.config.WARMUP_MIN_SAMPLE_DIST) return false;
+
+        const deltaAngle = Phaser.Math.Angle.Wrap(angle - prev.angle);
+        const k = Phaser.Math.Clamp(
+            deltaAngle / dist,
+            -this.config.WARMUP_CURVATURE_MAX,
+            this.config.WARMUP_CURVATURE_MAX
+        );
+        if (!Number.isFinite(k)) return false;
+
+        const isFirst = !this._hasCurvature;
+        this._curvature = isFirst
+            ? k
+            : this._curvature + (k - this._curvature) * this.config.WARMUP_CURVATURE_EMA;
+        this._hasCurvature = true;
+        return isFirst;
+    }
+
     updateFromServerState(entityData) {
         if (this.isPlayerControlled) return;
 
@@ -1193,6 +1292,26 @@ export class Snake {
             const cutoff = now - this.config.SNAPSHOT_BUFFER_MS;
             while (this._snapshots.length > 2 && this._snapshots[0].t < cutoff) {
                 this._snapshots.shift();
+            }
+
+            // ── İLK GÖRÜŞTE DÜZ ÇUBUK DÜZELTMESİ ────────────────────────
+            // İlk pakette hiçbir yerde eğrilik bilgisi YOKTUR (protokol
+            // göndermiyor, geçmiş de yok) — o yüzden create() düz warmup ile
+            // geçerli diziler kurar. İkinci paket eğriliği ölçebilir hale
+            // getirir; gövde hâlâ sentetikken path bir kez YAY olarak yeniden
+            // serilir. Tipik paket aralığı (~50ms) interpolation gecikmesinden
+            // (INTERP_DELAY_MIN_MS=60) kısa olduğundan bu, yılan ekranda
+            // görünmeye başlamadan ÖNCE tamamlanır.
+            const gainedCurvature = this._observeServerCurvature(
+                x, y, this.networkTarget.angle
+            );
+            if (
+                gainedCurvature
+                && this.head
+                && this._realPathLen <= this.config.WARMUP_RESEED_MAX_REAL_LEN
+            ) {
+                this._initPathWarmup(this.head.x, this.head.y);
+                this._positionSegmentsByPath();
             }
         }
 
@@ -1348,6 +1467,10 @@ export class Snake {
         this._snapshots.length = 0;
         this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
+        // Eğrilik örnek ÇİFTİ de bayat: süreksizlikten önceki örnekle sonraki
+        // arasında Δaçı/Δmesafe anlamsızdır. Kestirimin KENDİSİ (_curvature)
+        // korunur — hemen ardından gelen warmup'ın yayı için hâlâ geçerlidir.
+        this._lastCurvSample = null;
         if (this._remoteVel) {
             this._remoteVel.x = 0;
             this._remoteVel.y = 0;
