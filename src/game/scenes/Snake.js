@@ -46,6 +46,45 @@ const SnakeConfig = {
     INTERP_DELAY_INTERVAL_FACTOR: 2.0,
     SNAPSHOT_BUFFER_MS: 1000,     // tutulan snapshot penceresi
 
+    // ── ADAPTIF BUFFER (jitter + kare süresi farkındalı) ────────────────
+    // Eski gecikme YALNIZCA ortalama paket aralığına bakıyordu. Ama buffer'ı
+    // kurutan şey ortalama DEĞİL, VARYANSTIR: aralık ortalaması 33ms'te sabit
+    // dururken tek bir 90ms'lik gecikme buffer'ı boşaltır. Ayrıca kare süresi
+    // hiç hesaba katılmıyordu — 30fps'te bir kare 33ms tüketir ve aynı ağ
+    // koşulunda 144fps'ten çok daha fazla pay gerekir.
+    //   delay = aralıkEMA*FACTOR + jitterEMA*JITTER_FACTOR + kareSüresiEMA
+    INTERP_JITTER_FACTOR: 2.0,    // ölçülen sapmanın kaç katı pay bırakılacağı
+    PACKET_JITTER_EMA: 0.15,      // |aralık - ortalama| yumuşatma ağırlığı
+    FRAME_TIME_EMA: 0.10,         // kare süresi yumuşatma ağırlığı
+    // Gecikmenin KENDİSİ de yumuşatılır: ani sıçraması render saatini
+    // zamanda ileri/geri atlatır ve bu da tam olarak önlemeye çalıştığımız
+    // stutter'ı üretir.
+    INTERP_DELAY_SMOOTHING: 0.08,
+
+    // ── HERMITE (Catmull-Rom) POZİSYON İNTERPOLASYONU ───────────────────
+    // Doğrusal lerp yalnızca C⁰ süreklidir: her snapshot sınırında hız
+    // vektörü ANINDA değişir ve dönen yılanlarda bu görünür bir "köşe"
+    // olarak okunur. Hermite, komşu snapshot'lardan türetilen teğetlerle
+    // C¹ süreklilik (sürekli hız) verir.
+    // Teğet uzunluğu kiriş uzunluğuna göre kelepçelenir: bozuk/sıçramış bir
+    // örnek aksi halde eğriyi aşırı savurur (overshoot).
+    HERMITE_TANGENT_CLAMP: 2.0,
+
+    // ── EKSTRAPOLASYON KORKULUĞU (anti-pop) ─────────────────────────────
+    // Paket gecikirse hareket DURMAZ; son geçerli hız vektörü boyunca
+    // sürtünmeli (decaying) devam eder:
+    //     yerdeğiştirme(dt) = v * τ * (1 - e^(-dt/τ))
+    // Bu ifade dt→∞ iken v*τ'ya DOYAR — uzun bir kesintide yılan asla
+    // fırlamaz, yumuşakça durur. dt=0'da türevi tam olarak v'dir, yani
+    // interpolasyondan ekstrapolasyona geçiş C¹ pürüzsüzdür.
+    EXTRAPOLATION_MAX_MS: 250,
+    EXTRAPOLATION_DECAY_TAU_MS: 90,
+    // Paketler döndüğünde ekstrapole konum ile interpolasyonun söylediği
+    // konum arasındaki fark ANINDA kapatılsa "pop" olurdu. Fark bir ofset
+    // olarak saklanır ve smoothstep ile bu süre boyunca sıfıra eritilir.
+    REJOIN_BLEND_MS: 160,
+    REJOIN_MAX_OFFSET_PX: 400,    // üstü: gerçek ışınlanma, eritmeye çalışma
+
     // ── Time-aligned reconciliation (v2) ─────────────────────────────────
     // The old model compared the head's position NOW against a server sample
     // that is ~RTT/2 old — the "error" it measured was mostly latency, which
@@ -173,6 +212,20 @@ export class Snake {
         this._snapshots = [];                 // {t, x, y, angle} (performance.now)
         this._packetIntervalEmaMs = null;     // sunucu paket aralığı EMA'sı
         this._lastSnapshotAt = 0;
+
+        // ── Adaptif buffer / interpolasyon durumu ────────────────────────
+        this._packetJitterEmaMs = null;       // |aralık - ortalama| EMA'sı (varyans payı)
+        this._frameTimeEmaMs = null;          // kare süresi EMA'sı
+        this._interpDelayMs = null;           // yumuşatılmış render gecikmesi
+        // Son iki snapshot'tan türetilen hız — ekstrapolasyonun dayanağı.
+        // (Bu alan daha önce yalnızca temizlik kodlarında REFERANS ediliyor
+        // ama hiç TANIMLANMIYORDU; artık gerçekten sürdürülüyor.)
+        this._remoteVel = { x: 0, y: 0 };     // px/ms
+        this._remoteAngVel = 0;               // rad/ms
+        // Ekstrapolasyondan interpolasyona dönüşte "pop"u engelleyen ofset.
+        this._rejoinOffset = { x: 0, y: 0, angle: 0 };
+        this._rejoinRemainingMs = 0;
+        this._wasExtrapolating = false;
 
         // Time-aligned reconciliation state (player-controlled only)
         this._predHistory = [];               // ring of {t, x, y} (performance.now)
@@ -657,13 +710,15 @@ export class Snake {
         this._pathFollower = null;
 
         // 3) İnterpolasyon / tahmin buffer'ları — eski yaşamın yörünge verisi
-        // yeni yaşama sızamaz. TÜM alanlar null-guard'lı: burada korumasız
-        // `this._remoteVel.x = 0` (revert edilmiş ileri-projeksiyon özelliğine
-        // ait, constructor'da artık TANIMSIZ bir alan) TypeError fırlatıyordu.
-        // destroy() yarıda kalınca yılan snakes map'inden silinemiyor ve
-        // ayrılan oyuncular yeniden karşılaşmada KALICI görünmez kalıyordu
-        // (console: "Cannot set properties of undefined (setting 'x')" —
-        // hem RemoveEntity hem EntityFull yolunda).
+        // yeni yaşama sızamaz. TÜM alanlar null-guard'lı kalır.
+        //
+        // TARİHÇE: `_remoteVel` bir dönem constructor'da TANIMSIZDI (ileri-
+        // projeksiyon özelliği revert edilmişti) ve buradaki korumasız
+        // `this._remoteVel.x = 0` TypeError fırlatıyordu; destroy() yarıda
+        // kalınca yılan snakes map'inden silinemiyor, ayrılan oyuncular
+        // yeniden karşılaşmada KALICI görünmez kalıyordu. Alan artık
+        // ekstrapolasyon için GERÇEKTEN sürdürülüyor (constructor'da tanımlı),
+        // ama guard'lar aynı hatanın bir daha oluşamaması için korunuyor.
         if (this._predHistory) this._predHistory.length = 0;
         if (this._smoothedError) {
             this._smoothedError.x = 0;
@@ -678,6 +733,15 @@ export class Snake {
         if (this._snapshots) this._snapshots.length = 0;
         this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
+        // Süreksizlikten (spawn, sekme dönüşü, yükleme perdesi, respawn) sonra
+        // TÜM interpolasyon durumu bayattır. Özellikle _wasExtrapolating: açık
+        // kalsaydı ilk temiz örnekte sahte bir "yeniden katılma" ofseti
+        // hesaplanır ve yılan bayat konumdan yeni konuma doğru erirdi.
+        this._packetJitterEmaMs = null;
+        this._interpDelayMs = null;
+        this._remoteAngVel = 0;
+        this._rejoinRemainingMs = 0;
+        this._wasExtrapolating = false;
         this.hasServerState = false;
         this.hasSelfServerState = false;
         this._hasSpawnBaseline = false;
@@ -846,50 +910,232 @@ export class Snake {
         return 1 - Math.pow(1 - baseFactor, delta / (1000 / 60));
     }
 
+    // Kare süresi EMA'sı — adaptif buffer'ın kare-hızı bileşeni.
+    _updateFrameTimeEma(delta) {
+        const d = Phaser.Math.Clamp(Number(delta) || 16.67, 1, 100);
+        this._frameTimeEmaMs = this._frameTimeEmaMs === null
+            ? d
+            : this._frameTimeEmaMs + (d - this._frameTimeEmaMs) * this.config.FRAME_TIME_EMA;
+    }
+
+    // ADAPTİF RENDER GECİKMESİ.
+    //   delay = aralıkEMA*FACTOR + jitterEMA*JITTER_FACTOR + kareSüresiEMA
+    // Ortalama aralık taban payı, jitter EMA'sı varyans payı, kare süresi ise
+    // "bu kare zaten bu kadar zaman tüketecek" payıdır. Sonuç ayrıca kendi
+    // içinde yumuşatılır; aksi halde gecikmedeki ani değişim render saatini
+    // zamanda sıçratır (düzeltmeye çalıştığımız stutter'ın ta kendisi).
+    _computeInterpDelayMs() {
+        const cfg = this.config;
+        let target = cfg.INTERP_DELAY_MIN_MS;
+
+        if (Number.isFinite(this._packetIntervalEmaMs)) {
+            const jitter = Number.isFinite(this._packetJitterEmaMs) ? this._packetJitterEmaMs : 0;
+            const frame = Number.isFinite(this._frameTimeEmaMs) ? this._frameTimeEmaMs : 0;
+            target = this._packetIntervalEmaMs * cfg.INTERP_DELAY_INTERVAL_FACTOR
+                + jitter * cfg.INTERP_JITTER_FACTOR
+                + frame;
+        }
+        target = Phaser.Math.Clamp(target, cfg.INTERP_DELAY_MIN_MS, cfg.INTERP_DELAY_MAX_MS);
+
+        this._interpDelayMs = this._interpDelayMs === null
+            ? target
+            : this._interpDelayMs + (target - this._interpDelayMs) * cfg.INTERP_DELAY_SMOOTHING;
+        return this._interpDelayMs;
+    }
+
+    // ── HERMITE (Catmull-Rom) ÖRNEKLEME ─────────────────────────────────
+    // buf[i] ile buf[i+1] arasını, komşulardan (buf[i-1], buf[i+2]) türetilen
+    // teğetlerle C¹ sürekli olarak örnekler.
+    //
+    // Teğetler ZAMAN-AĞIRLIKLIDIR: snapshot aralıkları eşit değildir, bu
+    // yüzden hız (px/ms) olarak hesaplanıp segment süresiyle ölçeklenir.
+    // Düzgün Catmull-Rom formülü eşit aralık varsayar ve değişken tick
+    // aralığında hız dalgalanması üretirdi.
+    //
+    // AÇI: örnekler önce buf[i].angle etrafında AÇILIR (unwrap) — her değer
+    // komşusunun ±π'si içine taşınır — sonra skaler Hermite uygulanır. Böylece
+    // 360°→0° sarmalı yapısal olarak imkânsızdır ve dönüş de C¹ olur.
+    _hermiteSampleSnapshots(buf, i, renderTime) {
+        const p1 = buf[i];
+        const p2 = buf[i + 1];
+        const span = p2.t - p1.t;
+        if (!(span > 0)) {
+            return { x: p2.x, y: p2.y, angle: p2.angle };
+        }
+
+        const t = Phaser.Math.Clamp((renderTime - p1.t) / span, 0, 1);
+        const p0 = (i - 1 >= 0) ? buf[i - 1] : p1;
+        const p3 = (i + 2 < buf.length) ? buf[i + 2] : p2;
+
+        // Merkezî fark hızları (px/ms) → segment süresiyle ölçekli teğetler.
+        const d02 = (p2.t - p0.t) > 0 ? (p2.t - p0.t) : span;
+        const d13 = (p3.t - p1.t) > 0 ? (p3.t - p1.t) : span;
+
+        let m1x = (p2.x - p0.x) / d02 * span;
+        let m1y = (p2.y - p0.y) / d02 * span;
+        let m2x = (p3.x - p1.x) / d13 * span;
+        let m2y = (p3.y - p1.y) / d13 * span;
+
+        // Overshoot koruması: teğet, kirişin katından uzun olamaz.
+        const chord = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        const maxTangent = Math.max(chord * this.config.HERMITE_TANGENT_CLAMP, 0.0001);
+        const m1len = Math.hypot(m1x, m1y);
+        if (m1len > maxTangent) {
+            const s = maxTangent / m1len;
+            m1x *= s; m1y *= s;
+        }
+        const m2len = Math.hypot(m2x, m2y);
+        if (m2len > maxTangent) {
+            const s = maxTangent / m2len;
+            m2x *= s; m2y *= s;
+        }
+
+        // Hermite taban fonksiyonları.
+        const t2 = t * t;
+        const t3 = t2 * t;
+        const h00 = 2 * t3 - 3 * t2 + 1;
+        const h10 = t3 - 2 * t2 + t;
+        const h01 = -2 * t3 + 3 * t2;
+        const h11 = t3 - t2;
+
+        const x = h00 * p1.x + h10 * m1x + h01 * p2.x + h11 * m2x;
+        const y = h00 * p1.y + h10 * m1y + h01 * p2.y + h11 * m2y;
+
+        // Açı zinciri p1 etrafında açılır (her adım en kısa yoldan).
+        const a1 = p1.angle;
+        const a0 = a1 + Phaser.Math.Angle.Wrap(p0.angle - a1);
+        const a2 = a1 + Phaser.Math.Angle.Wrap(p2.angle - a1);
+        const a3 = a2 + Phaser.Math.Angle.Wrap(p3.angle - a2);
+
+        const ma1 = (a2 - a0) / d02 * span;
+        const ma2 = (a3 - a1) / d13 * span;
+        const angle = h00 * a1 + h10 * ma1 + h01 * a2 + h11 * ma2;
+
+        return { x, y, angle };
+    }
+
+    // ── SÜRTÜNMELİ EKSTRAPOLASYON ───────────────────────────────────────
+    // yerdeğiştirme(dt) = v * τ * (1 - e^(-dt/τ))
+    //   • dt→0  : türev = v  → interpolasyondan geçiş C¹ pürüzsüz
+    //   • dt→∞  : v*τ'ya DOYAR → uzun kesintide yılan fırlamaz, yumuşakça durur
+    _extrapolateRemote(buf, renderTime) {
+        const last = buf[buf.length - 1];
+        const prev = buf.length >= 2 ? buf[buf.length - 2] : null;
+
+        let vx = 0;
+        let vy = 0;
+        let va = 0;
+        if (prev) {
+            const dt = last.t - prev.t;
+            if (dt > 0) {
+                vx = (last.x - prev.x) / dt;
+                vy = (last.y - prev.y) / dt;
+                va = Phaser.Math.Angle.Wrap(last.angle - prev.angle) / dt;
+            }
+        }
+        this._remoteVel.x = vx;
+        this._remoteVel.y = vy;
+        this._remoteAngVel = va;
+
+        const tau = this.config.EXTRAPOLATION_DECAY_TAU_MS;
+        const dtAhead = Phaser.Math.Clamp(
+            renderTime - last.t, 0, this.config.EXTRAPOLATION_MAX_MS);
+        const s = tau * (1 - Math.exp(-dtAhead / tau));
+
+        return {
+            x: last.x + vx * s,
+            y: last.y + vy * s,
+            angle: last.angle + va * s
+        };
+    }
+
     _interpolateRemoteSnake(delta) {
         if (!this.hasServerState) return;
 
-        // ── Snapshot-buffer interpolation (birincil yol) ────────────────
-        // Render, sunucu zamanının ~interpDelay kadar GERİSİNDE oynatılır:
-        // renderTime her zaman iki gerçek snapshot arasına düşer → uzak yılan
-        // ekstrapolasyonsuz, paket-varış ritminden bağımsız, her Hz'de sabit
-        // hızda akar. Delay ölçülen paket aralığına adaptiftir (×FACTOR):
-        // tek geciken paket bile buffer'ı kurutamaz.
-        const buf = this._snapshots;
-        if (buf.length >= 2) {
-            let interpDelay = this.config.INTERP_DELAY_MIN_MS;
-            if (Number.isFinite(this._packetIntervalEmaMs)) {
-                interpDelay = Phaser.Math.Clamp(
-                    this._packetIntervalEmaMs * this.config.INTERP_DELAY_INTERVAL_FACTOR,
-                    this.config.INTERP_DELAY_MIN_MS,
-                    this.config.INTERP_DELAY_MAX_MS
-                );
-            }
-            const renderTime = performance.now() - interpDelay;
+        this._updateFrameTimeEma(delta);
 
-            if (renderTime <= buf[buf.length - 1].t) {
-                for (let i = buf.length - 2; i >= 0; i--) {
-                    if (buf[i].t <= renderTime) {
-                        const a = buf[i];
-                        const b = buf[i + 1];
-                        const span = b.t - a.t;
-                        const f = span > 0 ? Phaser.Math.Clamp((renderTime - a.t) / span, 0, 1) : 1;
-                        this.head.x = Phaser.Math.Linear(a.x, b.x, f);
-                        this.head.y = Phaser.Math.Linear(a.y, b.y, f);
-                        this.head.rotation = a.angle
-                            + Phaser.Math.Angle.Wrap(b.angle - a.angle) * f;
-                        return;
-                    }
-                }
-                // renderTime buffer başlangıcından eski (yeni spawn/AOI girişi):
-                // aşağıdaki üstel takip en eski hedefe yaklaştırır.
-            }
-            // renderTime en yeni snapshot'tan ileri = buffer açlığı (paket
-            // gecikti). Ekstrapolasyon YOK — fallback üstel takip devralır.
+        const buf = this._snapshots;
+        if (buf.length < 2) {
+            // Buffer henüz kurulmadı — eski üstel takip (dt-normalize).
+            this._followNetworkTargetExponentially(delta);
+            return;
         }
 
-        // ── Fallback: frame-rate-agnostik üstel takip ───────────────────
-        // (buffer henüz dolmadı ya da açlıkta) — eski davranış, dt-normalize.
+        const renderTime = performance.now() - this._computeInterpDelayMs();
+        const last = buf[buf.length - 1];
+
+        let sample;
+        let extrapolating = false;
+
+        if (renderTime > last.t) {
+            // Buffer açlığı: DURMAK yerine son hız vektörü boyunca sürtünmeli
+            // devam et (eski kod burada üstel takibe düşüp yavaşlıyor, paket
+            // dönünce de sıçrıyordu).
+            sample = this._extrapolateRemote(buf, renderTime);
+            extrapolating = true;
+        } else {
+            sample = null;
+            for (let i = buf.length - 2; i >= 0; i--) {
+                if (buf[i].t <= renderTime) {
+                    sample = this._hermiteSampleSnapshots(buf, i, renderTime);
+                    break;
+                }
+            }
+            if (sample === null) {
+                // renderTime buffer'ın BAŞINDAN eski (yeni AOI girişi/spawn):
+                // en eski örneğe kelepçele. Eski kod burada üstel takibe
+                // düşüyordu — buffer yolu ile farklı bir konum üretip ilk
+                // karelerde görünür bir sapma bırakıyordu.
+                const first = buf[0];
+                sample = { x: first.x, y: first.y, angle: first.angle };
+            }
+        }
+
+        // ── Yeniden katılma (anti-pop) ───────────────────────────────────
+        // Ekstrapolasyondan interpolasyona dönerken iki yolun ürettiği konum
+        // farkı ANINDA uygulanırsa "pop" olur. Fark bir ofset olarak alınır ve
+        // smoothstep ile eritilir.
+        if (this._wasExtrapolating && !extrapolating) {
+            const dx = this.head.x - sample.x;
+            const dy = this.head.y - sample.y;
+            // Gerçek ışınlanma (respawn/teleport) eritilmez — anında uygulanır.
+            if (Math.hypot(dx, dy) <= this.config.REJOIN_MAX_OFFSET_PX) {
+                this._rejoinOffset.x = dx;
+                this._rejoinOffset.y = dy;
+                this._rejoinOffset.angle = Phaser.Math.Angle.Wrap(this.head.rotation - sample.angle);
+                this._rejoinRemainingMs = this.config.REJOIN_BLEND_MS;
+            } else {
+                this._rejoinRemainingMs = 0;
+            }
+        }
+        this._wasExtrapolating = extrapolating;
+
+        let ox = 0;
+        let oy = 0;
+        let oa = 0;
+        if (this._rejoinRemainingMs > 0) {
+            this._rejoinRemainingMs = Math.max(0, this._rejoinRemainingMs - (Number(delta) || 16.67));
+            const k = this._rejoinRemainingMs / this.config.REJOIN_BLEND_MS; // 1 → 0
+            const w = k * k * (3 - 2 * k);                                   // smoothstep
+            ox = this._rejoinOffset.x * w;
+            oy = this._rejoinOffset.y * w;
+            oa = this._rejoinOffset.angle * w;
+        }
+
+        // Sonuç sonlu değilse (bozuk snapshot) sprite'a HİÇ yazma — NaN bir kez
+        // girerse path/segment boru hattının tamamını kalıcı olarak zehirler.
+        const nx = sample.x + ox;
+        const ny = sample.y + oy;
+        const na = sample.angle + oa;
+        if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(na)) return;
+
+        this.head.x = nx;
+        this.head.y = ny;
+        this.head.rotation = na;
+    }
+
+    // Buffer kurulmadan önceki yedek yol — frame-rate-agnostik üstel takip.
+    _followNetworkTargetExponentially(delta) {
         const interpFactor = this._frameAdjustedFactor(this.config.REMOTE_INTERPOLATION_FACTOR, delta);
         this.head.x = Phaser.Math.Linear(this.head.x, this.networkTarget.x, interpFactor);
         this.head.y = Phaser.Math.Linear(this.head.y, this.networkTarget.y, interpFactor);
@@ -1053,6 +1299,15 @@ export class Snake {
         this._snapshots.length = 0;
         this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
+        // Süreksizlikten (spawn, sekme dönüşü, yükleme perdesi, respawn) sonra
+        // TÜM interpolasyon durumu bayattır. Özellikle _wasExtrapolating: açık
+        // kalsaydı ilk temiz örnekte sahte bir "yeniden katılma" ofseti
+        // hesaplanır ve yılan bayat konumdan yeni konuma doğru erirdi.
+        this._packetJitterEmaMs = null;
+        this._interpDelayMs = null;
+        this._remoteAngVel = 0;
+        this._rejoinRemainingMs = 0;
+        this._wasExtrapolating = false;
 
         // Path geçmişi artık bayat — kafanın güncel konumundan yeniden kur ve
         // segmentleri hemen yerine oturt.
@@ -1485,6 +1740,18 @@ export class Snake {
             if (this._lastSnapshotAt > 0) {
                 const interval = now - this._lastSnapshotAt;
                 if (interval > 0 && interval < 1000) {
+                    // JITTER: sapma, ORTALAMA GÜNCELLENMEDEN ÖNCE ölçülür —
+                    // aksi halde ortalama örneğe doğru kayar ve sapmayı kendi
+                    // içinde soğurarak jitter'ı olduğundan küçük gösterirdi.
+                    // Buffer'ı kurutan şey ortalama değil bu sapmadır.
+                    if (this._packetIntervalEmaMs !== null) {
+                        const deviation = Math.abs(interval - this._packetIntervalEmaMs);
+                        this._packetJitterEmaMs = this._packetJitterEmaMs === null
+                            ? deviation
+                            : this._packetJitterEmaMs
+                                + (deviation - this._packetJitterEmaMs) * this.config.PACKET_JITTER_EMA;
+                    }
+
                     this._packetIntervalEmaMs = this._packetIntervalEmaMs === null
                         ? interval
                         : this._packetIntervalEmaMs * 0.8 + interval * 0.2;
@@ -1665,6 +1932,15 @@ export class Snake {
         this._snapshots.length = 0;
         this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
+        // Süreksizlikten (spawn, sekme dönüşü, yükleme perdesi, respawn) sonra
+        // TÜM interpolasyon durumu bayattır. Özellikle _wasExtrapolating: açık
+        // kalsaydı ilk temiz örnekte sahte bir "yeniden katılma" ofseti
+        // hesaplanır ve yılan bayat konumdan yeni konuma doğru erirdi.
+        this._packetJitterEmaMs = null;
+        this._interpDelayMs = null;
+        this._remoteAngVel = 0;
+        this._rejoinRemainingMs = 0;
+        this._wasExtrapolating = false;
         if (this._remoteVel) {
             this._remoteVel.x = 0;
             this._remoteVel.y = 0;
