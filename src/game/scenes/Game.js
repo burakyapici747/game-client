@@ -73,24 +73,35 @@ const FOOD_PREDICTION_TIMEOUT_MS = 1000;
 const CLIENT_SCORE_PER_SEGMENT = 50;
 
 // ── AOI DEBUG OVERLAY (sunucu görünürlük sınırının görselleştirilmesi) ──────
-// Sunucu algoritması: AOICalculationSystem.fill3x3AOI — AOI, oyuncunun
-// KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 3x3 sektörlük
+// Sunucu algoritması: AOICalculationSystem.fillAoiMask — AOI, oyuncunun
+// KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 5x5 sektörlük
 // bloktur ve sektör GRID'ine hizalıdır: kafa bir sektör çizgisini geçtiği
 // anda sınır bir sektör kayar (sürekli kayan bir kutu DEĞİLDİR — despawn
 // eşiğini doğrulamak için bunu aynen çizmek gerekir).
 // SENKRON SÖZLEŞMESİ: SECTOR_COUNT_* ve AOI_SECTOR_RADIUS sunucudaki
-// MapConfig.SECTOR_COUNT_X/Y (30) ve fill3x3AOI (±1) ile BIREBIR aynı
-// tutulmalıdır. Sektör boyutu = dünya boyutu / 30 ≈ 666.67px.
+// MapConfig.SECTOR_COUNT_X/Y (30) ve AOICalculationSystem.AOI_SECTOR_RADIUS
+// (±2) ile BIREBIR aynı tutulmalıdır. Sektör boyutu = dünya / 30 ≈ 666.67px,
+// yani 5x5 blok ≈ 3333px kenarlı bir kare.
 // Y-EKSENİ NOTU: sunucu sektör satırını metre uzayında (Y-yukarı) hesaplar,
 // client piksel uzayında (Y-aşağı) çizer; grid tam 30 satır olduğundan sınır
-// çizgileri çakışır ve "oyuncunun sektörü ± 1" bloğu ayna-değişmezidir —
+// çizgileri çakışır ve "oyuncunun sektörü ± R" bloğu ayna-değişmezidir —
 // piksel uzayında çizilen dikdörtgen geometrik olarak birebir doğrudur.
+// MENZİL NOTU: bu kutu SEGMENT tabanlı görünürlüğü gösterir (tam konum, ±R).
+// Kafa-kafaya menzil bunun İKİ KATIDIR: SectorIndexSystem her kafayı kendi
+// AOI maskesinin tüm sektörlerine kaydeder, dolayısıyla iki kafa 2*R sektör
+// mesafesine kadar birbirini görür. Kutunun dışındaki bir yılanın hâlâ
+// replike ediliyor olması bu yüzden bug değildir.
 const AOIDebugConfig = {
-    SHOW_AOI_DEBUG: false,     // başlangıç durumu (O tuşu ile aç/kapa)
+    // Başlangıç durumu. O tuşu ile aç/kapa; ayrıca sayfa yüklenmeden önce
+    // `window.DEBUG_AOI = true` verilirse overlay açık başlar.
+    SHOW_AOI_DEBUG: (typeof window !== 'undefined' && window.DEBUG_AOI === true),
     TOGGLE_KEY: 'keydown-O',
     SECTOR_COUNT_X: 30,        // sunucu: MapConfig.SECTOR_COUNT_X
     SECTOR_COUNT_Y: 30,        // sunucu: MapConfig.SECTOR_COUNT_Y
-    AOI_SECTOR_RADIUS: 1,      // sunucu: fill3x3AOI → merkez ± 1 sektör
+    // SUNUCU İLE BİREBİR: AOICalculationSystem.AOI_SECTOR_RADIUS.
+    // 1 → 3x3 (9 sektör), 2 → 5x5 (25 sektör). Orada değişirse BURASI da
+    // değişmelidir; aksi halde overlay gerçek görünürlük alanını yanlış çizer.
+    AOI_SECTOR_RADIUS: 2,      // sunucu: fillAoiMask → merkez ± 2 sektör (5x5)
     OUTLINE_COLOR: 0x39ff14,   // neon yeşil
     OUTLINE_ALPHA: 0.9,
     OUTLINE_WIDTH: 2,
@@ -1442,7 +1453,7 @@ export class Game extends Phaser.Scene {
 
     // ── AOI DEBUG OVERLAY ÇİZİMİ ─────────────────────────────────────────────
     // Sunucunun gerçek AOI'sini çizer: oyuncunun bulunduğu sektöre merkezli,
-    // GRID'e hizalı 3x3 sektör bloğu (dünya kenarlarında sunucu gibi kırpılır).
+    // GRID'e hizalı 5x5 sektör bloğu (dünya kenarlarında sunucu gibi kırpılır).
     // Kalın kesikli dış çizgi + çok soluk iç dolgu = AOI sınırı; ince düz iç
     // kutu = oyuncunun mevcut sektörü (kafa bu kutunun kenarını geçtiği anda
     // AOI bir sektör kayar → uzak yılanların spawn/despawn eşiği).
@@ -1473,7 +1484,7 @@ export class Game extends Phaser.Scene {
         this._aoiDebugLastSector.cx = cx;
         this._aoiDebugLastSector.cy = cy;
 
-        // Sunucu fill3x3AOI dünya kenarında komşuları atlar → aynı kırpma.
+        // Sunucu fillAoiMask dünya kenarında komşuları atlar → aynı kırpma.
         const r = AOIDebugConfig.AOI_SECTOR_RADIUS;
         const minCx = clampSector(cx - r, AOIDebugConfig.SECTOR_COUNT_X - 1);
         const maxCx = clampSector(cx + r, AOIDebugConfig.SECTOR_COUNT_X - 1);
