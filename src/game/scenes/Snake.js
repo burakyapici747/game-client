@@ -37,29 +37,16 @@ const SnakeConfig = {
     VISUAL_SNAP_DISTANCE: 200,    // px — bu üstü fark görsel katmanda anında kapanır
 
     // ── Remote snapshot-buffer interpolation ────────────────────────────
-    // Uzak yılanlar son iki SUNUCU SNAPSHOT'ı arasında render zamanına göre
-    // lerp edilir: renderTime = now - interpolationDelay. Delay, ölçülen
-    // paket aralığına adaptiftir (×2, min/max kelepçeli). Buffer açlığında
-    // eski üstel takip (REMOTE_INTERPOLATION_FACTOR) devreye girer.
-    INTERP_DELAY_MIN_MS: 60,
-    INTERP_DELAY_MAX_MS: 250,
-    INTERP_DELAY_INTERVAL_FACTOR: 2.0,
+    // Uzak yılanlar son iki SUNUCU SNAPSHOT'ı arasında, ORTAK OYNATMA SAATİNİN
+    // verdiği zamana göre örneklenir. Gecikme/jitter/kare-süresi uyarlaması ve
+    // saatin monotonluk garantisi artık burada DEĞİL, sahne düzeyindeki tek
+    // kaynakta: network/PlaybackClock.js.
+    //
+    // Buradan kaldırılan ayarlar (INTERP_DELAY_*, PACKET_JITTER_EMA,
+    // FRAME_TIME_EMA) o dosyadaki DEFAULTS bloğunda yaşıyor. Yılan başına
+    // ayrı gecikme hem gereksizdi (tüm entity'ler aynı zarfta gelir) hem de
+    // entity'ler arasında zaman kayması üretiyordu.
     SNAPSHOT_BUFFER_MS: 1000,     // tutulan snapshot penceresi
-
-    // ── ADAPTIF BUFFER (jitter + kare süresi farkındalı) ────────────────
-    // Eski gecikme YALNIZCA ortalama paket aralığına bakıyordu. Ama buffer'ı
-    // kurutan şey ortalama DEĞİL, VARYANSTIR: aralık ortalaması 33ms'te sabit
-    // dururken tek bir 90ms'lik gecikme buffer'ı boşaltır. Ayrıca kare süresi
-    // hiç hesaba katılmıyordu — 30fps'te bir kare 33ms tüketir ve aynı ağ
-    // koşulunda 144fps'ten çok daha fazla pay gerekir.
-    //   delay = aralıkEMA*FACTOR + jitterEMA*JITTER_FACTOR + kareSüresiEMA
-    INTERP_JITTER_FACTOR: 2.0,    // ölçülen sapmanın kaç katı pay bırakılacağı
-    PACKET_JITTER_EMA: 0.15,      // |aralık - ortalama| yumuşatma ağırlığı
-    FRAME_TIME_EMA: 0.10,         // kare süresi yumuşatma ağırlığı
-    // Gecikmenin KENDİSİ de yumuşatılır: ani sıçraması render saatini
-    // zamanda ileri/geri atlatır ve bu da tam olarak önlemeye çalıştığımız
-    // stutter'ı üretir.
-    INTERP_DELAY_SMOOTHING: 0.08,
 
     // ── HERMITE (Catmull-Rom) POZİSYON İNTERPOLASYONU ───────────────────
     // Doğrusal lerp yalnızca C⁰ süreklidir: her snapshot sınırında hız
@@ -79,10 +66,15 @@ const SnakeConfig = {
     // interpolasyondan ekstrapolasyona geçiş C¹ pürüzsüzdür.
     EXTRAPOLATION_MAX_MS: 250,
     EXTRAPOLATION_DECAY_TAU_MS: 90,
-    // Paketler döndüğünde ekstrapole konum ile interpolasyonun söylediği
-    // konum arasındaki fark ANINDA kapatılsa "pop" olurdu. Fark bir ofset
-    // olarak saklanır ve smoothstep ile bu süre boyunca sıfıra eritilir.
-    REJOIN_BLEND_MS: 160,
+    // ── INERTIALIZATION ─────────────────────────────────────────────────
+    // Örnekleme yolundaki her SÜREKSİZLİK (ekstrapolasyondan dönüş, oynatma
+    // saatinin sert yeniden senkronu) bir ofset olarak yakalanır ve üstel
+    // olarak eritilir: offset *= e^(-dt/τ).
+    // τ=45ms → ~120ms'de %93, ~150ms'de %97 erir (istenen 100-150ms bandı).
+    // Sabit pencereli (smoothstep) sürüm yerine üstel kullanılıyor: erime
+    // sürerken yeni bir süreksizlik gelirse ofsetler DOĞAL olarak toplanır,
+    // pencere sayacı ise sıfırlanıp görünür bir hız değişimi yaratırdı.
+    INERTIALIZATION_TAU_MS: 45,
     REJOIN_MAX_OFFSET_PX: 400,    // üstü: gerçek ışınlanma, eritmeye çalışma
 
     // ── Time-aligned reconciliation (v2) ─────────────────────────────────
@@ -210,22 +202,21 @@ export class Snake {
 
         // ── Remote snapshot buffer (remote-controlled) ───────────────────
         this._snapshots = [];                 // {t, x, y, angle} (performance.now)
-        this._packetIntervalEmaMs = null;     // sunucu paket aralığı EMA'sı
-        this._lastSnapshotAt = 0;
+        this._lastSnapshotAt = 0;             // son snapshot varış zamanı (teşhis)
 
-        // ── Adaptif buffer / interpolasyon durumu ────────────────────────
-        this._packetJitterEmaMs = null;       // |aralık - ortalama| EMA'sı (varyans payı)
-        this._frameTimeEmaMs = null;          // kare süresi EMA'sı
-        this._interpDelayMs = null;           // yumuşatılmış render gecikmesi
+        // ── İnterpolasyon durumu ─────────────────────────────────────────
+        // Gecikme/jitter/kare EMA'ları burada DEĞİL, ortak PlaybackClock'ta.
         // Son iki snapshot'tan türetilen hız — ekstrapolasyonun dayanağı.
         // (Bu alan daha önce yalnızca temizlik kodlarında REFERANS ediliyor
         // ama hiç TANIMLANMIYORDU; artık gerçekten sürdürülüyor.)
         this._remoteVel = { x: 0, y: 0 };     // px/ms
         this._remoteAngVel = 0;               // rad/ms
-        // Ekstrapolasyondan interpolasyona dönüşte "pop"u engelleyen ofset.
+        // Süreksizlikleri eriten inertialization ofseti.
         this._rejoinOffset = { x: 0, y: 0, angle: 0 };
-        this._rejoinRemainingMs = 0;
         this._wasExtrapolating = false;
+        // Ortak oynatma saatinin sert yeniden senkron sayacının son görülen
+        // değeri — değiştiğinde zaman ekseninde kopukluk olmuş demektir.
+        this._clockResyncSeq = 0;
 
         // Time-aligned reconciliation state (player-controlled only)
         this._predHistory = [];               // ring of {t, x, y} (performance.now)
@@ -731,17 +722,14 @@ export class Snake {
         }
         this._remoteLastPacketAt = 0;
         if (this._snapshots) this._snapshots.length = 0;
-        this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
         // Süreksizlikten (spawn, sekme dönüşü, yükleme perdesi, respawn) sonra
         // TÜM interpolasyon durumu bayattır. Özellikle _wasExtrapolating: açık
         // kalsaydı ilk temiz örnekte sahte bir "yeniden katılma" ofseti
         // hesaplanır ve yılan bayat konumdan yeni konuma doğru erirdi.
-        this._packetJitterEmaMs = null;
-        this._interpDelayMs = null;
         this._remoteAngVel = 0;
-        this._rejoinRemainingMs = 0;
         this._wasExtrapolating = false;
+        this._clearInertialization();
         this.hasServerState = false;
         this.hasSelfServerState = false;
         this._hasSpawnBaseline = false;
@@ -910,38 +898,24 @@ export class Snake {
         return 1 - Math.pow(1 - baseFactor, delta / (1000 / 60));
     }
 
-    // Kare süresi EMA'sı — adaptif buffer'ın kare-hızı bileşeni.
-    _updateFrameTimeEma(delta) {
-        const d = Phaser.Math.Clamp(Number(delta) || 16.67, 1, 100);
-        this._frameTimeEmaMs = this._frameTimeEmaMs === null
-            ? d
-            : this._frameTimeEmaMs + (d - this._frameTimeEmaMs) * this.config.FRAME_TIME_EMA;
+    // Inertialization ofsetini sıfırlar. NULL-GUARD'LI: destroy() içindeki
+    // nükleer sıfırlama bloğundan da çağrılıyor ve o bloğun sözleşmesi gereği
+    // hiçbir alan korumasız yazılamaz (korumasız bir yazım, destroy()'u yarıda
+    // kesip yılanı snakes map'inde bırakarak oyuncuları kalıcı görünmez
+    // yapmıştı — bkz. aynı bloktaki tarihçe notu).
+    _clearInertialization() {
+        if (!this._rejoinOffset) return;
+        this._rejoinOffset.x = 0;
+        this._rejoinOffset.y = 0;
+        this._rejoinOffset.angle = 0;
     }
 
-    // ADAPTİF RENDER GECİKMESİ.
-    //   delay = aralıkEMA*FACTOR + jitterEMA*JITTER_FACTOR + kareSüresiEMA
-    // Ortalama aralık taban payı, jitter EMA'sı varyans payı, kare süresi ise
-    // "bu kare zaten bu kadar zaman tüketecek" payıdır. Sonuç ayrıca kendi
-    // içinde yumuşatılır; aksi halde gecikmedeki ani değişim render saatini
-    // zamanda sıçratır (düzeltmeye çalıştığımız stutter'ın ta kendisi).
-    _computeInterpDelayMs() {
-        const cfg = this.config;
-        let target = cfg.INTERP_DELAY_MIN_MS;
-
-        if (Number.isFinite(this._packetIntervalEmaMs)) {
-            const jitter = Number.isFinite(this._packetJitterEmaMs) ? this._packetJitterEmaMs : 0;
-            const frame = Number.isFinite(this._frameTimeEmaMs) ? this._frameTimeEmaMs : 0;
-            target = this._packetIntervalEmaMs * cfg.INTERP_DELAY_INTERVAL_FACTOR
-                + jitter * cfg.INTERP_JITTER_FACTOR
-                + frame;
-        }
-        target = Phaser.Math.Clamp(target, cfg.INTERP_DELAY_MIN_MS, cfg.INTERP_DELAY_MAX_MS);
-
-        this._interpDelayMs = this._interpDelayMs === null
-            ? target
-            : this._interpDelayMs + (target - this._interpDelayMs) * cfg.INTERP_DELAY_SMOOTHING;
-        return this._interpDelayMs;
-    }
+    // NOT: adaptif gecikme hesabı ve kare/paket EMA'ları buradan KALDIRILDI.
+    // Yılan başına ayrı gecikme hem gereksizdi (tüm entity'ler aynı zarfta,
+    // yani aynı varış zamanıyla gelir) hem de zararlıydı: her yılan kendi
+    // gecikmesine farklı yakınsayıp entity'ler arasında zaman kayması
+    // üretiyordu. Tek kaynak artık sahne düzeyindeki PlaybackClock —
+    // bkz. network/PlaybackClock.js.
 
     // ── HERMITE (Catmull-Rom) ÖRNEKLEME ─────────────────────────────────
     // buf[i] ile buf[i+1] arasını, komşulardan (buf[i-1], buf[i+2]) türetilen
@@ -1052,25 +1026,37 @@ export class Snake {
     _interpolateRemoteSnake(delta) {
         if (!this.hasServerState) return;
 
-        this._updateFrameTimeEma(delta);
-
         const buf = this._snapshots;
-        if (buf.length < 2) {
-            // Buffer henüz kurulmadı — eski üstel takip (dt-normalize).
+        const clock = this.scene?.playbackClock;
+
+        // Saat henüz kilitlenmediyse (ilk paket gelmedi) veya tampon iki
+        // örneğe ulaşmadıysa eski üstel takip devrede.
+        if (!clock || !clock.isReady || buf.length < 2) {
             this._followNetworkTargetExponentially(delta);
             return;
         }
 
-        const renderTime = performance.now() - this._computeInterpDelayMs();
+        // ── RENDER ZAMANI: ORTAK, MONOTON OYNATMA SAATİ ──────────────────
+        // Artık `performance.now() - değişkenGecikme` DEĞİL. Eski ifade,
+        // gecikme uyarlaması hızlandığında zamanı yavaşlatıyor, 144Hz'de ise
+        // GERİ akıtıyordu (bkz. PlaybackClock başlığındaki analiz). Saat artık
+        // yapısal olarak monoton ve tüm entity'ler için ortak.
+        const renderTime = clock.timeMs;
         const last = buf[buf.length - 1];
+
+        // Saatin sert yeniden senkronu (sekme dönüşü, uzun donma) bir zaman
+        // KOPUKLUĞUDUR: örnekleme noktası bir anda başka yere atlar. Bunu
+        // inertialization ile eritmek için olayı yakala.
+        const clockResynced = (this._clockResyncSeq !== clock.resyncSeq);
+        this._clockResyncSeq = clock.resyncSeq;
 
         let sample;
         let extrapolating = false;
 
         if (renderTime > last.t) {
-            // Buffer açlığı: DURMAK yerine son hız vektörü boyunca sürtünmeli
-            // devam et (eski kod burada üstel takibe düşüp yavaşlıyor, paket
-            // dönünce de sıçrıyordu).
+            // Tampon boşalması. Saat zaten yavaşlamış durumda (PlaybackClock
+            // starvation deceleration); burada hareket son hız vektörü boyunca
+            // sönümlü olarak akmaya devam eder. Durma veya sıçrama yok.
             sample = this._extrapolateRemote(buf, renderTime);
             extrapolating = true;
         } else {
@@ -1082,45 +1068,50 @@ export class Snake {
                 }
             }
             if (sample === null) {
-                // renderTime buffer'ın BAŞINDAN eski (yeni AOI girişi/spawn):
-                // en eski örneğe kelepçele. Eski kod burada üstel takibe
-                // düşüyordu — buffer yolu ile farklı bir konum üretip ilk
-                // karelerde görünür bir sapma bırakıyordu.
+                // renderTime tamponun BAŞINDAN eski (yeni AOI girişi/spawn):
+                // en eski örneğe kelepçele.
                 const first = buf[0];
                 sample = { x: first.x, y: first.y, angle: first.angle };
             }
         }
 
-        // ── Yeniden katılma (anti-pop) ───────────────────────────────────
-        // Ekstrapolasyondan interpolasyona dönerken iki yolun ürettiği konum
-        // farkı ANINDA uygulanırsa "pop" olur. Fark bir ofset olarak alınır ve
-        // smoothstep ile eritilir.
-        if (this._wasExtrapolating && !extrapolating) {
+        // ── INERTIALIZATION ──────────────────────────────────────────────
+        // Örnekleme yolunda bir SÜREKSİZLİK olduğunda (ekstrapolasyondan
+        // interpolasyona dönüş, saatin sert yeniden senkronu) görünen konum ile
+        // yeni örnek arasındaki fark bir ofset olarak alınır ve üstel olarak
+        // sıfıra eritilir. Görsel konum böylece HİÇBİR koşulda sıçramaz —
+        // süreksizlik zaman ekseninde olur, ekranda olmaz.
+        const leftExtrapolation = this._wasExtrapolating && !extrapolating;
+        if (leftExtrapolation || clockResynced) {
             const dx = this.head.x - sample.x;
             const dy = this.head.y - sample.y;
-            // Gerçek ışınlanma (respawn/teleport) eritilmez — anında uygulanır.
+            // Gerçek ışınlanma (respawn/teleport) eritilmez — o bir süreksizlik
+            // değil, kasıtlı bir yer değiştirmedir.
             if (Math.hypot(dx, dy) <= this.config.REJOIN_MAX_OFFSET_PX) {
                 this._rejoinOffset.x = dx;
                 this._rejoinOffset.y = dy;
                 this._rejoinOffset.angle = Phaser.Math.Angle.Wrap(this.head.rotation - sample.angle);
-                this._rejoinRemainingMs = this.config.REJOIN_BLEND_MS;
             } else {
-                this._rejoinRemainingMs = 0;
+                this._rejoinOffset.x = 0;
+                this._rejoinOffset.y = 0;
+                this._rejoinOffset.angle = 0;
             }
         }
         this._wasExtrapolating = extrapolating;
 
-        let ox = 0;
-        let oy = 0;
-        let oa = 0;
-        if (this._rejoinRemainingMs > 0) {
-            this._rejoinRemainingMs = Math.max(0, this._rejoinRemainingMs - (Number(delta) || 16.67));
-            const k = this._rejoinRemainingMs / this.config.REJOIN_BLEND_MS; // 1 → 0
-            const w = k * k * (3 - 2 * k);                                   // smoothstep
-            ox = this._rejoinOffset.x * w;
-            oy = this._rejoinOffset.y * w;
-            oa = this._rejoinOffset.angle * w;
-        }
+        // Kare-hızından bağımsız üstel erime: alpha = 1 - e^(-dt/τ).
+        // Sabit pencereli smoothstep yerine bu kullanılıyor çünkü erime
+        // sürerken YENİ bir süreksizlik gelirse ofsetler doğal olarak toplanır;
+        // pencere sayacı ise sıfırlanıp görünür bir hız değişimi yaratırdı.
+        const ox = this._rejoinOffset.x;
+        const oy = this._rejoinOffset.y;
+        const oa = this._rejoinOffset.angle;
+
+        const dtMs = Phaser.Math.Clamp(Number(delta) || 16.67, 0, 100);
+        const decay = Math.exp(-dtMs / this.config.INERTIALIZATION_TAU_MS);
+        this._rejoinOffset.x *= decay;
+        this._rejoinOffset.y *= decay;
+        this._rejoinOffset.angle *= decay;
 
         // Sonuç sonlu değilse (bozuk snapshot) sprite'a HİÇ yazma — NaN bir kez
         // girerse path/segment boru hattının tamamını kalıcı olarak zehirler.
@@ -1297,17 +1288,14 @@ export class Snake {
         // Uzak yılan snapshot buffer'ı bayat — sekme gizliyken biriken eski
         // örnekler dönüşte geriye doğru interpolasyon (geri sarma) üretmesin.
         this._snapshots.length = 0;
-        this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
         // Süreksizlikten (spawn, sekme dönüşü, yükleme perdesi, respawn) sonra
         // TÜM interpolasyon durumu bayattır. Özellikle _wasExtrapolating: açık
         // kalsaydı ilk temiz örnekte sahte bir "yeniden katılma" ofseti
         // hesaplanır ve yılan bayat konumdan yeni konuma doğru erirdi.
-        this._packetJitterEmaMs = null;
-        this._interpDelayMs = null;
         this._remoteAngVel = 0;
-        this._rejoinRemainingMs = 0;
         this._wasExtrapolating = false;
+        this._clearInertialization();
 
         // Path geçmişi artık bayat — kafanın güncel konumundan yeniden kur ve
         // segmentleri hemen yerine oturt.
@@ -1737,26 +1725,10 @@ export class Snake {
         // aralığı EMA'sı adaptif interpolation delay için ölçülür.
         if (Number.isFinite(x) && Number.isFinite(y)) {
             const now = performance.now();
-            if (this._lastSnapshotAt > 0) {
-                const interval = now - this._lastSnapshotAt;
-                if (interval > 0 && interval < 1000) {
-                    // JITTER: sapma, ORTALAMA GÜNCELLENMEDEN ÖNCE ölçülür —
-                    // aksi halde ortalama örneğe doğru kayar ve sapmayı kendi
-                    // içinde soğurarak jitter'ı olduğundan küçük gösterirdi.
-                    // Buffer'ı kurutan şey ortalama değil bu sapmadır.
-                    if (this._packetIntervalEmaMs !== null) {
-                        const deviation = Math.abs(interval - this._packetIntervalEmaMs);
-                        this._packetJitterEmaMs = this._packetJitterEmaMs === null
-                            ? deviation
-                            : this._packetJitterEmaMs
-                                + (deviation - this._packetJitterEmaMs) * this.config.PACKET_JITTER_EMA;
-                    }
-
-                    this._packetIntervalEmaMs = this._packetIntervalEmaMs === null
-                        ? interval
-                        : this._packetIntervalEmaMs * 0.8 + interval * 0.2;
-                }
-            }
+            // Paket aralığı/jitter istatistikleri artık BURADA tutulmuyor:
+            // ortak PlaybackClock, zarf başına tek kez beslendiği için aynı
+            // ölçümü tüm trafikten ve tek bir yerde yapıyor (Game.onEntityCollection
+            // → playbackClock.notifyPacket).
             this._lastSnapshotAt = now;
 
             this._snapshots.push({
@@ -1930,17 +1902,14 @@ export class Snake {
         // Uzak yılan snapshot buffer'ı: yükleme boyunca birikmiş örnekler
         // arasında interpolasyon, perde kalkınca geriye sarma üretirdi.
         this._snapshots.length = 0;
-        this._packetIntervalEmaMs = null;
         this._lastSnapshotAt = 0;
         // Süreksizlikten (spawn, sekme dönüşü, yükleme perdesi, respawn) sonra
         // TÜM interpolasyon durumu bayattır. Özellikle _wasExtrapolating: açık
         // kalsaydı ilk temiz örnekte sahte bir "yeniden katılma" ofseti
         // hesaplanır ve yılan bayat konumdan yeni konuma doğru erirdi.
-        this._packetJitterEmaMs = null;
-        this._interpDelayMs = null;
         this._remoteAngVel = 0;
-        this._rejoinRemainingMs = 0;
         this._wasExtrapolating = false;
+        this._clearInertialization();
         if (this._remoteVel) {
             this._remoteVel.x = 0;
             this._remoteVel.y = 0;

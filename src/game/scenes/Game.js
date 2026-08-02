@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Snake } from './Snake';
 import { VOID_BACKGROUND_COLOR } from './Preloader';
 import { NetworkManager } from './../../network/NetWorkManager';
+import { PlaybackClock } from './../../network/PlaybackClock';
 import { MobileControls } from './../ui/MobileControls';
 import {
     showConnectingOverlay,
@@ -120,6 +121,9 @@ export class Game extends Phaser.Scene {
         // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
         // emit'inden ÖNCE gelebildiği için entityId → seed olarak beklemeye alınır.
         this.pendingPathSeeds = new Map();
+        // Uzak entity'lerin ORTAK, monoton oynatma saati. Ağ varış zamanından
+        // yalıtılmıştır; bkz. network/PlaybackClock.js.
+        this.playbackClock = new PlaybackClock();
         this.myId = null;
         this.networkManager = null;
         this.gameStarted = false;
@@ -153,6 +157,9 @@ export class Game extends Phaser.Scene {
         // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
         // emit'inden ÖNCE gelebildiği için entityId → seed olarak beklemeye alınır.
         this.pendingPathSeeds = new Map();
+        // Uzak entity'lerin ORTAK, monoton oynatma saati. Ağ varış zamanından
+        // yalıtılmıştır; bkz. network/PlaybackClock.js.
+        this.playbackClock = new PlaybackClock();
         this.myId = null;
         this.foodBlitter = null;
         this.grid = null;
@@ -600,6 +607,12 @@ export class Game extends Phaser.Scene {
     onEntityCollection(entityCollection) {
         const entityIds = entityCollection?.entityIds ?? [];
         if (entityIds.length === 0) return;
+
+        // OYNATMA SAATİ FAZI: tüm entity'ler AYNI zarfta geldiği için varış
+        // zamanı ortaktır — saat entity başına değil ZARF başına beslenir.
+        // Böylece kestirim tüm trafikten beslenir (yılan başına birkaç örnek
+        // yerine) ve tüm entity'ler tek bir zaman ekseninde oynatılır.
+        this.playbackClock?.notifyPacket(performance.now());
 
         this.initialDataFlags.entities = true;
         this.checkInitialDataComplete();
@@ -1547,6 +1560,11 @@ export class Game extends Phaser.Scene {
 
     update(time, delta) {
         if (!this.gameStarted) return;
+
+        // SIRA ÖNEMLİ: oynatma saati, entity'ler örneklenmeden ÖNCE ilerletilir
+        // (snake.postUpdate aşağıda). Aynı karede tüm uzak yılanlar TEK ve AYNI
+        // zaman değerinden örneklenir — aralarında zaman kayması olamaz.
+        this.playbackClock?.update(delta);
 
         const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
 
