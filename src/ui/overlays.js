@@ -144,9 +144,14 @@ export function updateHUDScore(score) {
 }
 
 // ── SIRALAMA (LEADERBOARD) HUD ───────────────────────────────────────────────
-// Ekranda gösterilen sıra sayısı. Sunucu Top-10 yollar (kenar durum payı);
-// burada yalnızca ilk 5 çizilir.
-const LEADERBOARD_DISPLAY_COUNT = 5;
+const LEADERBOARD_COLLAPSED_COUNT = 3;
+const LEADERBOARD_EXPANDED_COUNT = 5;
+let leaderboardExpanded = localStorage.getItem('lb_expanded') === 'true';
+let lastLeaderboardData = null;
+
+function getLeaderboardDisplayCount() {
+    return leaderboardExpanded ? LEADERBOARD_EXPANDED_COUNT : LEADERBOARD_COLLAPSED_COUNT;
+}
 
 // (formatLeaderboardScore KALDIRILDI — skor biçimlendirmesi artık tek kaynaktan,
 // yukarıdaki formatScore'dan gelir. İki ayrı biçimlendirici, aynı hücrenin
@@ -275,35 +280,33 @@ function setLeaderboardPlayerCount(totalPlayers) {
  * satırı gösterilir — UYDURMA oyuncu adı/skoru ASLA gösterilmez.
  */
 export function updateHUDLeaderboard(data) {
+    if (data !== null && data !== undefined) lastLeaderboardData = data;
+
     const listEl = $('hud-leaderboard-list');
     if (!listEl) return;
 
     const entries = Array.isArray(data?.entries) ? data.entries : null;
 
-    // Henüz sıralama paketi gelmedi (bağlantı/handshake aşaması).
     if (!entries) {
         renderLeaderboardEmptyState(listEl, 'Connecting…');
         setLeaderboardPlayerCount(0);
+        syncToggleIcon(0);
         return;
     }
 
-    // Haritada sıralanacak oyuncu yok. Not: entries boşsa sunucuda oyuncu
-    // sayısı 0 demektir, dolayısıyla selfRank de zorunlu olarak 0'dır —
-    // sabitlenmiş "kendi sıran" satırı bu dalda mümkün değildir.
     if (entries.length === 0) {
         renderLeaderboardEmptyState(listEl, 'Waiting for players…');
         setLeaderboardPlayerCount(data.totalPlayers);
+        syncToggleIcon(0);
         return;
     }
 
+    const displayCount = getLeaderboardDisplayCount();
     const selfRank = Number(data.selfRank) || 0;
-    // Top-5 İÇİNDE mi? İçindeyse satırı vurgulanır; DIŞINDAYSA en alta
-    // sabitlenmiş "#12 You" satırı eklenir. selfRank=0 (ölü/sıralanmamış)
-    // durumunda hiçbir ek satır çizilmez.
-    const selfInTop = selfRank >= 1 && selfRank <= LEADERBOARD_DISPLAY_COUNT;
-    const showPinnedSelf = selfRank > LEADERBOARD_DISPLAY_COUNT;
+    const selfInTop = selfRank >= 1 && selfRank <= displayCount;
+    const showPinnedSelf = selfRank > displayCount;
 
-    const visibleCount = Math.min(entries.length, LEADERBOARD_DISPLAY_COUNT);
+    const visibleCount = Math.min(entries.length, displayCount);
     const totalRows = visibleCount + (showPinnedSelf ? 1 : 0);
 
     for (let i = 0; i < visibleCount; i++) {
@@ -328,24 +331,17 @@ export function updateHUDLeaderboard(data) {
         });
     }
 
-    // Fazla satırları kaldır (oyuncu sayısı azaldığında). lastElementChild:
-    // children.length yalnızca ELEMENT sayar; lastChild ile silmek, arada metin
-    // düğümü varsa sayacı düşürmeyen turlar harcardı.
     while (listEl.children.length > totalRows) {
         listEl.removeChild(listEl.lastElementChild);
     }
 
-    // Element OLMAYAN artık düğümleri süpür: index.html'deki
-    // "<!-- Entries populated by JS -->" yorumu ve şablon boşlukları. Görünürde
-    // etkileri yok (flex kapsayıcı boşluk-metnini öğe saymaz) ama kapsayıcıyı
-    // yalnızca havuz satırlarından oluşur halde tutmak, satır indekslemesini
-    // ileride de kanıtlanabilir biçimde güvenli kılar.
     for (let i = listEl.childNodes.length - 1; i >= 0; i--) {
         const node = listEl.childNodes[i];
         if (node.nodeType !== 1) listEl.removeChild(node);
     }
 
     setLeaderboardPlayerCount(data.totalPlayers);
+    syncToggleIcon(entries.length);
 }
 
 // ── BOŞ DURUM ───────────────────────────────────────────────────────────────
@@ -374,6 +370,30 @@ function renderLeaderboardEmptyState(listEl, message) {
     emptyEl.textContent = message;
     // replaceChildren: veri satırları dahil TÜM içeriği tek işlemde değiştirir.
     listEl.replaceChildren(emptyEl);
+}
+
+// ── SIRALAMA TOGGLE (Top 3 ↔ Top 5) ─────────────────────────────────────────
+
+function syncToggleIcon(entryCount) {
+    const btn = $('hud-leaderboard-toggle');
+    if (!btn) return;
+    // 3 veya daha az entry varsa genişletmenin anlamı yok — gizle.
+    btn.style.display = entryCount > LEADERBOARD_COLLAPSED_COUNT ? '' : 'none';
+    const icon = btn.querySelector('.leaderboard-toggle-icon');
+    if (icon) icon.textContent = leaderboardExpanded ? 'expand_less' : 'expand_more';
+    btn.title = leaderboardExpanded ? 'Show less' : 'Show more';
+}
+
+export function initLeaderboardToggle() {
+    const btn = $('hud-leaderboard-toggle');
+    if (!btn) return;
+    syncToggleIcon(0);
+
+    btn.addEventListener('click', () => {
+        leaderboardExpanded = !leaderboardExpanded;
+        localStorage.setItem('lb_expanded', leaderboardExpanded ? 'true' : 'false');
+        if (lastLeaderboardData) updateHUDLeaderboard(lastLeaderboardData);
+    });
 }
 
 // Minimap is now managed entirely by Phaser JS (Game.js drawMinimap function)
