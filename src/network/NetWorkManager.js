@@ -141,6 +141,18 @@ export class NetworkManager {
             this.scene.events.emit('leaderboard_update', leaderboardUpdate);
         }
 
+        // İlk karşılaşma path tohumu: bir entity AOI'ye ilk girdiğinde gövde
+        // polyline'ı bir KEZ eklenir (bkz. newproto/server/upgrade/path-seed.proto).
+        // leaderboard ile aynı gerekçeyle `oneof` DIŞINDA olduğu için burada,
+        // payload switch'inden ÖNCE karşılanır — bu emit yılan HENÜZ
+        // yaratılmamışken gelebilir, o yüzden Game tarafı tohumu kuyruğa alıp
+        // entity kurulduktan sonra uygular (bkz. queuePendingPathSeed).
+        const pathSeedCollection =
+            envelope.pathSeedCollection ?? envelope.path_seed_collection;
+        if (pathSeedCollection) {
+            this.scene.events.emit('path_seed_collection', pathSeedCollection);
+        }
+
         // Start Info kontrolu (payload tipine bakılmaksızın)
         const startInfo = envelope.startInformation || envelope.start_information;
         if (startInfo) {

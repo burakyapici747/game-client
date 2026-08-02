@@ -1826,6 +1826,7 @@ export const server = $root.server = (() => {
          * @property {server.IFoodCollection|null} [foodCollection] ServerEnvelope foodCollection
          * @property {server.IFoodMutationCollection|null} [foodMutationCollection] ServerEnvelope foodMutationCollection
          * @property {server.ILeaderboardUpdate|null} [leaderboardUpdate] ServerEnvelope leaderboardUpdate
+         * @property {server.IPathSeedCollection|null} [pathSeedCollection] ServerEnvelope pathSeedCollection
          */
 
         /**
@@ -1923,6 +1924,14 @@ export const server = $root.server = (() => {
          */
         ServerEnvelope.prototype.leaderboardUpdate = null;
 
+        /**
+         * ServerEnvelope pathSeedCollection.
+         * @member {server.IPathSeedCollection|null|undefined} pathSeedCollection
+         * @memberof server.ServerEnvelope
+         * @instance
+         */
+        ServerEnvelope.prototype.pathSeedCollection = null;
+
         // OneOf field names bound to virtual getters and setters
         let $oneOfFields;
 
@@ -1981,6 +1990,8 @@ export const server = $root.server = (() => {
                 $root.server.FoodMutationCollection.encode(message.foodMutationCollection, writer.uint32(/* id 13, wireType 2 =*/106).fork()).ldelim();
             if (message.leaderboardUpdate != null && Object.hasOwnProperty.call(message, "leaderboardUpdate"))
                 $root.server.LeaderboardUpdate.encode(message.leaderboardUpdate, writer.uint32(/* id 14, wireType 2 =*/114).fork()).ldelim();
+            if (message.pathSeedCollection != null && Object.hasOwnProperty.call(message, "pathSeedCollection"))
+                $root.server.PathSeedCollection.encode(message.pathSeedCollection, writer.uint32(/* id 15, wireType 2 =*/122).fork()).ldelim();
             return writer;
         };
 
@@ -2055,6 +2066,10 @@ export const server = $root.server = (() => {
                     }
                 case 14: {
                         message.leaderboardUpdate = $root.server.LeaderboardUpdate.decode(reader, reader.uint32());
+                        break;
+                    }
+                case 15: {
+                        message.pathSeedCollection = $root.server.PathSeedCollection.decode(reader, reader.uint32());
                         break;
                     }
                 default:
@@ -2166,6 +2181,11 @@ export const server = $root.server = (() => {
                 if (error)
                     return "leaderboardUpdate." + error;
             }
+            if (message.pathSeedCollection != null && message.hasOwnProperty("pathSeedCollection")) {
+                let error = $root.server.PathSeedCollection.verify(message.pathSeedCollection);
+                if (error)
+                    return "pathSeedCollection." + error;
+            }
             return null;
         };
 
@@ -2231,6 +2251,11 @@ export const server = $root.server = (() => {
                     throw TypeError(".server.ServerEnvelope.leaderboardUpdate: object expected");
                 message.leaderboardUpdate = $root.server.LeaderboardUpdate.fromObject(object.leaderboardUpdate);
             }
+            if (object.pathSeedCollection != null) {
+                if (typeof object.pathSeedCollection !== "object")
+                    throw TypeError(".server.ServerEnvelope.pathSeedCollection: object expected");
+                message.pathSeedCollection = $root.server.PathSeedCollection.fromObject(object.pathSeedCollection);
+            }
             return message;
         };
 
@@ -2253,6 +2278,7 @@ export const server = $root.server = (() => {
                 object.foodCollection = null;
                 object.foodMutationCollection = null;
                 object.leaderboardUpdate = null;
+                object.pathSeedCollection = null;
             }
             if (message.startInformation != null && message.hasOwnProperty("startInformation")) {
                 object.startInformation = $root.server.StartInformation.toObject(message.startInformation, options);
@@ -2289,6 +2315,8 @@ export const server = $root.server = (() => {
                 object.foodMutationCollection = $root.server.FoodMutationCollection.toObject(message.foodMutationCollection, options);
             if (message.leaderboardUpdate != null && message.hasOwnProperty("leaderboardUpdate"))
                 object.leaderboardUpdate = $root.server.LeaderboardUpdate.toObject(message.leaderboardUpdate, options);
+            if (message.pathSeedCollection != null && message.hasOwnProperty("pathSeedCollection"))
+                object.pathSeedCollection = $root.server.PathSeedCollection.toObject(message.pathSeedCollection, options);
             return object;
         };
 
@@ -6195,6 +6223,878 @@ export const server = $root.server = (() => {
         };
 
         return LeaderboardUpdate;
+    })();
+
+    server.PathSeed = (function() {
+
+        /**
+         * Properties of a PathSeed.
+         * @memberof server
+         * @interface IPathSeed
+         * @property {number|null} [entityId] PathSeed entityId
+         * @property {number|null} [originX] PathSeed originX
+         * @property {number|null} [originY] PathSeed originY
+         * @property {number|null} [quantization] PathSeed quantization
+         * @property {Array.<number>|null} [dx] PathSeed dx
+         * @property {Array.<number>|null} [dy] PathSeed dy
+         */
+
+        /**
+         * Constructs a new PathSeed.
+         * @memberof server
+         * @classdesc Represents a PathSeed.
+         * @implements IPathSeed
+         * @constructor
+         * @param {server.IPathSeed=} [properties] Properties to set
+         */
+        function PathSeed(properties) {
+            this.dx = [];
+            this.dy = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * PathSeed entityId.
+         * @member {number} entityId
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.entityId = 0;
+
+        /**
+         * PathSeed originX.
+         * @member {number} originX
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.originX = 0;
+
+        /**
+         * PathSeed originY.
+         * @member {number} originY
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.originY = 0;
+
+        /**
+         * PathSeed quantization.
+         * @member {number} quantization
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.quantization = 0;
+
+        /**
+         * PathSeed dx.
+         * @member {Array.<number>} dx
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.dx = $util.emptyArray;
+
+        /**
+         * PathSeed dy.
+         * @member {Array.<number>} dy
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.dy = $util.emptyArray;
+
+        /**
+         * Creates a new PathSeed instance using the specified properties.
+         * @function create
+         * @memberof server.PathSeed
+         * @static
+         * @param {server.IPathSeed=} [properties] Properties to set
+         * @returns {server.PathSeed} PathSeed instance
+         */
+        PathSeed.create = function create(properties) {
+            return new PathSeed(properties);
+        };
+
+        /**
+         * Encodes the specified PathSeed message. Does not implicitly {@link server.PathSeed.verify|verify} messages.
+         * @function encode
+         * @memberof server.PathSeed
+         * @static
+         * @param {server.IPathSeed} message PathSeed message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        PathSeed.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.entityId != null && Object.hasOwnProperty.call(message, "entityId"))
+                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.entityId);
+            if (message.originX != null && Object.hasOwnProperty.call(message, "originX"))
+                writer.uint32(/* id 2, wireType 5 =*/21).float(message.originX);
+            if (message.originY != null && Object.hasOwnProperty.call(message, "originY"))
+                writer.uint32(/* id 3, wireType 5 =*/29).float(message.originY);
+            if (message.quantization != null && Object.hasOwnProperty.call(message, "quantization"))
+                writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.quantization);
+            if (message.dx != null && message.dx.length) {
+                writer.uint32(/* id 5, wireType 2 =*/42).fork();
+                for (let i = 0; i < message.dx.length; ++i)
+                    writer.sint32(message.dx[i]);
+                writer.ldelim();
+            }
+            if (message.dy != null && message.dy.length) {
+                writer.uint32(/* id 6, wireType 2 =*/50).fork();
+                for (let i = 0; i < message.dy.length; ++i)
+                    writer.sint32(message.dy[i]);
+                writer.ldelim();
+            }
+            return writer;
+        };
+
+        /**
+         * Encodes the specified PathSeed message, length delimited. Does not implicitly {@link server.PathSeed.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.PathSeed
+         * @static
+         * @param {server.IPathSeed} message PathSeed message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        PathSeed.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a PathSeed message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.PathSeed
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.PathSeed} PathSeed
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        PathSeed.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.PathSeed();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.entityId = reader.uint32();
+                        break;
+                    }
+                case 2: {
+                        message.originX = reader.float();
+                        break;
+                    }
+                case 3: {
+                        message.originY = reader.float();
+                        break;
+                    }
+                case 4: {
+                        message.quantization = reader.uint32();
+                        break;
+                    }
+                case 5: {
+                        if (!(message.dx && message.dx.length))
+                            message.dx = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.dx.push(reader.sint32());
+                        } else
+                            message.dx.push(reader.sint32());
+                        break;
+                    }
+                case 6: {
+                        if (!(message.dy && message.dy.length))
+                            message.dy = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.dy.push(reader.sint32());
+                        } else
+                            message.dy.push(reader.sint32());
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a PathSeed message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.PathSeed
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.PathSeed} PathSeed
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        PathSeed.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a PathSeed message.
+         * @function verify
+         * @memberof server.PathSeed
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        PathSeed.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.entityId != null && message.hasOwnProperty("entityId"))
+                if (!$util.isInteger(message.entityId))
+                    return "entityId: integer expected";
+            if (message.originX != null && message.hasOwnProperty("originX"))
+                if (typeof message.originX !== "number")
+                    return "originX: number expected";
+            if (message.originY != null && message.hasOwnProperty("originY"))
+                if (typeof message.originY !== "number")
+                    return "originY: number expected";
+            if (message.quantization != null && message.hasOwnProperty("quantization"))
+                if (!$util.isInteger(message.quantization))
+                    return "quantization: integer expected";
+            if (message.dx != null && message.hasOwnProperty("dx")) {
+                if (!Array.isArray(message.dx))
+                    return "dx: array expected";
+                for (let i = 0; i < message.dx.length; ++i)
+                    if (!$util.isInteger(message.dx[i]))
+                        return "dx: integer[] expected";
+            }
+            if (message.dy != null && message.hasOwnProperty("dy")) {
+                if (!Array.isArray(message.dy))
+                    return "dy: array expected";
+                for (let i = 0; i < message.dy.length; ++i)
+                    if (!$util.isInteger(message.dy[i]))
+                        return "dy: integer[] expected";
+            }
+            return null;
+        };
+
+        /**
+         * Creates a PathSeed message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.PathSeed
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.PathSeed} PathSeed
+         */
+        PathSeed.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.PathSeed)
+                return object;
+            let message = new $root.server.PathSeed();
+            if (object.entityId != null)
+                message.entityId = object.entityId >>> 0;
+            if (object.originX != null)
+                message.originX = Number(object.originX);
+            if (object.originY != null)
+                message.originY = Number(object.originY);
+            if (object.quantization != null)
+                message.quantization = object.quantization >>> 0;
+            if (object.dx) {
+                if (!Array.isArray(object.dx))
+                    throw TypeError(".server.PathSeed.dx: array expected");
+                message.dx = [];
+                for (let i = 0; i < object.dx.length; ++i)
+                    message.dx[i] = object.dx[i] | 0;
+            }
+            if (object.dy) {
+                if (!Array.isArray(object.dy))
+                    throw TypeError(".server.PathSeed.dy: array expected");
+                message.dy = [];
+                for (let i = 0; i < object.dy.length; ++i)
+                    message.dy[i] = object.dy[i] | 0;
+            }
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a PathSeed message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.PathSeed
+         * @static
+         * @param {server.PathSeed} message PathSeed
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        PathSeed.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.arrays || options.defaults) {
+                object.dx = [];
+                object.dy = [];
+            }
+            if (options.defaults) {
+                object.entityId = 0;
+                object.originX = 0;
+                object.originY = 0;
+                object.quantization = 0;
+            }
+            if (message.entityId != null && message.hasOwnProperty("entityId"))
+                object.entityId = message.entityId;
+            if (message.originX != null && message.hasOwnProperty("originX"))
+                object.originX = options.json && !isFinite(message.originX) ? String(message.originX) : message.originX;
+            if (message.originY != null && message.hasOwnProperty("originY"))
+                object.originY = options.json && !isFinite(message.originY) ? String(message.originY) : message.originY;
+            if (message.quantization != null && message.hasOwnProperty("quantization"))
+                object.quantization = message.quantization;
+            if (message.dx && message.dx.length) {
+                object.dx = [];
+                for (let j = 0; j < message.dx.length; ++j)
+                    object.dx[j] = message.dx[j];
+            }
+            if (message.dy && message.dy.length) {
+                object.dy = [];
+                for (let j = 0; j < message.dy.length; ++j)
+                    object.dy[j] = message.dy[j];
+            }
+            return object;
+        };
+
+        /**
+         * Converts this PathSeed to JSON.
+         * @function toJSON
+         * @memberof server.PathSeed
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        PathSeed.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for PathSeed
+         * @function getTypeUrl
+         * @memberof server.PathSeed
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        PathSeed.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.PathSeed";
+        };
+
+        return PathSeed;
+    })();
+
+    server.PathSeedCollection = (function() {
+
+        /**
+         * Properties of a PathSeedCollection.
+         * @memberof server
+         * @interface IPathSeedCollection
+         * @property {Array.<server.IPathSeed>|null} [seeds] PathSeedCollection seeds
+         */
+
+        /**
+         * Constructs a new PathSeedCollection.
+         * @memberof server
+         * @classdesc Represents a PathSeedCollection.
+         * @implements IPathSeedCollection
+         * @constructor
+         * @param {server.IPathSeedCollection=} [properties] Properties to set
+         */
+        function PathSeedCollection(properties) {
+            this.seeds = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * PathSeedCollection seeds.
+         * @member {Array.<server.IPathSeed>} seeds
+         * @memberof server.PathSeedCollection
+         * @instance
+         */
+        PathSeedCollection.prototype.seeds = $util.emptyArray;
+
+        /**
+         * Creates a new PathSeedCollection instance using the specified properties.
+         * @function create
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {server.IPathSeedCollection=} [properties] Properties to set
+         * @returns {server.PathSeedCollection} PathSeedCollection instance
+         */
+        PathSeedCollection.create = function create(properties) {
+            return new PathSeedCollection(properties);
+        };
+
+        /**
+         * Encodes the specified PathSeedCollection message. Does not implicitly {@link server.PathSeedCollection.verify|verify} messages.
+         * @function encode
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {server.IPathSeedCollection} message PathSeedCollection message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        PathSeedCollection.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.seeds != null && message.seeds.length)
+                for (let i = 0; i < message.seeds.length; ++i)
+                    $root.server.PathSeed.encode(message.seeds[i], writer.uint32(/* id 1, wireType 2 =*/10).fork()).ldelim();
+            return writer;
+        };
+
+        /**
+         * Encodes the specified PathSeedCollection message, length delimited. Does not implicitly {@link server.PathSeedCollection.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {server.IPathSeedCollection} message PathSeedCollection message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        PathSeedCollection.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a PathSeedCollection message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.PathSeedCollection} PathSeedCollection
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        PathSeedCollection.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.PathSeedCollection();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        if (!(message.seeds && message.seeds.length))
+                            message.seeds = [];
+                        message.seeds.push($root.server.PathSeed.decode(reader, reader.uint32()));
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a PathSeedCollection message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.PathSeedCollection} PathSeedCollection
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        PathSeedCollection.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a PathSeedCollection message.
+         * @function verify
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        PathSeedCollection.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.seeds != null && message.hasOwnProperty("seeds")) {
+                if (!Array.isArray(message.seeds))
+                    return "seeds: array expected";
+                for (let i = 0; i < message.seeds.length; ++i) {
+                    let error = $root.server.PathSeed.verify(message.seeds[i]);
+                    if (error)
+                        return "seeds." + error;
+                }
+            }
+            return null;
+        };
+
+        /**
+         * Creates a PathSeedCollection message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.PathSeedCollection} PathSeedCollection
+         */
+        PathSeedCollection.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.PathSeedCollection)
+                return object;
+            let message = new $root.server.PathSeedCollection();
+            if (object.seeds) {
+                if (!Array.isArray(object.seeds))
+                    throw TypeError(".server.PathSeedCollection.seeds: array expected");
+                message.seeds = [];
+                for (let i = 0; i < object.seeds.length; ++i) {
+                    if (typeof object.seeds[i] !== "object")
+                        throw TypeError(".server.PathSeedCollection.seeds: object expected");
+                    message.seeds[i] = $root.server.PathSeed.fromObject(object.seeds[i]);
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a PathSeedCollection message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {server.PathSeedCollection} message PathSeedCollection
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        PathSeedCollection.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.arrays || options.defaults)
+                object.seeds = [];
+            if (message.seeds && message.seeds.length) {
+                object.seeds = [];
+                for (let j = 0; j < message.seeds.length; ++j)
+                    object.seeds[j] = $root.server.PathSeed.toObject(message.seeds[j], options);
+            }
+            return object;
+        };
+
+        /**
+         * Converts this PathSeedCollection to JSON.
+         * @function toJSON
+         * @memberof server.PathSeedCollection
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        PathSeedCollection.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for PathSeedCollection
+         * @function getTypeUrl
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        PathSeedCollection.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.PathSeedCollection";
+        };
+
+        return PathSeedCollection;
+    })();
+
+    server.EntityPosition = (function() {
+
+        /**
+         * Properties of an EntityPosition.
+         * @memberof server
+         * @interface IEntityPosition
+         * @property {number|null} [channelId] EntityPosition channelId
+         * @property {number|null} [x] EntityPosition x
+         * @property {number|null} [y] EntityPosition y
+         * @property {number|null} [angle] EntityPosition angle
+         */
+
+        /**
+         * Constructs a new EntityPosition.
+         * @memberof server
+         * @classdesc Represents an EntityPosition.
+         * @implements IEntityPosition
+         * @constructor
+         * @param {server.IEntityPosition=} [properties] Properties to set
+         */
+        function EntityPosition(properties) {
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * EntityPosition channelId.
+         * @member {number} channelId
+         * @memberof server.EntityPosition
+         * @instance
+         */
+        EntityPosition.prototype.channelId = 0;
+
+        /**
+         * EntityPosition x.
+         * @member {number} x
+         * @memberof server.EntityPosition
+         * @instance
+         */
+        EntityPosition.prototype.x = 0;
+
+        /**
+         * EntityPosition y.
+         * @member {number} y
+         * @memberof server.EntityPosition
+         * @instance
+         */
+        EntityPosition.prototype.y = 0;
+
+        /**
+         * EntityPosition angle.
+         * @member {number} angle
+         * @memberof server.EntityPosition
+         * @instance
+         */
+        EntityPosition.prototype.angle = 0;
+
+        /**
+         * Creates a new EntityPosition instance using the specified properties.
+         * @function create
+         * @memberof server.EntityPosition
+         * @static
+         * @param {server.IEntityPosition=} [properties] Properties to set
+         * @returns {server.EntityPosition} EntityPosition instance
+         */
+        EntityPosition.create = function create(properties) {
+            return new EntityPosition(properties);
+        };
+
+        /**
+         * Encodes the specified EntityPosition message. Does not implicitly {@link server.EntityPosition.verify|verify} messages.
+         * @function encode
+         * @memberof server.EntityPosition
+         * @static
+         * @param {server.IEntityPosition} message EntityPosition message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        EntityPosition.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.channelId != null && Object.hasOwnProperty.call(message, "channelId"))
+                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.channelId);
+            if (message.x != null && Object.hasOwnProperty.call(message, "x"))
+                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.x);
+            if (message.y != null && Object.hasOwnProperty.call(message, "y"))
+                writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
+            if (message.angle != null && Object.hasOwnProperty.call(message, "angle"))
+                writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.angle);
+            return writer;
+        };
+
+        /**
+         * Encodes the specified EntityPosition message, length delimited. Does not implicitly {@link server.EntityPosition.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.EntityPosition
+         * @static
+         * @param {server.IEntityPosition} message EntityPosition message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        EntityPosition.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes an EntityPosition message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.EntityPosition
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.EntityPosition} EntityPosition
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        EntityPosition.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.EntityPosition();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.channelId = reader.uint32();
+                        break;
+                    }
+                case 2: {
+                        message.x = reader.uint32();
+                        break;
+                    }
+                case 3: {
+                        message.y = reader.uint32();
+                        break;
+                    }
+                case 4: {
+                        message.angle = reader.uint32();
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes an EntityPosition message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.EntityPosition
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.EntityPosition} EntityPosition
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        EntityPosition.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies an EntityPosition message.
+         * @function verify
+         * @memberof server.EntityPosition
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        EntityPosition.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.channelId != null && message.hasOwnProperty("channelId"))
+                if (!$util.isInteger(message.channelId))
+                    return "channelId: integer expected";
+            if (message.x != null && message.hasOwnProperty("x"))
+                if (!$util.isInteger(message.x))
+                    return "x: integer expected";
+            if (message.y != null && message.hasOwnProperty("y"))
+                if (!$util.isInteger(message.y))
+                    return "y: integer expected";
+            if (message.angle != null && message.hasOwnProperty("angle"))
+                if (!$util.isInteger(message.angle))
+                    return "angle: integer expected";
+            return null;
+        };
+
+        /**
+         * Creates an EntityPosition message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.EntityPosition
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.EntityPosition} EntityPosition
+         */
+        EntityPosition.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.EntityPosition)
+                return object;
+            let message = new $root.server.EntityPosition();
+            if (object.channelId != null)
+                message.channelId = object.channelId >>> 0;
+            if (object.x != null)
+                message.x = object.x >>> 0;
+            if (object.y != null)
+                message.y = object.y >>> 0;
+            if (object.angle != null)
+                message.angle = object.angle >>> 0;
+            return message;
+        };
+
+        /**
+         * Creates a plain object from an EntityPosition message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.EntityPosition
+         * @static
+         * @param {server.EntityPosition} message EntityPosition
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        EntityPosition.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.defaults) {
+                object.channelId = 0;
+                object.x = 0;
+                object.y = 0;
+                object.angle = 0;
+            }
+            if (message.channelId != null && message.hasOwnProperty("channelId"))
+                object.channelId = message.channelId;
+            if (message.x != null && message.hasOwnProperty("x"))
+                object.x = message.x;
+            if (message.y != null && message.hasOwnProperty("y"))
+                object.y = message.y;
+            if (message.angle != null && message.hasOwnProperty("angle"))
+                object.angle = message.angle;
+            return object;
+        };
+
+        /**
+         * Converts this EntityPosition to JSON.
+         * @function toJSON
+         * @memberof server.EntityPosition
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        EntityPosition.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for EntityPosition
+         * @function getTypeUrl
+         * @memberof server.EntityPosition
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        EntityPosition.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.EntityPosition";
+        };
+
+        return EntityPosition;
     })();
 
     return server;

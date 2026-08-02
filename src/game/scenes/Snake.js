@@ -206,6 +206,9 @@ export class Snake {
         this.path = [];
         this.pathSegLens = [];
         this.totalPathLen = 0;
+        // Path, sunucunun ilk-karşılaşma tohumundan mı geldi? True ise elimizde
+        // GERÇEK geometri var demektir ve düz warmup ile ezilmesi yasaktır.
+        this._pathSeeded = false;
         this.GRID = 1;
         this.head = null;
         this.trail = null;
@@ -368,7 +371,16 @@ export class Snake {
         // artık ilişkisi yok (eski kod sct'yi segments.length'ten türetiyordu).
         this.sct = targetCount;
         this._syncVisualSegments(false);
-        this._initPathWarmup(this.head.x, this.head.y);
+
+        // Tohumlanmış gerçek geometri varsa path'i SIFIRDAN kurmak onu yok
+        // eder ve gövdeyi düz çubuğa döndürürdü — ilk karşılaşmadan hemen
+        // sonraki ilk büyüme tick'inde hatanın geri gelmesi tam olarak budur.
+        // Bu durumda yalnızca yeni uzunluğa yetecek kadar UZATILIR.
+        if (this._pathSeeded && this.path.length >= 2) {
+            this._ensurePathCapacityForCurrentLength();
+        } else {
+            this._initPathWarmup(this.head.x, this.head.y);
+        }
     }
 
     _resolveSegmentSpawnPositionBehindTail() {
@@ -641,6 +653,7 @@ export class Snake {
         this.path = [];
         this.pathSegLens = [];
         this.totalPathLen = 0;
+        this._pathSeeded = false;
         this._pathFollower = null;
 
         // 3) İnterpolasyon / tahmin buffer'ları — eski yaşamın yörünge verisi
@@ -1083,10 +1096,99 @@ export class Snake {
         this.pupilR.setPosition(rx + px, ry + py).setScale(curScale);
     }
 
+    // ── İLK KARŞILAŞMA PATH TOHUMU ───────────────────────────────────────
+    // Sunucudan gelen gövde polyline'ını DOĞRUDAN path tamponuna yazar; düz
+    // ışın warmup'ı tamamen atlanır, gövde daha ilk karede gerçek kıvrımıyla
+    // çizilir. Kablo formatı (delta/kuantalama) ağ katmanında çözülür — burası
+    // yalnızca DÜNYA KOORDİNATI alır (bkz. newproto/server/upgrade/path-seed.proto).
+    //
+    // @param {Array<{x:number,y:number}>|number[]} points
+    //        KAFADAN GERİYE sıralı noktalar. Düz sayı dizisi de kabul edilir
+    //        ([x0,y0,x1,y1,...]).
+    // @returns {boolean} tohum uygulandıysa true (uygulanmadıysa çağıran
+    //        taraf mevcut warmup'ta kalır — sessiz bozulma yok).
+    seedPathFromServer(points) {
+        if (!this.head || !this.alive) return false;
+
+        const pts = this._normalizeSeedPoints(points);
+        // Tek nokta yön tanımlamaz — düz warmup'ta kalmak daha doğru.
+        if (pts.length < 2) return false;
+
+        // ── Tampon inşası ────────────────────────────────────────────────
+        // Tek geçişli yürüyüşün (bkz. _positionSegmentsByPath) güvenliği şu
+        // DEĞİŞMEZLERE bağlıdır ve burada zorlanır:
+        //   • path.length === pathSegLens.length + 1
+        //   • her pathSegLens[i] > 0        (sıfır uzunluk → sıfıra bölme)
+        //   • totalPathLen === Σ pathSegLens
+        const path = [new Phaser.Math.Vector2(pts[0].x, pts[0].y)];
+        const lens = [];
+        let total = 0;
+
+        for (let i = 1; i < pts.length; i++) {
+            const prev = path[path.length - 1];
+            const d = Math.hypot(pts[i].x - prev.x, pts[i].y - prev.y);
+            // Yinelenen/dejenere nokta ATLANIR: diziyi kısaltır ama geometriyi
+            // bozmaz ve sıfır uzunluklu parça oluşmasını engeller.
+            if (!(d > 0.0001)) continue;
+            path.push(new Phaser.Math.Vector2(pts[i].x, pts[i].y));
+            lens.push(d);
+            total += d;
+        }
+
+        if (lens.length === 0) return false;
+
+        this.path = path;
+        this.pathSegLens = lens;
+        this.totalPathLen = total;
+
+        // Follower path'in başına oturur — bayat ofset yeni geometriyi çekmesin.
+        if (this._pathFollower) {
+            this._pathFollower.x = path[0].x;
+            this._pathFollower.y = path[0].y;
+        }
+
+        // Tohum gövdenin tamamını kapsamıyorsa (sunucu kısa gönderdi ya da
+        // yılan bu arada uzadı) kalanı son yön boyunca düz uzat. Yalnızca
+        // kuyruk ucunu etkiler; kıvrımlı kısım olduğu gibi korunur.
+        this._ensurePathCapacityForCurrentLength();
+
+        this._pathSeeded = true;
+
+        // Sprite'lar AYNI karede yerleşir — tek kare bile düz gövde görünmez.
+        this._positionSegmentsByPath();
+        return true;
+    }
+
+    // Hem {x,y} dizisini hem düz [x0,y0,x1,y1,...] dizisini kabul eder;
+    // sonlu olmayan değerleri eler.
+    _normalizeSeedPoints(points) {
+        const out = [];
+        if (!points || typeof points.length !== 'number') return out;
+
+        if (points.length > 0 && typeof points[0] === 'number') {
+            for (let i = 0; i + 1 < points.length; i += 2) {
+                const x = Number(points[i]);
+                const y = Number(points[i + 1]);
+                if (Number.isFinite(x) && Number.isFinite(y)) out.push({ x, y });
+            }
+            return out;
+        }
+
+        for (let i = 0; i < points.length; i++) {
+            const x = Number(points[i]?.x);
+            const y = Number(points[i]?.y);
+            if (Number.isFinite(x) && Number.isFinite(y)) out.push({ x, y });
+        }
+        return out;
+    }
+
     _initPathWarmup(x, y) {
         // Hard resets (spawn, tab-return resync, segment-count sync) rebuild
         // the path from scratch — snap the follower too, so it doesn't drag
         // stale offset into the fresh path.
+        // Sert sıfırlama tohumu da geçersiz kılar: bu noktadan sonra elimizdeki
+        // geometri yeniden sentetiktir.
+        this._pathSeeded = false;
         if (this._pathFollower) {
             this._pathFollower.x = x;
             this._pathFollower.y = y;

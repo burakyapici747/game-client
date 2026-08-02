@@ -14,6 +14,7 @@ import "server/upgrade/food.proto";
 import "server/upgrade/food-mutation.proto";
 import "server/upgrade/death-notification.proto";
 import "server/upgrade/leaderboard.proto";
+import "server/upgrade/path-seed.proto";
 
 message ServerEnvelope {
   oneof payload {
@@ -32,4 +33,10 @@ message ServerEnvelope {
   // penceresi acikken ve siralama degistiginde doldurulur; diger tick'lerde
   // alan hic yazilmaz (proto3: sifir bayt).
   LeaderboardUpdate leaderboard_update = 14;
+  // Ilk karsilasma path tohumu — leaderboard_update ile ayni gerekce ile
+  // oneof DISINDA: entity'yi ilk kez ortaya cikaran EntityCollection zarfina
+  // eklenir, ayri paket/round-trip yoktur. Yalnizca ilk gorunurlukte (veya
+  // uzun bir gorunurluk boslugundan sonra) doldurulur; diger tick'lerde alan
+  // hic yazilmaz (proto3: sifir bayt). Bkz. upgrade/path-seed.proto.
+  PathSeedCollection path_seed_collection = 15;
 }

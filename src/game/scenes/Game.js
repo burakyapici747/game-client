@@ -117,6 +117,9 @@ export class Game extends Phaser.Scene {
         this.pendingConsumption = new Map();
         this.foodBlitter = null; // Tüm yemler için tek havuzlanmış Blitter (tek draw call)
         this.pendingSegmentMutations = new Map();
+        // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
+        // emit'inden ÖNCE gelebildiği için entityId → seed olarak beklemeye alınır.
+        this.pendingPathSeeds = new Map();
         this.myId = null;
         this.networkManager = null;
         this.gameStarted = false;
@@ -147,6 +150,9 @@ export class Game extends Phaser.Scene {
         this.eatingFoods = new Map();
         this.pendingConsumption = new Map();
         this.pendingSegmentMutations = new Map();
+        // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
+        // emit'inden ÖNCE gelebildiği için entityId → seed olarak beklemeye alınır.
+        this.pendingPathSeeds = new Map();
         this.myId = null;
         this.foodBlitter = null;
         this.grid = null;
@@ -225,6 +231,7 @@ export class Game extends Phaser.Scene {
 
 
         this.events.on('segment_mutation_collection', this.onSegmentMutationCollection, this);
+        this.events.on('path_seed_collection', this.onPathSeedCollection, this);
         this.events.on('food_collection', this.onFoodCollection, this);
         this.events.on('food_mutation_collection', this.onFoodMutationCollection, this);
         this.events.on('remove_entity', this.onRemoveEntity, this);
@@ -264,6 +271,7 @@ export class Game extends Phaser.Scene {
             this.events.off('self_position', this.onSelfPosition, this);
             this.events.off('entity_collection', this.onEntityCollection, this);
             this.events.off('segment_mutation_collection', this.onSegmentMutationCollection, this);
+            this.events.off('path_seed_collection', this.onPathSeedCollection, this);
             this.events.off('food_collection', this.onFoodCollection, this);
             this.events.off('food_mutation_collection', this.onFoodMutationCollection, this);
             this.events.off('remove_entity', this.onRemoveEntity, this);
@@ -704,6 +712,12 @@ export class Game extends Phaser.Scene {
 
             snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
             this.flushPendingSegmentMutations(entityId, snake);
+
+            // SIRA ÖNEMLİ: tohum EN SON uygulanır. Yukarıdaki
+            // syncSegmentCountFromServer ve segment mutasyonları path'i yeniden
+            // kurabilir/uzatabilir; tohumu sona bırakmak sunucunun gerçek
+            // geometrisinin her hâlükârda kazanmasını garanti eder.
+            this.flushPendingPathSeed(entityId, snake);
         }
     }
 
@@ -853,6 +867,12 @@ export class Game extends Phaser.Scene {
      */
     _nuclearCleanEntity(entityId) {
         this.pendingSegmentMutations.delete(entityId);
+        // DİKKAT: pendingPathSeeds BİLEREK silinmez. Bu temizlik AOI yeniden
+        // girişinde/respawn'da, yılan YENİDEN kurulmadan hemen önce koşar ve
+        // bekleyen tohum tam da o YENİ gövdeye aittir (aynı zarfta geldi).
+        // Burada silmek, özelliğin var olma sebebi olan senaryoyu bozardı.
+        // Tohum ya flushPendingPathSeed ile tüketilir ya da queuePendingPathSeed
+        // içindeki tavan tarafından düşürülür.
 
         const snake = this.snakes.get(entityId);
         if (!snake) return;
@@ -953,6 +973,92 @@ export class Game extends Phaser.Scene {
             snake.applySegmentMutationFromServer(mutation);
         });
         this.pendingSegmentMutations.delete(entityId);
+    }
+
+    // ── İLK KARŞILAŞMA PATH TOHUMU ──────────────────────────────────────────
+    // Sunucu, bir entity'yi bu istemciye İLK kez gösterdiğinde (veya uzun bir
+    // görünürlük boşluğundan sonra yeniden gösterdiğinde) gövde polyline'ını
+    // sıkıştırılmış olarak bir KEZ ekler. Böylece istemci gövdeyi tahmin etmek
+    // zorunda kalmaz; kıvrımlı yılan ilk karede doğru şekliyle çizilir.
+    // Kablo formatı için bkz. newproto/server/upgrade/path-seed.proto.
+    onPathSeedCollection(pathSeedCollection) {
+        const seeds = pathSeedCollection?.seeds ?? [];
+        if (seeds.length === 0) return;
+
+        seeds.forEach((seed) => {
+            const entityId = this.toId(seed?.entityId ?? seed?.entity_id);
+            if (entityId === null) return;
+
+            const points = this._decodePathSeed(seed);
+            // İki AYRIK nokta yoksa yön tanımlı değildir; tohum atlanır ve
+            // yılan mevcut warmup'ında kalır (sessiz bozulma yok).
+            if (points.length < 2) return;
+
+            const snake = this.snakes.get(entityId);
+            if (!snake) {
+                // Tohum, yılanı yaratan EntityCollection emit'inden ÖNCE geldi
+                // (alan `oneof` dışında olduğu için switch'ten önce işleniyor).
+                this.queuePendingPathSeed(entityId, points);
+                return;
+            }
+            snake.seedPathFromServer(points);
+        });
+    }
+
+    // Delta + kuantalanmış polyline → mutlak dünya noktaları (kafadan geriye):
+    //     p[0]   = (origin_x, origin_y)
+    //     p[i+1] = p[i] + (dx[i] / quantization, dy[i] / quantization)
+    _decodePathSeed(seed) {
+        const originX = Number(seed?.originX ?? seed?.origin_x);
+        const originY = Number(seed?.originY ?? seed?.origin_y);
+        if (!Number.isFinite(originX) || !Number.isFinite(originY)) return [];
+
+        const dxs = seed?.dx ?? [];
+        const dys = seed?.dy ?? [];
+        // dx/dy eşit uzunlukta OLMALI; değilse kısa olanla sınırlanır —
+        // bozuk/yarım paket diziyi taşırmaz.
+        const count = Math.min(dxs.length ?? 0, dys.length ?? 0);
+
+        const rawQ = Number(seed?.quantization);
+        // 0/eksik/geçersiz → 1 (kuantalama yok). Sıfıra bölme imkânsız.
+        const q = Number.isFinite(rawQ) && rawQ > 0 ? rawQ : 1;
+
+        const points = [{ x: originX, y: originY }];
+        let x = originX;
+        let y = originY;
+        for (let i = 0; i < count; i++) {
+            const dx = Number(dxs[i]);
+            const dy = Number(dys[i]);
+            // Bozuk bileşende zinciri KES: sonrası kümülatif olarak yanlış olur.
+            if (!Number.isFinite(dx) || !Number.isFinite(dy)) break;
+            x += dx / q;
+            y += dy / q;
+            points.push({ x, y });
+        }
+        return points;
+    }
+
+    queuePendingPathSeed(entityId, points) {
+        // Yalnızca EN SON tohum saklanır — aynı entity için yeni tohum gelirse
+        // eskisi tanımı gereği bayattır.
+        this.pendingPathSeeds.set(entityId, points);
+
+        // Sözleşme gereği tohum, entity'yi ortaya çıkaran EntityCollection ile
+        // AYNI zarfta gelir ve hemen tüketilir; yani harita normalde neredeyse
+        // boştur. Yine de sunucu sözleşmeyi çiğnerse (tohum gelir, entity
+        // gelmez) sınırsız birikmesin: en eski kayıtlar düşürülür.
+        const MAX_PENDING = 64;
+        while (this.pendingPathSeeds.size > MAX_PENDING) {
+            const oldest = this.pendingPathSeeds.keys().next().value;
+            this.pendingPathSeeds.delete(oldest);
+        }
+    }
+
+    flushPendingPathSeed(entityId, snake) {
+        const points = this.pendingPathSeeds.get(entityId);
+        if (!points || !snake) return;
+        snake.seedPathFromServer(points);
+        this.pendingPathSeeds.delete(entityId);
     }
 
     checkInitialDataComplete() {
