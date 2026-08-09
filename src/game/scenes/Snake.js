@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { EntityInterpolator } from '../net/EntityInterpolator.js';
 
 const SnakeConfig = {
     // ── Boyut senkronu (SUNUCU ile BIREBIR) ─────────────────────────────
@@ -21,7 +22,6 @@ const SnakeConfig = {
     INITIAL_SEGMENT_COUNT: 32,
     SEGMENT_SPACING_BASE: 12.5,
     PATH_SAMPLE_MIN_STEP: 0,
-    REMOTE_INTERPOLATION_FACTOR: 0.35,
 
     // ── Frame-rate decoupling / 120Hz+ support ──────────────────────────
     // KÖK NEDEN (120Hz micro-tremor): Arcade physics varsayılanı
@@ -36,15 +36,14 @@ const SnakeConfig = {
     VISUAL_SMOOTHING_RATE: 22,    // 1/s — τ≈45ms: 60/120/144Hz'de aynı his
     VISUAL_SNAP_DISTANCE: 200,    // px — bu üstü fark görsel katmanda anında kapanır
 
-    // ── Remote snapshot-buffer interpolation ────────────────────────────
-    // Uzak yılanlar son iki SUNUCU SNAPSHOT'ı arasında render zamanına göre
-    // lerp edilir: renderTime = now - interpolationDelay. Delay, ölçülen
-    // paket aralığına adaptiftir (×2, min/max kelepçeli). Buffer açlığında
-    // eski üstel takip (REMOTE_INTERPOLATION_FACTOR) devreye girer.
-    INTERP_DELAY_MIN_MS: 60,
-    INTERP_DELAY_MAX_MS: 250,
-    INTERP_DELAY_INTERVAL_FACTOR: 2.0,
-    SNAPSHOT_BUFFER_MS: 1000,     // tutulan snapshot penceresi
+    // ── Remote entity interpolation ─────────────────────────────────────
+    // Uzak yılanların tüm oynatma (playout) mantığı EntityInterpolator'a
+    // taşındı: ring buffer + de-jitter saati + adaptif gecikme + Hermite
+    // örnekleme + dead reckoning + ofset uzlaşması. Ayarlar için bkz.
+    // src/game/net/EntityInterpolator.js → InterpolatorConfig.
+    // Buradaki tek şey, o modülün varsayılanlarına yapılan yılana-özgü
+    // düzeltmelerdir (yoksa boş bırakılır).
+    REMOTE_INTERP_OVERRIDES: null,
 
     // ── Time-aligned reconciliation (v2) ─────────────────────────────────
     // The old model compared the head's position NOW against a server sample
@@ -187,10 +186,11 @@ export class Snake {
         this.sim = { x: x, y: y };
         this.vel = { x: 0, y: 0 };
 
-        // ── Remote snapshot buffer (remote-controlled) ───────────────────
-        this._snapshots = [];                 // {t, x, y, angle} (performance.now)
-        this._packetIntervalEmaMs = null;     // sunucu paket aralığı EMA'sı
-        this._lastSnapshotAt = 0;
+        // ── Remote entity playout (remote-controlled) ────────────────────
+        // Adaptif interpolasyon/ekstrapolasyon motoru. Yılan başına bir örnek;
+        // tüm ağ zamanlama durumu (ring buffer, jitter ölçümü, gecikme bütçesi,
+        // dead reckoning hızı, uzlaşma ofseti) burada yaşar.
+        this._interp = new EntityInterpolator(this.config.REMOTE_INTERP_OVERRIDES);
 
         // Time-aligned reconciliation state (player-controlled only)
         this._predHistory = [];               // ring of {t, x, y} (performance.now)
@@ -821,27 +821,20 @@ export class Snake {
         this._pathFollower = null;
 
         // 3) İnterpolasyon / tahmin buffer'ları — eski yaşamın yörünge verisi
-        // yeni yaşama sızamaz. TÜM alanlar null-guard'lı: burada korumasız
-        // `this._remoteVel.x = 0` (revert edilmiş ileri-projeksiyon özelliğine
-        // ait, constructor'da artık TANIMSIZ bir alan) TypeError fırlatıyordu.
-        // destroy() yarıda kalınca yılan snakes map'inden silinemiyor ve
-        // ayrılan oyuncular yeniden karşılaşmada KALICI görünmez kalıyordu
-        // (console: "Cannot set properties of undefined (setting 'x')" —
-        // hem RemoveEntity hem EntityFull yolunda).
+        // yeni yaşama sızamaz. TÜM erişimler null-guard'lı: geçmişte burada
+        // korumasız bir alan yazımı TypeError fırlatıyor, destroy() yarıda
+        // kalıyor ve yılan snakes map'inden silinemediği için ayrılan oyuncular
+        // yeniden karşılaşmada KALICI görünmez kalıyordu (hem RemoveEntity hem
+        // EntityFull yolunda). Bu dizilim korunmalıdır.
         if (this._predHistory) this._predHistory.length = 0;
         if (this._smoothedError) {
             this._smoothedError.x = 0;
             this._smoothedError.y = 0;
         }
         this._correcting = false;
-        if (this._remoteVel) {
-            this._remoteVel.x = 0;
-            this._remoteVel.y = 0;
-        }
-        this._remoteLastPacketAt = 0;
-        if (this._snapshots) this._snapshots.length = 0;
-        this._packetIntervalEmaMs = null;
-        this._lastSnapshotAt = 0;
+        // Uzak oynatma motorunun TÜM durumu (ring buffer, jitter/aralık
+        // ölçümleri, playout saati, dead reckoning hızı, uzlaşma ofseti).
+        this._interp?.reset();
         this.hasServerState = false;
         this.hasSelfServerState = false;
         this._hasSpawnBaseline = false;
@@ -1014,57 +1007,27 @@ export class Snake {
         return 1 - Math.pow(1 - baseFactor, delta / (1000 / 60));
     }
 
+    // ── UZAK YILAN OYNATMA (playout) ─────────────────────────────────────
+    // Tüm ağ zamanlaması EntityInterpolator'dadır (bkz. o dosyanın başlığı).
+    // Burada kalan tek iş: ölçülen ağ istatistiklerini motora geçirmek ve
+    // dönen konumu sprite'a yazmak. Yedek/ikinci bir yol YOKTUR — motor her
+    // durumda (buffer boş hariç) geçerli bir konum döndürür; buffer açlığında
+    // dead reckoning, dönüşte ofset uzlaşması devreye girer.
     _interpolateRemoteSnake(delta) {
         if (!this.hasServerState) return;
 
-        // ── Snapshot-buffer interpolation (birincil yol) ────────────────
-        // Render, sunucu zamanının ~interpDelay kadar GERİSİNDE oynatılır:
-        // renderTime her zaman iki gerçek snapshot arasına düşer → uzak yılan
-        // ekstrapolasyonsuz, paket-varış ritminden bağımsız, her Hz'de sabit
-        // hızda akar. Delay ölçülen paket aralığına adaptiftir (×FACTOR):
-        // tek geciken paket bile buffer'ı kurutamaz.
-        const buf = this._snapshots;
-        if (buf.length >= 2) {
-            let interpDelay = this.config.INTERP_DELAY_MIN_MS;
-            if (Number.isFinite(this._packetIntervalEmaMs)) {
-                interpDelay = Phaser.Math.Clamp(
-                    this._packetIntervalEmaMs * this.config.INTERP_DELAY_INTERVAL_FACTOR,
-                    this.config.INTERP_DELAY_MIN_MS,
-                    this.config.INTERP_DELAY_MAX_MS
-                );
-            }
-            const renderTime = performance.now() - interpDelay;
+        const net = this.scene?.networkManager;
+        const sampled = this._interp.sample(performance.now(), delta, {
+            pingMs: Number.isFinite(net?.pingEmaMs) ? net.pingEmaMs : null,
+            pingJitterMs: Number.isFinite(net?.pingJitterMs) ? net.pingJitterMs : null,
+        });
+        // Tampon boş (yılan yaratıldı ama ilk paket henüz işlenmedi):
+        // mevcut konumu KORU — uydurma bir koordinata atlamaktan iyidir.
+        if (!sampled) return;
 
-            if (renderTime <= buf[buf.length - 1].t) {
-                for (let i = buf.length - 2; i >= 0; i--) {
-                    if (buf[i].t <= renderTime) {
-                        const a = buf[i];
-                        const b = buf[i + 1];
-                        const span = b.t - a.t;
-                        const f = span > 0 ? Phaser.Math.Clamp((renderTime - a.t) / span, 0, 1) : 1;
-                        this.head.x = Phaser.Math.Linear(a.x, b.x, f);
-                        this.head.y = Phaser.Math.Linear(a.y, b.y, f);
-                        this.head.rotation = a.angle
-                            + Phaser.Math.Angle.Wrap(b.angle - a.angle) * f;
-                        return;
-                    }
-                }
-                // renderTime buffer başlangıcından eski (yeni spawn/AOI girişi):
-                // aşağıdaki üstel takip en eski hedefe yaklaştırır.
-            }
-            // renderTime en yeni snapshot'tan ileri = buffer açlığı (paket
-            // gecikti). Ekstrapolasyon YOK — fallback üstel takip devralır.
-        }
-
-        // ── Fallback: frame-rate-agnostik üstel takip ───────────────────
-        // (buffer henüz dolmadı ya da açlıkta) — eski davranış, dt-normalize.
-        const interpFactor = this._frameAdjustedFactor(this.config.REMOTE_INTERPOLATION_FACTOR, delta);
-        this.head.x = Phaser.Math.Linear(this.head.x, this.networkTarget.x, interpFactor);
-        this.head.y = Phaser.Math.Linear(this.head.y, this.networkTarget.y, interpFactor);
-
-        const wrappedAngle = Phaser.Math.Angle.Wrap(this.networkTarget.angle - this.head.rotation);
-        this.head.rotation += wrappedAngle * interpFactor;
-        // Phaser rotation setter'ı WrapAngle uygular; ayrıca normalize gerekmez.
+        this.head.x = sampled.x;
+        this.head.y = sampled.y;
+        this.head.rotation = sampled.angle;
     }
 
     // ── Time-aligned reconciliation (v2) ─────────────────────────────────
@@ -1216,11 +1179,10 @@ export class Snake {
             }
         }
 
-        // Uzak yılan snapshot buffer'ı bayat — sekme gizliyken biriken eski
-        // örnekler dönüşte geriye doğru interpolasyon (geri sarma) üretmesin.
-        this._snapshots.length = 0;
-        this._packetIntervalEmaMs = null;
-        this._lastSnapshotAt = 0;
+        // Uzak yılan oynatma durumu bayat — sekme gizliyken biriken eski
+        // örnekler, donmuş playout saati ve birikmiş uzlaşma ofseti dönüşte
+        // geriye doğru interpolasyon (geri sarma) üretirdi.
+        this._interp.reset();
 
         // Path geçmişi artık bayat — kafanın güncel konumundan yeniden kur ve
         // segmentleri hemen yerine oturt.
@@ -1651,32 +1613,12 @@ export class Snake {
             this._updateSegmentScaling();
         }
 
-        // ── Snapshot buffer besleme ─────────────────────────────────────
-        // Her sunucu örneği zaman damgasıyla saklanır; render tarafı iki
-        // snapshot ARASINDA (renderTime = now - delay) lerp eder. Paket
-        // aralığı EMA'sı adaptif interpolation delay için ölçülür.
+        // ── Ring buffer besleme ─────────────────────────────────────────
+        // Paket doğrudan sprite'a UYGULANMAZ; damgalanıp tampona yazılır.
+        // Aralık EMA'sı, varış jitter'ı, hız tahmini ve de-jitter saatinin
+        // tamamı push() içinde güncellenir (bkz. EntityInterpolator.push).
         if (Number.isFinite(x) && Number.isFinite(y)) {
-            const now = performance.now();
-            if (this._lastSnapshotAt > 0) {
-                const interval = now - this._lastSnapshotAt;
-                if (interval > 0 && interval < 1000) {
-                    this._packetIntervalEmaMs = this._packetIntervalEmaMs === null
-                        ? interval
-                        : this._packetIntervalEmaMs * 0.8 + interval * 0.2;
-                }
-            }
-            this._lastSnapshotAt = now;
-
-            this._snapshots.push({
-                t: now,
-                x: x,
-                y: y,
-                angle: this.networkTarget.angle
-            });
-            const cutoff = now - this.config.SNAPSHOT_BUFFER_MS;
-            while (this._snapshots.length > 2 && this._snapshots[0].t < cutoff) {
-                this._snapshots.shift();
-            }
+            this._interp.push(x, y, this.networkTarget.angle, performance.now());
         }
 
         this.hasServerState = true;
@@ -1835,16 +1777,9 @@ export class Snake {
         // ── TÜM YÜKLEME-DÖNEMİ TAMPONLARINI AT ──────────────────────────────
         // Tahmin geçmişi + EMA hata + hysteresis latch.
         this._resetReconciliationState();
-        // Uzak yılan snapshot buffer'ı: yükleme boyunca birikmiş örnekler
+        // Uzak yılan oynatma durumu: yükleme boyunca birikmiş örnekler
         // arasında interpolasyon, perde kalkınca geriye sarma üretirdi.
-        this._snapshots.length = 0;
-        this._packetIntervalEmaMs = null;
-        this._lastSnapshotAt = 0;
-        if (this._remoteVel) {
-            this._remoteVel.x = 0;
-            this._remoteVel.y = 0;
-        }
-        this._remoteLastPacketAt = 0;
+        this._interp.reset();
 
         // Baseline artık kesinlikle kurulu: reconciliation bir sonraki paketten
         // itibaren normal (yumuşatmalı) modda çalışır.

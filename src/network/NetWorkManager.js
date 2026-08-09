@@ -34,6 +34,13 @@ export class NetworkManager {
         this.pingNonce = 0;
         this.pendingPings = new Map();   // nonce -> performance.now() @ send
         this.pingEmaMs = null;           // yumuşatılmış RTT (EMA)
+        // RTT SAPMASI (jitter) — |rtt - ema|'nın EMA'sı, RFC 3550 ruhunda.
+        // Adaptif interpolasyon buffer'ı (EntityInterpolator) bunu doğrudan
+        // tüketir: buffer derinliğini belirleyen şey ortalama gecikme DEĞİL,
+        // gecikmenin oynaklığıdır. Heartbeat 2.5 s'de bir örneklendiği için
+        // burası yavaş bir taban terimdir; hızlı tepki paket-varış jitter'ından
+        // (interpolatörün kendi ölçümü) gelir.
+        this.pingJitterMs = 0;
 
         // ── Kalibrasyon (ilk ping spike düzeltmesi) ──────────────────────────
         // İlk pong, bağlantı ısınması yüzünden şişkin ölçülür (~200ms görünüp
@@ -218,6 +225,7 @@ export class NetworkManager {
         this.pingSamplesSeen = 0;
         this.pingCalibrated = false;
         this.pingEmaMs = null;
+        this.pingJitterMs = 0;
         this.sendPing(); // ilk örneği bekletmeden al
         // Kalibrasyon fazı: hızlandırılmış aralık. _handlePong yeterli örnek
         // toplandığında _switchToSteadyPingInterval() ile normale döndürür.
@@ -271,6 +279,13 @@ export class NetworkManager {
         // Kalibrasyon: ilk örnek(ler) bağlantı ısınması artefaktıdır — EMA'yı
         // kirletmesin diye tamamen atılır (bkz. constructor'daki açıklama).
         if (this.pingSamplesSeen <= this.pingCalibDiscard) return;
+
+        // Jitter, EMA GÜNCELLENMEDEN ÖNCE ölçülür: sapma, o örneğin mevcut
+        // beklentiden ne kadar saptığıdır (kendi kendini yiyen bir ölçüm değil).
+        if (this.pingEmaMs !== null) {
+            const deviation = Math.abs(rtt - this.pingEmaMs);
+            this.pingJitterMs += (deviation - this.pingJitterMs) / 8;
+        }
 
         // EMA (0.3): tekil spike'lar UI'da zıplama yaratmasın, yine de
         // gerçek değişimlere birkaç örnek içinde yakınsasın.
