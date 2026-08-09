@@ -98,6 +98,24 @@ const SnakeConfig = {
     RENDER_MAX_STRIDE: 8,
     SEGMENT_POOL_MAX: 512,               // havuz tavanı (üstü gerçekten destroy)
 
+    // ── STRIDE GEÇİŞ ANİMASYONU (eşik "pop"u önleme) ─────────────────────
+    // Yukarıdaki stride formülü bir BASAMAK fonksiyonudur (Math.floor): sct
+    // bir eşiği geçtiği anda çıktı 2→3 sıçrar ve TEK KAREDE hem sprite'lar
+    // arası mesafe bir `spacing` açılır hem de sprite sayısı ~%33 düşer.
+    // Çözüm: basamak çıktısı (_targetStride) ÇİZİM stride'ından (_renderStride)
+    // ayrıştırılır; çizim değeri hedefe üstel LERP ile yaklaşır ve KESİRLİ
+    // kalabilir (yay-uzunluğu örneklemesi zaten sürekli — bkz.
+    // _positionSegmentsByPath). Böylece aralık ~400 ms boyunca açılır/kapanır.
+    STRIDE_LERP_RATE: 7.0,        // 1/s — τ≈143 ms, %95 yakınsama ≈ 430 ms
+    // Eşiğin tam dibinde salınan sct (yem yerken/boost drain) hedefi her
+    // pakette ileri-geri çevirmesin: yön değiştirmek için bu kadar aşım gerekir.
+    STRIDE_HYSTERESIS: 0.18,
+    STRIDE_SNAP_EPSILON: 0.002,   // bu farkın altında hedefe kilitlen (asimptot kesme)
+    // Decimation nedeniyle fazlalık kalan sprite anında gizlenmez; kuyrukta
+    // path'i takip etmeye devam ederek bu sürede 1→0 solar (ve tersi yönde
+    // yarım kalmışsa aynı yerden geri büyür).
+    SEGMENT_RETIRE_MS: 300,
+
     // ── Viewport culling ────────────────────────────────────────────────
     // Kamera görüş dikdörtgeninin dışındaki segmentler için transform yazımı
     // ve çizim atlanır. Padding, segment yarıçapı ÜSTÜNE eklenir; kenardan
@@ -185,9 +203,17 @@ export class Snake {
         // Çıkış animasyonundaki (çökmekte olan) segmentler — this.segments'ten
         // ÇIKARILMIŞ ama henüz görsel olarak yok olmamış ghost'lar: { sprite, t }.
         this._despawningSegments = [];
-        // Kaç mantıksal düğümde bir sprite çizildiği (≥1). _syncVisualSegments
-        // her yeniden boyutlandırmada scale/spacing'den yeniden hesaplar.
-        this._stride = 1;
+        // ── Stride: HEDEF (basamak) vs ÇİZİM (yumuşatılmış) ──────────────
+        // _targetStride  : eşik/basamak fonksiyonunun tamsayı çıktısı (≥1).
+        // _renderStride  : gerçekten çizimde kullanılan KESİRLİ değer; her kare
+        //                  _updateStrideAnimation ile hedefe üstel yaklaşır.
+        // Bu ikisinin ayrışması, eşik geçişindeki tek-kare sıçramasını ~400 ms'ye
+        // yayar (bkz. SnakeConfig.STRIDE_LERP_RATE).
+        this._targetStride = 1;
+        this._renderStride = 1;
+        // _syncVisualSegments'in en son uzlaştırdığı sprite sayısı — kesirli
+        // stride ilerlerken gereksiz (O(n)) resync'leri elemek için önbellek.
+        this._wantSpriteCount = 0;
         // Son karede gerçekten çizilen (cull edilmemiş) sprite sayısı — teşhis.
         this._visibleSegmentCount = 0;
         // Sprite havuzu: büyüyen/küçülen yılanların her karede sprite
@@ -277,6 +303,9 @@ export class Snake {
         // animateIn=true → 0'dan başlar, _updateSegmentLifecycle ile 1'e büyür.
         seg._animScale = animateIn ? 0 : 1;
         seg._growing = animateIn;
+        // _retiring: decimation yoğunlaşınca (stride ↑) fazlalık kalan sprite.
+        // this.segments'ten ÇIKARILMAZ — kuyrukta path'i takip ederek solar.
+        seg._retiring = false;
         seg.setScale(animateIn ? 0 : this.scale);
         seg.setAlpha(animateIn ? 0 : 1);
         return seg;
@@ -287,6 +316,7 @@ export class Snake {
         // Sahneden kopmuş/yok edilmiş sprite havuza girmemeli.
         if (!seg.scene) { seg.destroy?.(); return; }
         seg._growing = false;
+        seg._retiring = false;
         seg._animScale = 1;
         if (this._spritePool.length >= this.config.SEGMENT_POOL_MAX) {
             seg.destroy();
@@ -297,41 +327,145 @@ export class Snake {
         this._spritePool.push(seg);
     }
 
-    // Kaç mantıksal düğümde bir sprite çizileceği. Çizilen aralık
-    // (stride*spacing) segment YARIÇAPINI aşmadığı sürece komşu daireler en az
-    // 2× biner ve siluet katı kalır — bu yüzden tavan yarıçaptan türetilir.
-    // scale=1'de sonuç 1'dir: küçük yılanlarda davranış BİREBİR eskisi gibi.
-    _computeRenderStride() {
+    // Kaç mantıksal düğümde bir sprite çizilebileceğinin SÜREKLİ (kesirli)
+    // ölçütü. Çizilen aralık (stride*spacing) segment YARIÇAPINI aşmadığı
+    // sürece komşu daireler en az 2× biner ve siluet katı kalır — bu yüzden
+    // tavan yarıçaptan türetilir. scale=1'de sonuç ~1'dir: küçük yılanlarda
+    // davranış BİREBİR decimation'sız haldeki gibi.
+    //
+    // NOT: buradan DÖNEN DEĞER kesirlidir ve doğrudan çizime GİTMEZ; eşik
+    // (floor + histerezis) _refreshStrideTarget'ta, yumuşatma
+    // _updateStrideAnimation'da yapılır.
+    _computeRawStrideRatio() {
         if (!this.config.RENDER_DECIMATION_ENABLED) return 1;
         const spacing = this.getSegmentSpacing();
         if (!(spacing > 0.0001)) return 1;
         const radius = this.config.SEGMENT_RADIUS * this.scale;
         const maxDrawnSpacing = radius * this.config.RENDER_MAX_DRAWN_SPACING_RATIO;
-        const stride = Math.floor(maxDrawnSpacing / spacing);
+        const ratio = maxDrawnSpacing / spacing;
+        return Number.isFinite(ratio) ? Math.max(1, ratio) : 1;
+    }
+
+    // Histerezissiz tamsayı stride (ilk kurulum / hard snap için).
+    _computeRenderStride() {
         return Phaser.Math.Clamp(
-            Number.isFinite(stride) ? stride : 1,
+            Math.floor(this._computeRawStrideRatio()),
             1,
             this.config.RENDER_MAX_STRIDE
         );
     }
 
-    // Görsel sprite sayısını mantıksal sct + güncel stride'a göre uzlaştırır.
-    // sct'yi ASLA yazmaz — tek yönlü bağımlılık (mantık → görsel).
-    _syncVisualSegments(animateIn = false, animateOut = false) {
-        this._stride = this._computeRenderStride();
-        const want = this.sct > 0
-            ? Math.max(1, Math.ceil(this.sct / this._stride))
-            : 0;
+    // ── EŞİK DEĞERLENDİRME (histerezisli basamak) ────────────────────────
+    // Ham oran eşiğin tam dibinde salınırken (yem yeme ↔ boost drain) çıplak
+    // Math.floor her pakette 2↔3 arası çevirirdi; her çevirme yeni bir geçiş
+    // animasyonu başlatır ve titreme olarak görünürdü. Yön değiştirmek için
+    // STRIDE_HYSTERESIS kadar aşım şart koşulur.
+    _refreshStrideTarget() {
+        const raw = this._computeRawStrideRatio();
+        const current = this._targetStride > 0 ? this._targetStride : 1;
+        const h = this.config.STRIDE_HYSTERESIS;
 
-        while (this.segments.length > want) {
-            const seg = this.segments.pop();
-            // animateOut: sunucu segment SİLDİĞİ için küçülüyoruz → yerinde
-            // çöküş animasyonu. Aksi halde (yalnızca stride değişti) sprite
-            // sessizce havuza döner; gövde uzunluğu değişmediğinden animasyon
-            // yanlış olurdu.
-            if (animateOut) this._beginSegmentDespawn(seg);
-            else this._releaseSegmentSprite(seg);
+        let next = current;
+        if (raw >= current + 1 + h) next = Math.floor(raw);        // yoğunlaştır
+        else if (raw < current - h) next = Math.floor(raw);        // seyrelt
+
+        this._targetStride = Phaser.Math.Clamp(next, 1, this.config.RENDER_MAX_STRIDE);
+    }
+
+    // Geçiş animasyonunu ATLA — yalnızca yılanın görsel sürekliliğinin zaten
+    // koptuğu anlarda (create / respawn / hard resync) meşrudur.
+    _snapStrideToTarget() {
+        this._targetStride = this._computeRenderStride();
+        this._renderStride = this._targetStride;
+    }
+
+    // Güncel (kesirli) stride ile kaç sprite çizilmeli. Kesirli stride sayıyı
+    // da SÜREKLİ kaydırır: 2→3 geçişinde sct=64 için 32→31→…→22, teker teker.
+    _desiredSpriteCount() {
+        if (!(this.sct > 0)) return 0;
+        const stride = this._renderStride > 0 ? this._renderStride : 1;
+        // 1e-6: ceil'in kayan nokta gürültüsüyle bir fazla sprite üretmesini
+        // engeller (stride tam bölen olduğunda tek sprite'lık titreme).
+        return Math.max(1, Math.ceil(this.sct / stride - 1e-6));
+    }
+
+    // ── KARE BAŞINA STRIDE YUMUŞATMASI ───────────────────────────────────
+    // renderStride ← renderStride + (targetStride − renderStride)·(1 − e^(−λ·Δt))
+    // Kare hızından bağımsız (60/120/144 Hz'de aynı süre) ve simetrik: kütle
+    // kaybında (boost drain / ölüm yemi) hedef düşerken aynı eğriyle geri açılır.
+    _updateStrideAnimation(dtMs) {
+        this._refreshStrideTarget();
+
+        const target = this._targetStride;
+        let render = this._renderStride > 0 ? this._renderStride : target;
+
+        if (Math.abs(target - render) > this.config.STRIDE_SNAP_EPSILON) {
+            const dtSec = Math.min(dtMs, this.config.MAX_SIM_DT_MS) / 1000;
+            const alpha = 1 - Math.exp(-this.config.STRIDE_LERP_RATE * dtSec);
+            render += (target - render) * alpha;
+            // Üstel asimptotu kes — aksi halde sprite sayısı sonsuza dek
+            // "neredeyse" eşikte kalıp her kare resync tetikleyebilirdi.
+            if (Math.abs(target - render) <= this.config.STRIDE_SNAP_EPSILON) render = target;
+        } else {
+            render = target;
         }
+        this._renderStride = render;
+
+        // Sprite sayısı ancak GERÇEKTEN değiştiğinde uzlaştırılır: geçiş
+        // boyunca ~10 kez, kare başına değil (depth/tint yazımı O(n)).
+        if (this._desiredSpriteCount() !== this._wantSpriteCount) {
+            this._syncVisualSegments(true);
+        }
+    }
+
+    // Fazlalık sprite'ı diziden ÇIKARMADAN solmaya alır. Dizide kaldığı için
+    // _positionSegmentsByPath onu konumlandırmaya devam eder; mantıksal indeksi
+    // sct'ye kelepçelendiğinden kuyrukta gerçek kuyruk sprite'ının üstünde
+    // durur ve oradan söner — ekranda "düşen nokta" bırakmaz.
+    _retireSegmentSprite(seg) {
+        if (!seg || seg._retiring) return;
+        seg._retiring = true;
+        seg._growing = false;
+        if (typeof seg._animScale !== 'number') seg._animScale = 1;
+    }
+
+    // Emekliliği geri alır (stride tekrar seyreldi → sprite yeniden gerekli).
+    // Sıfırdan değil, KALDIĞI ölçekten 1'e büyür — yön değiştiren bir geçiş
+    // ortasında sprite'ın önce yok olup sonra yeniden doğması engellenir.
+    _reviveSegmentSprite(seg) {
+        if (!seg || !seg._retiring) return;
+        seg._retiring = false;
+        seg._growing = (seg._animScale ?? 1) < 0.999;
+    }
+
+    // Görsel sprite sayısını mantıksal sct + güncel KESİRLİ stride'a göre
+    // uzlaştırır. sct'yi ASLA yazmaz — tek yönlü bağımlılık (mantık → görsel).
+    _syncVisualSegments(animateIn = false, animateOut = false) {
+        this._refreshStrideTarget();
+        const want = this._desiredSpriteCount();
+        this._wantSpriteCount = want;
+
+        if (animateOut) {
+            // Sunucu segment SİLDİ → gövde gerçekten kısalıyor: kuyruk
+            // sprite'ı diziden çıkıp yerinde 1→0 çöker (ghost).
+            while (this.segments.length > want) {
+                this._beginSegmentDespawn(this.segments.pop());
+            }
+        } else {
+            // Yalnızca yeniden bölmeleme (stride) → sprite diziden ÇIKARILMAZ;
+            // kuyrukta path'i takip ederek solar (bkz. _retireSegmentSprite).
+            for (let i = want; i < this.segments.length; i++) {
+                this._retireSegmentSprite(this.segments[i]);
+            }
+        }
+
+        // Geçiş yön değiştirdiyse önce EMEKLİLERİ dirilt — havuzdan yeni
+        // sprite almak, yarı solmuş olanı yerinde geri büyütmekten kötüdür.
+        const revivable = Math.min(want, this.segments.length);
+        for (let i = 0; i < revivable; i++) {
+            this._reviveSegmentSprite(this.segments[i]);
+        }
+
         while (this.segments.length < want) {
             const spawn = this._resolveSegmentSpawnPositionBehindTail();
             this.segments.push(this._acquireSegmentSprite(spawn.x, spawn.y, animateIn));
@@ -351,9 +485,10 @@ export class Snake {
             this.pupilL?.setDepth(this.head.depth + 2);
             this.pupilR?.setDepth(this.head.depth + 2);
         }
-        const stride = this._stride || 1;
+        const stride = this._renderStride > 0 ? this._renderStride : 1;
         for (let i = 0; i < this.segments.length; i++) {
             // Derinlik mantıksal indekse göre (kafa üstte, kuyruk altta).
+            // Kesirli stride'da da KESİN AZALAN kalır — sıralama bozulmaz.
             this.segments[i].setDepth(this.sct - i * stride);
             // Şerit rengi ÇİZİLEN indekse göre: mantıksal indeks kullanılsaydı
             // stride, şerit periyodunu (segmentStripeWidth) örnekleyerek moire
@@ -415,7 +550,7 @@ export class Snake {
         // Komşu SPRITE'lar arası mesafe stride*spacing'dir; yeni sprite kuyruğun
         // o kadar arkasında doğar. (Konum aynı karede _positionSegmentsByPath
         // tarafından kesinleştirilir — bu yalnızca doğuş anındaki başlangıç.)
-        const spacing = this.getSegmentSpacing() * (this._stride || 1);
+        const spacing = this.getSegmentSpacing() * (this._renderStride > 0 ? this._renderStride : 1);
         return {
             x: anchorX + (dirX / length) * spacing,
             y: anchorY + (dirY / length) * spacing
@@ -494,6 +629,9 @@ export class Snake {
         if (!seg) return;
         if (!seg.active) { this._releaseSegmentSprite(seg); return; }
         seg._growing = false;
+        // Ghost listesine geçen sprite artık this.segments'te değil; emeklilik
+        // bayrağı burada temizlenmezse havuza dönene kadar bayat kalırdı.
+        seg._retiring = false;
         // NOT: görünürlük ZORLANMAZ. Cull edilmiş (ekran dışı) bir segment
         // burada görünür yapılsaydı, bayat konumunda bir kare için belirirdi.
         this._despawningSegments.push({ sprite: seg, t: seg._animScale ?? 1 });
@@ -506,9 +644,29 @@ export class Snake {
 
         // Büyüme: scale = 1 - exp(-k·t) — artımlı, kare-bağımsız üstel yaklaşım.
         const growAlpha = 1 - Math.exp(-this.config.SEGMENT_GROW_RATE * dtSec);
-        for (let i = 0; i < this.segments.length; i++) {
+        // Emeklilik (decimation fazlalığı): 1→0 doğrusal solma.
+        const retireStep = dtMs / Math.max(1, this.config.SEGMENT_RETIRE_MS);
+
+        // TERSTEN: emekliliği biten sprite diziden splice edilir. Emekliler her
+        // zaman kuyruk bölgesindedir (indeks ≥ want), bu yüzden splice AKTİF
+        // sprite indekslerini kaydırmaz — geriye kalan gövde yerinde kalır.
+        for (let i = this.segments.length - 1; i >= 0; i--) {
             const seg = this.segments[i];
-            if (!seg || !seg.active || !seg._growing) continue;
+            if (!seg || !seg.active) continue;
+
+            if (seg._retiring) {
+                seg._animScale -= retireStep;
+                if (seg._animScale <= 0) {
+                    this.segments.splice(i, 1);
+                    this._releaseSegmentSprite(seg);
+                    continue;
+                }
+                seg.setScale(this.scale * seg._animScale);
+                seg.setAlpha(seg._animScale);
+                continue;
+            }
+
+            if (!seg._growing) continue;
             seg._animScale += (1 - seg._animScale) * growAlpha;
             if (seg._animScale > 0.995) {
                 seg._animScale = 1;
@@ -571,6 +729,10 @@ export class Snake {
         // Entegrasyon artık updateFromInput içinde manuel (capped dt) yapılır,
         // sprite pozisyonu postPhysicsUpdate'te sim'den görsel yumuşatmayla türetilir.
         // Görsel sprite'lar mantıksal sct'den stride ile türetilir (decimation).
+        // SPAWN: geçiş animasyonu yok — görsel süreklilik zaten yok, yılan ilk
+        // karede doğru yoğunlukta çizilmeli (yoksa 400 ms boyunca "toparlanan"
+        // bir gövde görünürdü).
+        this._snapStrideToTarget();
         this._syncVisualSegments(false);
         // İlk kare dahil doğru boyut: constructor'da hesaplanan (sunucu
         // formülüne eş) scale sprite'lara hemen uygulanır — daha önce ilk
@@ -649,7 +811,9 @@ export class Snake {
         // için gelecek EntityFull tamamen boş tuvalden inşa edilir.
         this.segments = [];
         this.sct = 0;
-        this._stride = 1;
+        this._targetStride = 1;
+        this._renderStride = 1;
+        this._wantSpriteCount = 0;
         this.path = [];
         this.pathSegLens = [];
         this.totalPathLen = 0;
@@ -812,10 +976,14 @@ export class Snake {
             this._pathFollower.y = this.head.y;
         }
 
+        // Eşik geçişi yumuşatması — KONUMLANDIRMADAN ÖNCE: bu kare için geçerli
+        // kesirli _renderStride burada üretilir ve sprite sayısı gerekiyorsa
+        // (tek adım) uzlaştırılır. Aksi halde stride bir kare bayat kalırdı.
+        this._updateStrideAnimation(this._delta || 16.67);
         this._sampleHeadToPath();
         this._positionSegmentsByPath();
-        // Segment büyüme/çöküş animasyonları (Issue #3) — konumlandırmadan sonra,
-        // ölçeği/opaklığı bu karenin dt'siyle ilerlet.
+        // Segment büyüme/çöküş/emeklilik animasyonları (Issue #3) —
+        // konumlandırmadan sonra, ölçeği/opaklığı bu karenin dt'siyle ilerlet.
         this._updateSegmentLifecycle(this._delta || 16.67);
         // Gözler imlece bakar — ANCAK masaüstünde, spawn'da fare henüz
         // oynatılmamışsa activePointer bayat bir konum taşır (bkz.
@@ -1259,7 +1427,11 @@ export class Snake {
         if (!head) return;
 
         const spacing = this.getSegmentSpacing();
-        const stride = this._stride || 1;
+        // KESİRLİ stride: yay-uzunluğu sorgusu (d) zaten sürekli bir büyüklük
+        // ve aşağıdaki yürüyüş path parçaları arasında lerp ediyor — yani
+        // 2.37 gibi bir stride tamamen geçerli bir örnekleme adımıdır. Eşik
+        // geçişinin tek-kare sıçraması tam BURADA soğurulur.
+        const stride = this._renderStride > 0 ? this._renderStride : 1;
 
         // ── Culling penceresi (dünya uzayı) ──────────────────────────────
         // Padding'e segment YARIÇAPI eklenir: merkezi hemen dışarıda olan ama
@@ -1294,6 +1466,9 @@ export class Snake {
             if (!seg || !seg.active) continue;
 
             // Mantıksal düğüm eşlemesi — kuyruk sprite'ı tam sct'ye kelepçelenir.
+            // Kelepçe aynı zamanda EMEKLİ (solmakta olan) sprite'ları da kuyruğa
+            // toplar: indeksleri ≥ want olduğundan (i+1)*stride ≥ sct'tir, yani
+            // gövdeden kopmadan gerçek kuyruğun üstünde sönerler.
             const logicalIndex = Math.min((i + 1) * stride, this.sct);
             const d = logicalIndex * spacing;
 
@@ -1512,11 +1687,11 @@ export class Snake {
 
         // Stride yarıçaptan (= SEGMENT_RADIUS * scale) türediği için sunucudan
         // gelen her scale değişimi decimation yoğunluğunu değiştirebilir.
-        // Değiştiyse sprite sayısı yeniden uzlaştırılır — bu bir UZUNLUK
-        // değişimi değil yeniden bölmelemedir, o yüzden animasyonsuz.
-        if (this._computeRenderStride() !== this._stride) {
-            this._syncVisualSegments(false);
-        }
+        // Burada YALNIZCA hedef güncellenir; çizim stride'ı ve sprite sayısı
+        // _updateStrideAnimation tarafından kare kare yaklaştırılır. (Eskiden
+        // burada anında _syncVisualSegments çağrılıyordu — bir scale paketi
+        // tek karede onlarca sprite'ı yok edip aralığı sıçratıyordu.)
+        this._refreshStrideTarget();
 
         this.segments.forEach(seg => {
             // Büyüme animasyonundaki segmentin ölçeği _animScale ile çarpılır —
