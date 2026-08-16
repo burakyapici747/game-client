@@ -257,6 +257,31 @@ export class Snake {
     }
     calculateScaleTurnFactor() { return 0.13 + 0.87 * Math.pow((7.5 - this.scale) / 6, 2); }
     calculateSpeedTurnFactor() { return Math.min(1, this.speed / this.config.TURN_SPEED_INFLUENCE); }
+
+    /**
+     * ω_max — yilanin FIZIKSEL donme kapasitesi (rad/s).
+     *
+     * SUNUCU AYNASI: game-server SnakeDynamicsSystem.process →
+     *   turnSpeed = TURN_ANGLE_BASE * scaleTurnFactor(scale) * speedTurnFactor(speed)
+     * ve MovementSystem bunu her tick'te maxTurn = turnSpeed * DT olarak
+     * kelepceler. Burasi o formulun TEK client kopyasidir; hem yerel tahmin
+     * (updateFromInput) hem de GIRDI katmanindaki slew-rate limiter
+     * (Game._applySteeringLimiter) ayni degeri okur — girdi kelepcesi ile
+     * simulasyon kelepcesinin ayrismasi boylece yapisal olarak imkansizdir.
+     *
+     * isBoosting parametresi opsiyoneldir: girdi katmani, o karede GONDERILECEK
+     * boost durumunu bilir ve henuz setBoost() calismamis olabilir, bu yuzden
+     * niyet edilen durumu disaridan verebilir.
+     */
+    getTurnRateRadPerSec(isBoosting = this.isBoosting) {
+        const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
+        const speed = (isBoosting && canBoost)
+            ? this.calculateBoostSpeed()
+            : this.calculateBaseSpeed();
+        const speedTurnFactor = Math.min(1, speed / this.config.TURN_SPEED_INFLUENCE);
+        return this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * speedTurnFactor;
+    }
+
     getSegmentSpacing() {
         const base = this.config.SEGMENT_SPACING_BASE;
         const lenF = Phaser.Math.Clamp((this.sct - 30) / 200, 0, 1);
@@ -870,8 +895,11 @@ export class Snake {
         const boostSpeed = this.calculateBoostSpeed();
         this.speed = effectiveBoosting ? boostSpeed : baseSpeed;
 
-        const turn = this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * this.calculateSpeedTurnFactor();
-        this.turnSpeed = turn;
+        // ω_max — girdi katmanindaki slew-rate limiter ile BIREBIR ayni kaynak
+        // (bkz. getTurnRateRadPerSec). Boylece "girdi katmaninin izin verdigi
+        // donus hizi" ile "simulasyonun uygulayabildigi donus hizi" asla
+        // ayrisamaz.
+        this.turnSpeed = this.getTurnRateRadPerSec(effectiveBoosting);
 
         // dt SANIYE cinsinden ve TAVANLI: GC duraksaması / sekme dönüşü gibi
         // dev delta spike'ları tek frame'de ışınlanma üretmesin — kalan fark

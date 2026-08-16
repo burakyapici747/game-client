@@ -72,6 +72,71 @@ const FOOD_PREDICTION_TIMEOUT_MS = 1000;
 // bir segment kaybında HUD skoru bu kadar düşürülür (GÖREV 2.4, gerçek-zamanlı).
 const CLIENT_SCORE_PER_SEGMENT = 50;
 
+// ── GİRDİ AÇI SLEW-RATE LIMITER (client ⇄ server hedef-açı sözleşmesi) ──────
+//
+// KÖK NEDEN — GİRDİ AKIŞI ALIASING'İ, "istemci snap'liyor sunucu snap'lemiyor"
+// DEĞİL. İki taraf da dönüşü ω_max ile kelepçeler ve sabitler birebir aynıdır
+// (TURN_ANGLE_BASE 3.3, scale/speed faktörleri — bkz. Snake.getTurnRateRadPerSec
+// ⇄ server SnakeDynamicsSystem). Ayrışan şey KELEPÇE değil, iki simülasyonun
+// BESLENDİĞİ HEDEF AÇI DİZİSİDİR:
+//
+//   1) Yerel tahmin hedef açıyı HER RENDER KARESİNDE tüketir (60–144 Hz).
+//   2) Ağ gönderimi 30 Hz'e kısılmıştır (NetworkManager.angleSendIntervalMoving)
+//      — yalnızca zamanlayıcının dolduğu ANDAKİ örnek gider, aradakiler ATILIR.
+//   3) Sunucu, tick başına kanal başına TEK açı tutar (last-write-wins;
+//      Game.java → bufferedAngleInputByChannel.put) ve 60 Hz'de boşaltır.
+//
+// Hedef açı yavaş değişirken (normal oyun) bu üç eleme kayıpsızdır: ardışık
+// örnekler zaten birbirine yakındır. Ama oyuncu fareyi silkelediğinde hedef
+// sinyali ~10 Hz'in üstünde enerji taşır; client TAM diziyi, sunucu ise onun
+// rastgele fazlı 30 Hz alt-örneğini entegre eder. İKİ FARKLI GİRDİ → İKİ FARKLI
+// YÖRÜNGE. Fark süre boyunca birikir ve paket geldiğinde reconciliation onu
+// kapatmak zorunda kalır: ekrandaki sert kayma/snap budur.
+//
+// ÇÖZÜM — hedef açıyı GÖNDERİMDEN ÖNCE bant-sınırlı hale getir. İki kısıt:
+//
+//   (A) SLEW: |θ_t − θ_{t−1}| ≤ ω_max · dt   → ağa giden sinyal artık yılanın
+//       fiziksel dönüş hızından hızlı değişemez. 30 Hz örneklemede ardışık
+//       örnekler arası fark en fazla ω_max·33ms ≈ 7° olur (π yerine) — aliasing
+//       hatası ~25 kat düşer.
+//   (B) LEAD: |θ_t − heading| ≤ ω_max · LEAD_SEC → hedef, ULAŞILABİLİR olanın
+//       çok ilerisine kaçamaz. "Baş 0°'ye bakarken hedef 180°" durumu (mevcut
+//       kodun 0.83 sn boyunca sürdürdüğü hâl) yapısal olarak imkânsızlaşır.
+//
+// DÖNÜŞ HIZI YAVAŞLAMAZ: referans (heading) dönüş sırasında zaten ω_max ile
+// ilerlediğinden, hedef de ω_max ile ilerler; sadece SABİT bir faz kadar önde
+// durur. LEAD_SEC bilerek gönderim aralığından (33 ms) ve bir sunucu tick'inden
+// (16.7 ms) büyük seçilir: aksi halde sunucu hedefe erişip bir sonraki pakete
+// kadar BEKLER (merdiven duraklaması) ve dönüş gerçekten yavaşlardı.
+const STEER_LIMITER = {
+    // Hedefin heading'i geçebileceği azami faz (sn cinsinden ω_max çarpanı).
+    // 80 ms ≈ 33 ms gönderim aralığı + 16.7 ms sunucu tick + jitter payı.
+    // ω_max=3.8 rad/s'de ≈ 0.30 rad (17°) tavan sapma.
+    LEAD_SEC: 0.080,
+
+    // ── Ani ters çevirme (flick) tespiti ────────────────────────────────────
+    // Bu pencereden kısa sürede, bu eşikten büyük ve ÖNCEKİNİN TERSİ yönde bir
+    // ham açı sıçraması "silkeleme" sayılır. Tek bir hızlı ama TUTARLI dönüş
+    // (oyuncunun gerçekten istediği manevra) yön değiştirmediği için tetiklemez.
+    FLICK_WINDOW_MS: 50,
+    FLICK_STEP_RAD: 0.9,        // ~52° — tek karede bu kadar ham sıçrama
+    FLICK_GAIN: 0.55,           // her tespit ajitasyonu bu kadar yükseltir
+    AGITATION_DECAY_SEC: 0.28,  // τ — silkeleme bitince bu sabitle söner
+
+    // Ajitasyon 0 iken filtre ŞEFFAF olsun diye üst oran yüksek (τ≈25 ms:
+    // normal dönüşte hissedilmez), 1 iken ağır sönümlü (τ≈167 ms: salınım
+    // ortalamaya oturur ve ters kadranlar arası zıplama biter).
+    SMOOTH_RATE_CALM: 40,       // 1/s
+    SMOOTH_RATE_AGITATED: 6,    // 1/s
+    AGITATION_EPSILON: 0.02,    // bunun altında filtre tamamen atlanır
+
+    // Filtrelenmiş hedef bu kadar değiştiyse paket ÜRETİLMELİDİR: ham girdi
+    // sabitlenmiş olsa bile limiter hâlâ ona doğru süzülüyor olabilir ve o
+    // hareket sunucuya bildirilmezse iki taraf ayrışır. 0.012 rad ≈ 0.7° =
+    // ağ kuantasının (1.44°) yarısı — yani "bir kova değişimi" eşiği.
+    WIRE_EPSILON_RAD: 0.012,
+};
+
 // ── AOI DEBUG OVERLAY (sunucu görünürlük sınırının görselleştirilmesi) ──────
 // Sunucu algoritması: AOICalculationSystem.fillAoiMask — AOI, oyuncunun
 // KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 5x5 sektörlük
@@ -198,6 +263,21 @@ export class Game extends Phaser.Scene {
         // direksiyonu devralir; o ana kadar sunucunun spawn yonu korunur ve
         // aga aci paketi uretilmez.
         this._pointerSteeringArmed = false;
+
+        // ── SLEW-RATE LIMITER DURUMU (bkz. STEER_LIMITER) ───────────────────
+        // angle      : ağa ve tahmine giden SON filtrelenmiş hedef açı (rad).
+        //              null = henüz tohumlanmadı; ilk kare ham açıya oturur.
+        // lastRawRad : ham fare açısının bir önceki kare değeri — flick tespiti
+        //              ADIM YÖNÜNÜ karşılaştırdığı için gereklidir.
+        // lastRawTime: o ölçümün zaman damgası (ms) — sıçramanın FLICK_WINDOW_MS
+        //              içinde olup olmadığı buradan bilinir.
+        // lastRawStep: bir önceki ham adım (işaretli) — ardışık adımların
+        //              işareti değişiyorsa bu bir ters çevirmedir (salınım),
+        //              aynı kalıyorsa oyuncunun tutarlı bir manevrasıdır.
+        // agitation  : [0..1] silkeleme şiddeti; sönümleme oranını belirler.
+        // (scene.restart() constructor'ı yeniden koşturmaz — sıfırlama BURADA
+        // yapılmalı, yoksa önceki turun filtre durumu yeni tura sızar.)
+        this._resetSteeringLimiter(null);
 
         this.gameStarted = false;
         // selfBaseline: oyuncunun İLK otoriter SelfPosition karesi uygulandı mı.
@@ -487,6 +567,11 @@ export class Game extends Phaser.Scene {
         this._lastDelayedInput = null;
         this._lastCommittedAngleRad = null;
         this._pointerSteeringArmed = false;
+        // Slew-rate limiter da bu tura ait DEĞİL: önceki turun filtrelenmiş
+        // hedefi ve ajitasyon skoru kalırsa, yeni yılan spawn yönü yerine
+        // ölmüş yılanın son bakış açısına doğru süzülmeye başlardı. Aşağıda
+        // spawn yönü okunduğunda o açıya TOHUMLANIR.
+        this._resetSteeringLimiter(null);
 
         const startX = Number(startInfo?.x);
         const startY = Number(startInfo?.y);
@@ -515,6 +600,9 @@ export class Game extends Phaser.Scene {
             // fareyi oynatana kadar "değişiklik yok" kabul edilir, açı paketi
             // üretilmez ve yerel tahmin sunucuyla aynı yönde kalır.
             this._lastCommittedAngleRad = spawnHeadingRad;
+            // Limiter aynı yönle tohumlanır: oyuncu direksiyonu devraldığı ilk
+            // karede filtre doğru yerden başlar, sıfırdan süzülmez.
+            this._resetSteeringLimiter(spawnHeadingRad);
         }
 
         if (Number.isFinite(worldRadius)) {
@@ -1556,6 +1644,149 @@ export class Game extends Phaser.Scene {
         }
     }
 
+    // ── GİRDİ AÇI SLEW-RATE LIMITER ──────────────────────────────────────────
+    // Tasarım gerekçesi ve kök-neden analizi için dosya başındaki STEER_LIMITER
+    // bloğuna bakınız. Buradaki iki metot o sözleşmenin uygulamasıdır.
+
+    /**
+     * Limiter durumunu sıfırlar; verilen açı geçerliyse ona TOHUMLAR.
+     * Tohumlama, kontrollerin (fade-in bitişi, pointer arming, respawn, sekme
+     * dönüşü) devreye girdiği ilk karede filtrenin bayat bir açıdan hedefe
+     * doğru "süzülmeye" başlamasını — yani görünür bir açılış sapmasını —
+     * engeller: filtre daha ilk karede doğru yerde başlar.
+     */
+    _resetSteeringLimiter(angleRad = null) {
+        const seed = Number.isFinite(angleRad) ? Phaser.Math.Angle.Wrap(angleRad) : null;
+        this._steer = {
+            angle: seed,
+            lastRawRad: seed,
+            lastRawTime: 0,
+            lastRawStep: 0,
+            agitation: 0,
+        };
+    }
+
+    /**
+     * Ham fare/joystick açısını, yılanın FİZİKSEL dönüş kapasitesine (ω_max)
+     * uyan bant-sınırlı bir hedef açıya dönüştürür.
+     *
+     * @param {number} rawAngleRad  Ham girdi açısı (rad).
+     * @param {Snake}  snake        Oyuncunun yılanı — ω_max ve referans heading.
+     * @param {number} deltaMs      Kare süresi (ms).
+     * @param {number} timeMs       Sahne saati (ms) — flick penceresi için.
+     * @param {boolean} isBoosting  O karede gönderilecek boost niyeti (ω_max'i
+     *                              etkiler: boost hızı → speedTurnFactor).
+     * @returns {{angle: number, changed: boolean}} `changed`, filtrelenmiş
+     *          hedefin ağa bildirilmesi GEREKTİĞİNİ söyler.
+     */
+    _applySteeringLimiter(rawAngleRad, snake, deltaMs, timeMs, isBoosting) {
+        const cfg = STEER_LIMITER;
+        const s = this._steer;
+
+        if (!Number.isFinite(rawAngleRad)) {
+            return { angle: Number.isFinite(s.angle) ? s.angle : 0, changed: false };
+        }
+        const raw = Phaser.Math.Angle.Wrap(rawAngleRad);
+
+        // KELEPÇE REFERANSI — görsel head.rotation DEĞİL, tahminin MANTIKSAL
+        // movementAngle'ı. Tahmin, _inputDelayQueue sayesinde girdiyi ~tek-yön
+        // gecikme kadar GEÇ uygular; dolayısıyla movementAngle(t), sunucunun t
+        // anındaki currentAngle'ının en iyi client tahminidir. Sunucu da kendi
+        // kelepçesini tam olarak o değere göre uygular (MovementSystem:
+        // diff = target − currentAngle), yani iki taraf aynı referansı paylaşır.
+        const heading = Number.isFinite(snake?.movementAngle) ? snake.movementAngle : raw;
+
+        // İlk kare / respawn sonrası: tohumla ve olduğu gibi geç.
+        if (!Number.isFinite(s.angle)) {
+            s.angle = raw;
+            s.lastRawRad = raw;
+            s.lastRawTime = timeMs;
+            s.lastRawStep = 0;
+            s.agitation = 0;
+            return { angle: raw, changed: true };
+        }
+
+        // dt tavanı simülasyonunkiyle AYNI kaynaktan (MAX_SIM_DT_MS): limiter'ın
+        // ve tahminin farklı dt görmesi, tam da kapatmaya çalıştığımız türden
+        // bir ayrışma üretirdi.
+        const maxDtMs = snake?.config?.MAX_SIM_DT_MS ?? 50;
+        const dtSec = Math.min(deltaMs, maxDtMs) / 1000;
+
+        // ── 1) ANİ TERS ÇEVİRME (FLICK) TESPİTİ ─────────────────────────────
+        const rawStep = Phaser.Math.Angle.Wrap(raw - s.lastRawRad);
+        const dtRawMs = Math.max(1, timeMs - s.lastRawTime);
+
+        // Ajitasyon her karede üstel olarak söner (frame-rate agnostik).
+        s.agitation *= Math.exp(-dtRawMs / (cfg.AGITATION_DECAY_SEC * 1000));
+
+        const isFastStep = dtRawMs <= cfg.FLICK_WINDOW_MS
+            && Math.abs(rawStep) >= cfg.FLICK_STEP_RAD;
+        // TERS YÖN ŞARTI kritik: tutarlı (aynı işaretli) hızlı bir dönüş
+        // oyuncunun GERÇEK manevrasıdır ve sönümlenmemelidir. Silkeleme ise
+        // kendini işaret değiştiren ardışık büyük adımlarla belli eder.
+        // ~180°'lik tek sıçrama, işaret şartı aranmadan da ajitasyon sayılır:
+        // salınımın ilk yarısı henüz ters adım üretmemiştir ama zaten
+        // ulaşılamaz bir hedeftir.
+        const isReversal = rawStep * s.lastRawStep < 0;
+        if (isFastStep && (isReversal || Math.abs(rawStep) >= Math.PI * 0.75)) {
+            s.agitation = Math.min(1, s.agitation + cfg.FLICK_GAIN);
+        }
+
+        s.lastRawRad = raw;
+        s.lastRawTime = timeMs;
+        if (Math.abs(rawStep) > 1e-4) s.lastRawStep = rawStep;
+
+        // ── 2) ÜSTEL AÇISAL SÖNÜMLEME (yalnızca silkelemede devrede) ────────
+        // Ajitasyon 0 iken bu blok ATLANIR: normal dönüşe SIFIR gecikme eklenir.
+        // Devredeyken bile dönüş hızını yavaşlatmaz — aşağıdaki LEAD kelepçesi
+        // zaten hedefi heading'in hemen önünde tutar, sönümleme yalnızca ileri-
+        // geri SALINIMI ortalamaya oturtur (ters kadranlar arası zıplama biter).
+        let desired = raw;
+        if (s.agitation > cfg.AGITATION_EPSILON) {
+            const rate = Phaser.Math.Linear(
+                cfg.SMOOTH_RATE_CALM, cfg.SMOOTH_RATE_AGITATED, s.agitation);
+            const alpha = 1 - Math.exp(-rate * dtSec);
+            desired = Phaser.Math.Angle.Wrap(
+                s.angle + Phaser.Math.Angle.Wrap(raw - s.angle) * alpha);
+        }
+
+        // ── 3) SLEW (A) + LEAD (B) KELEPÇELERİ ──────────────────────────────
+        const omegaMax = typeof snake?.getTurnRateRadPerSec === 'function'
+            ? snake.getTurnRateRadPerSec(isBoosting)
+            : 0;
+        if (!(omegaMax > 0)) {
+            // ω_max okunamadı (yılan henüz tam kurulmamış). Uydurma bir limit
+            // dayatmaktansa eski davranışa düş — yanlış bir kelepçe, hiç
+            // kelepçe olmamasından daha kötü bir ayrışma üretirdi.
+            const changedRaw = Math.abs(
+                Phaser.Math.Angle.Wrap(desired - s.angle)) > cfg.WIRE_EPSILON_RAD;
+            s.angle = desired;
+            return { angle: desired, changed: changedRaw };
+        }
+
+        // (A) SLEW — kare başına azami değişim ω_max·dt. Ağa giden hedef sinyali
+        //     böylece bant-sınırlı olur: 30 Hz gönderimde ardışık örnekler arası
+        //     fark ≤ ω_max·33ms (~7°) kalır, π değil. Sunucunun gördüğü alt-örnek
+        //     ile client'in entegre ettiği tam dizi arasındaki fark ~25 kat düşer.
+        const maxSlew = omegaMax * dtSec;
+        let next = Phaser.Math.Angle.Wrap(s.angle + Phaser.Math.Clamp(
+            Phaser.Math.Angle.Wrap(desired - s.angle), -maxSlew, maxSlew));
+
+        // (B) LEAD — hedef, heading'i en fazla ω_max·LEAD_SEC kadar geçebilir.
+        //     "Baş 0°'ye bakarken hedef 180°" durumu artık oluşamaz. Dönüş
+        //     YAVAŞLAMAZ: heading dönüş boyunca ω_max ile ilerlediği için hedef
+        //     de ω_max ile ilerler, yalnızca sabit bir faz kadar önde kalır —
+        //     ve o faz sunucunun her tick'te tam maxTurn adımı atmasına yeter.
+        const maxLead = omegaMax * cfg.LEAD_SEC;
+        next = Phaser.Math.Angle.Wrap(heading + Phaser.Math.Clamp(
+            Phaser.Math.Angle.Wrap(next - heading), -maxLead, maxLead));
+
+        const changed = Math.abs(
+            Phaser.Math.Angle.Wrap(next - s.angle)) > cfg.WIRE_EPSILON_RAD;
+        s.angle = next;
+        return { angle: next, changed };
+    }
+
     update(time, delta) {
         if (!this.gameStarted) return;
 
@@ -1574,6 +1805,12 @@ export class Game extends Phaser.Scene {
                 // Deadzone / epsilon guard bunu false yaparsa: aci ne yerel tahmine
                 // ne de aga gonderilir (yalniz boost islenir).
                 let sendAngle = true;
+                // Slew-rate limiter yalnizca GERCEK bir oyuncu girdisi varken
+                // calisir. Girdinin tamamen kilitli oldugu dallarda (fade-in,
+                // pointer henuz devralmadi) hicbir paket uretilmez ve yon
+                // sunucunun bildigi acida tutulur — orada filtre CALISTIRILMAZ,
+                // o acaya TOHUMLANIR (bkz. _resetSteeringLimiter).
+                let steerActive = true;
 
                 const mob = window.mobileInput;
                 if (!this._inputEnabled) {
@@ -1592,6 +1829,7 @@ export class Game extends Phaser.Scene {
                         ?? this._lastCommittedAngleRad
                         ?? head.rotation;
                     sendAngle = false;
+                    steerActive = false;
                 } else if (mob?.enabled) {
                     // ── Mobile: virtual joystick + boost button ───────────────
                     // Joystick açısı doğrudan ekran koordinatlarında atan2(dy,dx) olarak
@@ -1624,6 +1862,7 @@ export class Game extends Phaser.Scene {
                         ?? this._lastCommittedAngleRad
                         ?? head.rotation;
                     sendAngle = false;
+                    steerActive = false;
                 } else {
                     // ── Desktop: mouse ────────────────────────────────────────
                     this.pointer = this.input.activePointer;
@@ -1663,6 +1902,28 @@ export class Game extends Phaser.Scene {
                             sendAngle = true;
                         }
                     }
+                }
+
+                // ── GİRDİ AÇI SLEW-RATE LIMITER (kuantalamadan ÖNCE) ─────────
+                // Buradan çıkan açı, hem TELE hem de YEREL TAHMİNE giden TEK
+                // değerdir; ikisi aşağıda aynı kuantalama/gecikme yolundan
+                // geçer. Limiter'ın kuantalamadan önce çalışması şarttır:
+                // sonrasında uygulansaydı ağa bant-sınırsız (silkelenen) sinyal
+                // gitmeye devam eder ve 30 Hz gönderim + sunucunun tick başına
+                // last-write-wins tamponu onu yeniden aliasing'e sokardı.
+                if (!steerActive) {
+                    this._resetSteeringLimiter(targetAngleRad);
+                } else {
+                    const limited = this._applySteeringLimiter(
+                        targetAngleRad, mySnake, delta, time, isBoosting);
+                    targetAngleRad = limited.angle;
+                    // Ham girdi bastırılmış olsa bile (deadzone / ANGLE_EPSILON
+                    // guard) limiter hâlâ hedefe doğru süzülüyor olabilir. O
+                    // hareket ağa bildirilmezse sunucu client'in tuttuğu hedefi
+                    // ASLA öğrenemez ve iki simülasyon yeniden ayrışır — bu
+                    // yüzden gönderim burada zorlanır. (Ters yönde bir zorlama
+                    // yok: limiter durduğunda guard'ların sessizliği korunur.)
+                    if (limited.changed) sendAngle = true;
                 }
 
                 // ── Determinizm: açıyı ÖNCE ağ formatına (0-250) kuantala, sonra
@@ -1993,6 +2254,15 @@ export class Game extends Phaser.Scene {
         if (!this.gameStarted) return;
 
         this.snakes.forEach(snake => snake.hardResync());
+
+        // Sekme gizliyken rAF durmuştur: limiter'ın son ham örneği ve zaman
+        // damgası dakikalarca eski olabilir. Bu bayat durumla devam etmek,
+        // dönüşte tek karelik dev bir "flick" tespiti (gereksiz sönümleme) ya
+        // da hardResync'in yeni heading'ine göre anlamsız bir lead kelepçesi
+        // üretirdi. Otoriter heading'e yeniden tohumla.
+        const resyncSnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+        this._resetSteeringLimiter(
+            Number.isFinite(resyncSnake?.movementAngle) ? resyncSnake.movementAngle : null);
 
         // Yarım kalmış yeme animasyonları bayat koordinatlarda titreşir — bitir.
         this.eatingFoods.forEach(({ sprite }) => sprite?.destroy());
