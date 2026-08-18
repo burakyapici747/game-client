@@ -1,4 +1,5 @@
 import { client, server } from './bundle.js';
+import { resolveFromBrowser, cleanValue } from './endpoint.js';
 
 
 export class NetworkManager {
@@ -8,10 +9,23 @@ export class NetworkManager {
         this.connected = false;
 
 
-        // Config-driven sunucu seçimi: kullanıcının menüden seçtiği sunucunun
-        // wsUrl'i (public/config.json) önceliklidir; yoksa env fallback.
-        const serverIP = import.meta.env.VITE_SERVER_URL || '127.0.0.1';
-        this.wsUrl = window.gameSettings?.serverUrl || `ws://${serverIP}:8080/ws`;
+        // ── SUNUCU ENDPOINT'İ (gömülü host/port YOK) ────────────────────────
+        // Tek client imajı N ayrı instance'a hizmet ettiği için (bkz.
+        // game-client/Dockerfile) endpoint'in hiçbir parçası pakete gömülemez.
+        // Çözümleme sırası:
+        //   1. window.gameSettings.serverUrl — menüde seçilen sunucu. Bu değer
+        //      main.js'teki resolveServerEndpoint'ten geçmiş TAM URL'dir ve
+        //      normal akışta HER ZAMAN doludur.
+        //   2. window.gameConfig — menü atlandıysa (doğrudan boot) config'in
+        //      varsayılan sunucusu.
+        //   3. Sayfanın origin'i — son çare.
+        // Uydurma bir varsayılan port ASLA yazılmaz: yanlış bir instance'a
+        // sessizce bağlanmak, açıkça başarısız olmaktan çok daha kötüdür.
+        this.wsUrl = NetworkManager.resolveWsUrl(options.wsUrl);
+        if (!this.wsUrl) {
+            console.error('NetworkManager: sunucu endpoint\'i çözümlenemedi — ' +
+                'config.json render edilmemiş ya da VITE_SERVER_* verilmemiş olabilir.');
+        }
         this.isCurrentlyBoosting = false;
 
         this.lastSentAngleValue = -1;
@@ -57,12 +71,50 @@ export class NetworkManager {
         this.pingCalibrated = false;
     }
 
+    /**
+     * WebSocket endpoint'ini çözümler. Hiçbir host/port literali İÇERMEZ —
+     * değerler çalışma anında yazılan config.json'dan, VITE_* env'inden ya da
+     * sayfanın origin'inden gelir (bkz. main.js → resolveServerEndpoint).
+     *
+     * @param {string} [override] Doğrudan verilen URL (testler / gömme senaryosu).
+     * @returns {string} Tam ws(s) URL'i, çözümlenemezse boş string.
+     */
+    static resolveWsUrl(override) {
+        // 1. Doğrudan verilen URL, sonra menüde seçilen sunucu. gameSettings.serverUrl
+        //    zaten endpoint.js'ten geçmiş TAM URL'dir ve normal akışta hep doludur.
+        const direct = cleanValue(override) || cleanValue(window.gameSettings?.serverUrl);
+        if (direct) return direct;
+
+        // 2. Menü atlanmışsa (doğrudan boot) config'in varsayılan sunucusu.
+        const cfg = window.gameConfig;
+        if (Array.isArray(cfg?.servers) && cfg.servers.length > 0) {
+            const preferred = cfg.servers.find(s => s.id === cfg.defaultServerId) ?? cfg.servers[0];
+            const fromConfig = resolveFromBrowser(preferred ?? {});
+            if (fromConfig) return fromConfig;
+        }
+
+        // 3. Son çare: env + sayfa origin'i. main.js ile AYNI çözümleyici
+        //    kullanılır — ayrı bir kopya, menüde görünen instance ile gerçekten
+        //    bağlanılanın sapması demekti.
+        return resolveFromBrowser({});
+    }
+
     canSend() {
         return this.connected && this.socket?.readyState === WebSocket.OPEN;
     }
 
     connect() {
         if (this.socket?.readyState === WebSocket.OPEN || this.socket?.readyState === WebSocket.CONNECTING) {
+            return;
+        }
+
+        // Bos URL ile `new WebSocket('')` SyntaxError firlatir ve cagrildigi
+        // yerde yakalanmadigi icin boot'u sessizce oldururdu. Endpoint
+        // cozumlenemediyse bunu 'disconnected' olarak bildir: UI zaten bu
+        // event icin bir hata yolu tasiyor.
+        if (!this.wsUrl) {
+            console.error('NetworkManager.connect: endpoint yok — baglanti kurulamiyor.');
+            this.scene.events.emit('disconnected');
             return;
         }
 
