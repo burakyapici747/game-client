@@ -3851,6 +3851,7 @@ export const server = $root.server = (() => {
          * @property {number|null} [y] SelfPosition y
          * @property {number|null} [scale] SelfPosition scale
          * @property {number|null} [lastProcessedSequenceId] SelfPosition lastProcessedSequenceId
+         * @property {number|null} [totalScore] SelfPosition totalScore
          */
 
         /**
@@ -3909,6 +3910,14 @@ export const server = $root.server = (() => {
         SelfPosition.prototype.lastProcessedSequenceId = 0;
 
         /**
+         * SelfPosition totalScore.
+         * @member {number} totalScore
+         * @memberof server.SelfPosition
+         * @instance
+         */
+        SelfPosition.prototype.totalScore = 0;
+
+        /**
          * Creates a new SelfPosition instance using the specified properties.
          * @function create
          * @memberof server.SelfPosition
@@ -3942,6 +3951,8 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 4, wireType 5 =*/37).float(message.scale);
             if (message.lastProcessedSequenceId != null && Object.hasOwnProperty.call(message, "lastProcessedSequenceId"))
                 writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.lastProcessedSequenceId);
+            if (message.totalScore != null && Object.hasOwnProperty.call(message, "totalScore"))
+                writer.uint32(/* id 6, wireType 0 =*/48).uint32(message.totalScore);
             return writer;
         };
 
@@ -3998,6 +4009,10 @@ export const server = $root.server = (() => {
                         message.lastProcessedSequenceId = reader.uint32();
                         break;
                     }
+                case 6: {
+                        message.totalScore = reader.uint32();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -4048,6 +4063,9 @@ export const server = $root.server = (() => {
             if (message.lastProcessedSequenceId != null && message.hasOwnProperty("lastProcessedSequenceId"))
                 if (!$util.isInteger(message.lastProcessedSequenceId))
                     return "lastProcessedSequenceId: integer expected";
+            if (message.totalScore != null && message.hasOwnProperty("totalScore"))
+                if (!$util.isInteger(message.totalScore))
+                    return "totalScore: integer expected";
             return null;
         };
 
@@ -4073,6 +4091,8 @@ export const server = $root.server = (() => {
                 message.scale = Number(object.scale);
             if (object.lastProcessedSequenceId != null)
                 message.lastProcessedSequenceId = object.lastProcessedSequenceId >>> 0;
+            if (object.totalScore != null)
+                message.totalScore = object.totalScore >>> 0;
             return message;
         };
 
@@ -4095,6 +4115,7 @@ export const server = $root.server = (() => {
                 object.y = 0;
                 object.scale = 0;
                 object.lastProcessedSequenceId = 0;
+                object.totalScore = 0;
             }
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 object.entityId = message.entityId;
@@ -4106,6 +4127,8 @@ export const server = $root.server = (() => {
                 object.scale = options.json && !isFinite(message.scale) ? String(message.scale) : message.scale;
             if (message.lastProcessedSequenceId != null && message.hasOwnProperty("lastProcessedSequenceId"))
                 object.lastProcessedSequenceId = message.lastProcessedSequenceId;
+            if (message.totalScore != null && message.hasOwnProperty("totalScore"))
+                object.totalScore = message.totalScore;
             return object;
         };
 
@@ -6820,281 +6843,6 @@ export const server = $root.server = (() => {
         };
 
         return PathSeedCollection;
-    })();
-
-    server.EntityPosition = (function() {
-
-        /**
-         * Properties of an EntityPosition.
-         * @memberof server
-         * @interface IEntityPosition
-         * @property {number|null} [channelId] EntityPosition channelId
-         * @property {number|null} [x] EntityPosition x
-         * @property {number|null} [y] EntityPosition y
-         * @property {number|null} [angle] EntityPosition angle
-         */
-
-        /**
-         * Constructs a new EntityPosition.
-         * @memberof server
-         * @classdesc Represents an EntityPosition.
-         * @implements IEntityPosition
-         * @constructor
-         * @param {server.IEntityPosition=} [properties] Properties to set
-         */
-        function EntityPosition(properties) {
-            if (properties)
-                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
-                    if (properties[keys[i]] != null)
-                        this[keys[i]] = properties[keys[i]];
-        }
-
-        /**
-         * EntityPosition channelId.
-         * @member {number} channelId
-         * @memberof server.EntityPosition
-         * @instance
-         */
-        EntityPosition.prototype.channelId = 0;
-
-        /**
-         * EntityPosition x.
-         * @member {number} x
-         * @memberof server.EntityPosition
-         * @instance
-         */
-        EntityPosition.prototype.x = 0;
-
-        /**
-         * EntityPosition y.
-         * @member {number} y
-         * @memberof server.EntityPosition
-         * @instance
-         */
-        EntityPosition.prototype.y = 0;
-
-        /**
-         * EntityPosition angle.
-         * @member {number} angle
-         * @memberof server.EntityPosition
-         * @instance
-         */
-        EntityPosition.prototype.angle = 0;
-
-        /**
-         * Creates a new EntityPosition instance using the specified properties.
-         * @function create
-         * @memberof server.EntityPosition
-         * @static
-         * @param {server.IEntityPosition=} [properties] Properties to set
-         * @returns {server.EntityPosition} EntityPosition instance
-         */
-        EntityPosition.create = function create(properties) {
-            return new EntityPosition(properties);
-        };
-
-        /**
-         * Encodes the specified EntityPosition message. Does not implicitly {@link server.EntityPosition.verify|verify} messages.
-         * @function encode
-         * @memberof server.EntityPosition
-         * @static
-         * @param {server.IEntityPosition} message EntityPosition message or plain object to encode
-         * @param {$protobuf.Writer} [writer] Writer to encode to
-         * @returns {$protobuf.Writer} Writer
-         */
-        EntityPosition.encode = function encode(message, writer) {
-            if (!writer)
-                writer = $Writer.create();
-            if (message.channelId != null && Object.hasOwnProperty.call(message, "channelId"))
-                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.channelId);
-            if (message.x != null && Object.hasOwnProperty.call(message, "x"))
-                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.x);
-            if (message.y != null && Object.hasOwnProperty.call(message, "y"))
-                writer.uint32(/* id 3, wireType 0 =*/24).uint32(message.y);
-            if (message.angle != null && Object.hasOwnProperty.call(message, "angle"))
-                writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.angle);
-            return writer;
-        };
-
-        /**
-         * Encodes the specified EntityPosition message, length delimited. Does not implicitly {@link server.EntityPosition.verify|verify} messages.
-         * @function encodeDelimited
-         * @memberof server.EntityPosition
-         * @static
-         * @param {server.IEntityPosition} message EntityPosition message or plain object to encode
-         * @param {$protobuf.Writer} [writer] Writer to encode to
-         * @returns {$protobuf.Writer} Writer
-         */
-        EntityPosition.encodeDelimited = function encodeDelimited(message, writer) {
-            return this.encode(message, writer).ldelim();
-        };
-
-        /**
-         * Decodes an EntityPosition message from the specified reader or buffer.
-         * @function decode
-         * @memberof server.EntityPosition
-         * @static
-         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
-         * @param {number} [length] Message length if known beforehand
-         * @returns {server.EntityPosition} EntityPosition
-         * @throws {Error} If the payload is not a reader or valid buffer
-         * @throws {$protobuf.util.ProtocolError} If required fields are missing
-         */
-        EntityPosition.decode = function decode(reader, length, error) {
-            if (!(reader instanceof $Reader))
-                reader = $Reader.create(reader);
-            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.EntityPosition();
-            while (reader.pos < end) {
-                let tag = reader.uint32();
-                if (tag === error)
-                    break;
-                switch (tag >>> 3) {
-                case 1: {
-                        message.channelId = reader.uint32();
-                        break;
-                    }
-                case 2: {
-                        message.x = reader.uint32();
-                        break;
-                    }
-                case 3: {
-                        message.y = reader.uint32();
-                        break;
-                    }
-                case 4: {
-                        message.angle = reader.uint32();
-                        break;
-                    }
-                default:
-                    reader.skipType(tag & 7);
-                    break;
-                }
-            }
-            return message;
-        };
-
-        /**
-         * Decodes an EntityPosition message from the specified reader or buffer, length delimited.
-         * @function decodeDelimited
-         * @memberof server.EntityPosition
-         * @static
-         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
-         * @returns {server.EntityPosition} EntityPosition
-         * @throws {Error} If the payload is not a reader or valid buffer
-         * @throws {$protobuf.util.ProtocolError} If required fields are missing
-         */
-        EntityPosition.decodeDelimited = function decodeDelimited(reader) {
-            if (!(reader instanceof $Reader))
-                reader = new $Reader(reader);
-            return this.decode(reader, reader.uint32());
-        };
-
-        /**
-         * Verifies an EntityPosition message.
-         * @function verify
-         * @memberof server.EntityPosition
-         * @static
-         * @param {Object.<string,*>} message Plain object to verify
-         * @returns {string|null} `null` if valid, otherwise the reason why it is not
-         */
-        EntityPosition.verify = function verify(message) {
-            if (typeof message !== "object" || message === null)
-                return "object expected";
-            if (message.channelId != null && message.hasOwnProperty("channelId"))
-                if (!$util.isInteger(message.channelId))
-                    return "channelId: integer expected";
-            if (message.x != null && message.hasOwnProperty("x"))
-                if (!$util.isInteger(message.x))
-                    return "x: integer expected";
-            if (message.y != null && message.hasOwnProperty("y"))
-                if (!$util.isInteger(message.y))
-                    return "y: integer expected";
-            if (message.angle != null && message.hasOwnProperty("angle"))
-                if (!$util.isInteger(message.angle))
-                    return "angle: integer expected";
-            return null;
-        };
-
-        /**
-         * Creates an EntityPosition message from a plain object. Also converts values to their respective internal types.
-         * @function fromObject
-         * @memberof server.EntityPosition
-         * @static
-         * @param {Object.<string,*>} object Plain object
-         * @returns {server.EntityPosition} EntityPosition
-         */
-        EntityPosition.fromObject = function fromObject(object) {
-            if (object instanceof $root.server.EntityPosition)
-                return object;
-            let message = new $root.server.EntityPosition();
-            if (object.channelId != null)
-                message.channelId = object.channelId >>> 0;
-            if (object.x != null)
-                message.x = object.x >>> 0;
-            if (object.y != null)
-                message.y = object.y >>> 0;
-            if (object.angle != null)
-                message.angle = object.angle >>> 0;
-            return message;
-        };
-
-        /**
-         * Creates a plain object from an EntityPosition message. Also converts values to other types if specified.
-         * @function toObject
-         * @memberof server.EntityPosition
-         * @static
-         * @param {server.EntityPosition} message EntityPosition
-         * @param {$protobuf.IConversionOptions} [options] Conversion options
-         * @returns {Object.<string,*>} Plain object
-         */
-        EntityPosition.toObject = function toObject(message, options) {
-            if (!options)
-                options = {};
-            let object = {};
-            if (options.defaults) {
-                object.channelId = 0;
-                object.x = 0;
-                object.y = 0;
-                object.angle = 0;
-            }
-            if (message.channelId != null && message.hasOwnProperty("channelId"))
-                object.channelId = message.channelId;
-            if (message.x != null && message.hasOwnProperty("x"))
-                object.x = message.x;
-            if (message.y != null && message.hasOwnProperty("y"))
-                object.y = message.y;
-            if (message.angle != null && message.hasOwnProperty("angle"))
-                object.angle = message.angle;
-            return object;
-        };
-
-        /**
-         * Converts this EntityPosition to JSON.
-         * @function toJSON
-         * @memberof server.EntityPosition
-         * @instance
-         * @returns {Object.<string,*>} JSON object
-         */
-        EntityPosition.prototype.toJSON = function toJSON() {
-            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
-        };
-
-        /**
-         * Gets the default type url for EntityPosition
-         * @function getTypeUrl
-         * @memberof server.EntityPosition
-         * @static
-         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
-         * @returns {string} The default type url
-         */
-        EntityPosition.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
-            if (typeUrlPrefix === undefined) {
-                typeUrlPrefix = "type.googleapis.com";
-            }
-            return typeUrlPrefix + "/server.EntityPosition";
-        };
-
-        return EntityPosition;
     })();
 
     return server;

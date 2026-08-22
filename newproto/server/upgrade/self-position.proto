@@ -8,4 +8,17 @@ message SelfPosition {
   float y = 3;
   float scale = 4;
   uint32 last_processed_sequence_id = 5;
+
+  // OTORITER TOPLAM SKOR.
+  //
+  // NEDEN BURADA: SelfPosition zaten HER TICK ve YALNIZCA ilgili oyuncuya
+  // gonderilir — skoru tasimak icin dogal yer burasidir ve TEK bir ek paket
+  // gerektirmez. Onceki tek otoriter kaynak LeaderboardUpdate.self_score idi
+  // ve o yalnizca 5 SANIYEDE BIR yayinlanir; arada istemci skoru kendi
+  // tahminiyle yuruttugu icin her yayinla birlikte gorunur bir siçrama
+  // olusuyordu (skor "zipliyor" sikayeti).
+  //
+  // proto3 EKLEMELI: alan 6 yeni; eski istemciler bilinmeyen alani yok sayar,
+  // dolayisiyla tel formati geriye donuk uyumludur.
+  uint32 total_score = 6;
 }

@@ -68,10 +68,6 @@ const FOOD_EAT_DESTROY_DIST = 6;    // px — kafa merkezine bu kadar yaklaşın
 // (bkz. update() içindeki ayrıntılı not).
 const FOOD_PREDICTION_TIMEOUT_MS = 1000;
 
-// SUNUCU AYNASI — game-server ScoreConfig.SCORE_PER_SEGMENT. Boost/shrink ile
-// bir segment kaybında HUD skoru bu kadar düşürülür (GÖREV 2.4, gerçek-zamanlı).
-const CLIENT_SCORE_PER_SEGMENT = 50;
-
 // ── GİRDİ AÇI SLEW-RATE LIMITER (client ⇄ server hedef-açı sözleşmesi) ──────
 //
 // KÖK NEDEN — GİRDİ AKIŞI ALIASING'İ, "istemci snap'liyor sunucu snap'lemiyor"
@@ -210,6 +206,8 @@ export class Game extends Phaser.Scene {
         // Client-side score tracking: yenen yemin sunucudan gelen value'suna göre puan
         this.playerScore = 0;
         this.foodsEaten = 0;
+        // Otoriter skor akisi basladi mi (bkz. onSelfPosition / onLeaderboardUpdate).
+        this._hasAuthoritativeScore = false;
 
         // AOI debug overlay durumu
         this.aoiDebugGraphics = null;
@@ -237,6 +235,8 @@ export class Game extends Phaser.Scene {
 
         this.playerScore = 0;
         this.foodsEaten = 0;
+        // Otoriter skor akisi basladi mi (bkz. onSelfPosition / onLeaderboardUpdate).
+        this._hasAuthoritativeScore = false;
 
         // Input-delay kuyruğu — restart'ta önceki tura ait girdiler sızmasın.
         this._inputDelayQueue = [];
@@ -828,18 +828,16 @@ export class Game extends Phaser.Scene {
             const entityId = this.toId(mutation?.entityId ?? mutation?.entity_id);
             if (entityId === null) return;
 
-            // GÖREV 2.4: Oyuncunun KENDİ yılanı segment KAYBEDERSE (boost/shrink →
-            // sunucu drainOneSegment), HUD skorunu gerçek-zamanlı düşür. Sunucu
-            // ScoreConfig.SCORE_PER_SEGMENT aynası. Segment EKLEME'de skor DEĞİŞMEZ
-            // (puan yem yenirken addPlayerScoreForFood ile eklenir; çift sayım olmaz).
-            if (entityId === this.myId) {
-                const removed = this._parseRemovedSegmentCount(mutation);
-                if (removed > 0) {
-                    this.playerScore = Math.max(0, this.playerScore - removed * CLIENT_SCORE_PER_SEGMENT);
-                    updateHUDScore(this.playerScore);
-                }
-            }
-
+            // SKOR BURADAN YAZILMAZ (eskiden yazilirdi).
+            //
+            // Eski kod segment KAYBINI gorup HUD skorundan removed*50 dusuyordu
+            // — yani uzunluk sinyalinden skoru TAHMIN ediyordu. Bu tahmin,
+            // yem yeme tahminiyle (addPlayerScoreForFood) ayni degiskeni
+            // yaristigi icin ikisi kacinilmaz olarak ayrisiyor, 5 sn'de bir
+            // gelen otoriter leaderboard degeri farki tek karede kapatinca HUD
+            // gorunur sekilde zipliyordu. Skor artik SelfPosition ile HER TICK
+            // otoriter geliyor (bkz. onSelfPosition), dolayisiyla buradaki
+            // tahmine gerek de yok, yeri de yok.
             const snake = this.snakes.get(entityId);
             if (!snake) {
                 this.queuePendingSegmentMutation(entityId, mutation);
@@ -848,17 +846,6 @@ export class Game extends Phaser.Scene {
 
             snake.applySegmentMutationFromServer(mutation);
         });
-    }
-
-    // Bir segment mutasyonundan çıkarılan segment sayısını çözer (SEGMENT_REMOVE
-    // değilse 0). Tip kodlaması Snake.applySegmentMutationFromServer ile aynıdır:
-    // SEGMENT_REMOVE = 'SEGMENT_REMOVE' veya sayısal 1.
-    _parseRemovedSegmentCount(mutation) {
-        const type = mutation?.mutationType ?? mutation?.mutation_type;
-        const isRemove = type === 'SEGMENT_REMOVE' || type === 1;
-        if (!isRemove) return 0;
-        const count = Number(mutation?.removedSegmentCount ?? mutation?.removed_segment_count ?? 0);
-        return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
     }
 
     onFoodCollection(foodCollection) {
@@ -908,6 +895,29 @@ export class Game extends Phaser.Scene {
         if (entityId !== this.myId) return;
 
         this.initialDataFlags.entities = true;
+
+        // ── OTORITER SKOR (her tick) ────────────────────────────────────────
+        // Sunucu skoru artik SelfPosition icinde gonderiyor (total_score).
+        // Bu, HUD skorunun TEK yazma kaynagidir.
+        //
+        // ESKI AKIS UC AYRI YAZAR TASIYORDU ve titremenin sebebi tam olarak
+        // buydu:
+        //   1) addPlayerScoreForFood(): yem yenince +value (istemci tahmini)
+        //   2) segment_mutation: segment kaybinda -50 (uzunluktan SKOR TAHMINI)
+        //   3) leaderboard self_score: 5 SANIYEDE BIR otoriter duzeltme
+        // (1) ve (2) birbirinden bagimsiz tahminlerdi; aralarindaki her sapma
+        // (3) geldiginde tek karede geri alinip HUD'a sicrama olarak yansiyordu.
+        // Ozellikle (2) yanlis yondeydi: uzunluk sinyalinden skor cikarmaya
+        // calisiyordu, oysa iliski tersidir (skor uzunlugu belirler).
+        const authoritativeScore = Number(
+            selfPosition?.totalScore ?? selfPosition?.total_score);
+        if (Number.isFinite(authoritativeScore) && authoritativeScore >= 0) {
+            if (authoritativeScore !== this.playerScore) {
+                this.playerScore = authoritativeScore;
+                updateHUDScore(this.playerScore);
+            }
+            this._hasAuthoritativeScore = true;
+        }
 
         const x = Number(selfPosition?.x);
         const y = Number(selfPosition?.y);
@@ -1394,11 +1404,16 @@ export class Game extends Phaser.Scene {
         this.eatingFoods.set(foodId, { sprite, targetSnake, elapsedMs: 0 });
     }
 
-    // Yenen yemin sunucudan gelen value'suna göre puan; HUD anında güncellenir.
+    // Yenen yem SAYACI. SKOR BURADAN YAZILMAZ.
+    //
+    // Skorun tek kaynagi sunucunun her tick gonderdigi SelfPosition.total_score
+    // degeridir (bkz. onSelfPosition). Burada tahmin yurutmek, otoriter deger
+    // her tick zaten geldigi icin en fazla ~1 RTT'lik bir "erken artis"
+    // kazandirirdi; bedeli ise iki yazarin surekli birbirini ezmesi ve gorunur
+    // skor titremesiydi. Yenen yem SAYISI (foodsEaten) tamamen kozmetiktir ve
+    // skoru etkilemedigi icin tahmini kalabilir.
     addPlayerScoreForFood(value) {
-        this.playerScore += Number.isFinite(value) ? value : 0;
         this.foodsEaten += 1;
-        updateHUDScore(this.playerScore);
     }
 
     // (_restoreFoodNode KALDIRILDI — zamanlayıcıya dayalı yem dirilmesi, sunucuda
@@ -1461,7 +1476,11 @@ export class Game extends Phaser.Scene {
         // değeri gösterir. Client tahmini (yem yeme/segment kaybı) paketler
         // arasında anlık güncelleme sağlar; leaderboard paketi geldiğinde
         // birikerek oluşan fark burada sıfırlanır.
-        if (Number.isFinite(selfScore)) {
+        // SKOR BURADAN YAZILMAZ. self_score 5 saniyede bir yayinlanir; skor
+        // artik SelfPosition ile HER TICK geliyor, dolayisiyla bu deger daima
+        // daha BAYATTIR ve yazmasi HUD'da geriye sicrama uretirdi.
+        // Otoriter akis hic baslamadiysa (cok eski sunucu) yedek olarak kullan.
+        if (Number.isFinite(selfScore) && !this._hasAuthoritativeScore) {
             this.playerScore = selfScore;
             updateHUDScore(this.playerScore);
         }
