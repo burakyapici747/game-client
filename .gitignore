@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local environment overrides. ".env.example" is the tracked schema; ".env"
+# holds machine-specific values (dev server port, endpoint fallback) and must
+# never be committed — a production IP baked into a tracked .env is exactly the
+# hardcoding the multi-instance model removes.
+.env
+.env.local
+.env.*.local

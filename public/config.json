@@ -1,18 +1,14 @@
 {
-    "_comment": "LOCAL DEV DEFAULT. In Docker this file is OVERWRITTEN at container start from public/config.template.json using the instance's environment (see docker-entrypoint.d/20-render-config-json.sh) — edit the template, not this file, for anything deployed. Every endpoint field is intentionally blank: the client then derives host/scheme from the page origin and reads the port from VITE_SERVER_PORT (see .env.example). No IP or port is hardcoded anywhere in the tracked tree.",
-    "instanceId": "local",
     "servers": [
         {
-            "id": "local",
-            "name": "Local Server",
-            "wsUrl": "",
-            "wsScheme": "",
-            "wsHost": "",
-            "wsPort": "",
-            "wsPath": "/ws"
+            "id": "eu-central",
+            "name": "Europe",
+            "ip": "http://35.242.203.43:3000",
+            "port": 443,
+            "wsUrl": "ws://35.242.203.43:8080/ws"
         }
     ],
-    "defaultServerId": "local",
+    "defaultServerId": "eu-central",
     "ping": {
         "heartbeatIntervalMs": 2500,
         "calibration": {

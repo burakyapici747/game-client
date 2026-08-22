@@ -2,10 +2,6 @@ import StartGame from './game/main';
 import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle } from './ui/overlays.js';
 import { serverProbe, latencyTier } from './network/ServerProbe.js';
 import { initFullscreenToggle } from './ui/fullscreen.js';
-// Endpoint çözümlemesinin TEK kaynağı — NetworkManager de aynı modülü kullanır
-// (bkz. src/network/endpoint.js). İki kopya tutmak, menüde görünen instance ile
-// gerçekten bağlanılan instance'ın sapması demekti.
-import { resolveFromBrowser } from './network/endpoint.js';
 
 // ─── Mobile input state (read by Game.js every frame) ───────────────────────
 window.mobileInput = {
@@ -434,11 +430,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 // public/config.json başarısız olursa (dev ortamı, dosya eksik vb.) env
 // tabanlı tek sunuculu bir fallback listesi üretilir — oyun asla config
 // yüzünden açılamaz durumda kalmaz.
-//
-// Endpoint çözümlemesi BURADA, tek noktada yapılır: her sunucu girdisinin
-// `wsUrl` alanı normalize edilmiş tam URL ile yeniden yazılır. Böylece aşağı
-// akıştaki tüketiciler (ServerProbe, renderServerList, gameSettings) hiç
-// değişmeden, tek bir alanı okumaya devam eder.
 // ─────────────────────────────────────────────────────────────────────────────
 async function loadClientConfig() {
     try {
@@ -448,24 +439,12 @@ async function loadClientConfig() {
         if (!Array.isArray(cfg.servers) || cfg.servers.length === 0) {
             throw new Error('config.json: servers listesi boş');
         }
-
-        const servers = cfg.servers
-            .map(s => ({ ...s, wsUrl: resolveFromBrowser(s) }))
-            .filter(s => {
-                if (s.wsUrl) return true;
-                console.warn('config.json: endpoint çözümlenemedi, sunucu atlandı:', s.id);
-                return false;
-            });
-        if (servers.length === 0) throw new Error('config.json: hiçbir sunucu endpoint\'i çözümlenemedi');
-
-        return { ...cfg, servers };
+        return cfg;
     } catch (err) {
         console.warn('config.json yüklenemedi, fallback kullanılıyor:', err);
-        // Yedek yol da aynı çözümleyiciden geçer — burada da gömülü host/port
-        // YOKTUR: env verilmemişse sayfanın origin'i kullanılır.
-        const wsUrl = resolveFromBrowser({});
+        const ip = import.meta.env.VITE_SERVER_URL || 'localhost';
         return {
-            servers: [{ id: 'local', name: 'Local Server', wsUrl }],
+            servers: [{ id: 'local', name: 'Local Server', ip, port: 8080, wsUrl: `ws://${ip}:8080/ws` }],
             defaultServerId: 'local',
             ping: { heartbeatIntervalMs: 2500, calibration: { discardSamples: 1, minSamples: 3, intervalMs: 500 } },
         };

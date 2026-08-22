@@ -5,7 +5,3 @@ dist/
 *.log
 .DS_Store
 docker-compose.yml
-.env
-.env.local
-.env.example
-.claude/
