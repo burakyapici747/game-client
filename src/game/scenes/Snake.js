@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { EntityInterpolator } from '../net/EntityInterpolator.js';
+import * as SnakeSkin from '../render/SnakeSkin.js';
+import { SnakeTexture } from '../render/SnakeSkin.js';
 
 const SnakeConfig = {
     // ── Boyut senkronu (SUNUCU ile BIREBIR) ─────────────────────────────
@@ -220,6 +222,11 @@ export class Snake {
         // yaratıp yok etmesini (GC spike) önler. Serbest bırakılanlar
         // görünmez+pasif olarak burada bekler.
         this._spritePool = [];
+        // Su an KUYRUK dokusunu tasiyan sprite. Cizilen segment sayisi her
+        // karede degisebildigi icin (decimation stride, buyume, retire) kuyruk
+        // kimligi de degisir; referansi tutmak, degisim OLMADIGI karelerde
+        // hicbir setTexture cagrisi yapmamayi saglar.
+        this._tailSprite = null;
         this.segmentPrimaryColor = 0xD4AF37;
         this.segmentSecondaryColor = 0x2B2B2B;
         this.segmentStripeWidth = 3;
@@ -321,9 +328,18 @@ export class Snake {
             // registerWorld: world-space objects render via the zoomed main camera
             // only — the zoom-1 UI camera must ignore them (see Game.js).
             seg = this.scene.registerWorld(
-                this.scene.add.sprite(x, y, 'snake_body48').setOrigin(0.5)
+                this.scene.add.sprite(x, y, SnakeSkin.textureKey(SnakeTexture.BODY)).setOrigin(0.5)
             );
         }
+        // HAVUZDAN GELEN SPRITE KUYRUK OLMUS OLABILIR: havuza iade edilirken
+        // dokusu KUYRUK olan bir sprite, govde olarak yeniden kullanildiginda
+        // hem yanlis doku hem YANLIS OLCEK carpani tasirdi (kuyruk 0.122,
+        // govde 0.166). Her edinimde dokuyu govdeye geri almak bu sinifi
+        // hatayi tamamen kapatir.
+        SnakeSkin.applyTexture(seg, SnakeTexture.BODY);
+        // Havuzdan gelen sprite eski turdan tint/blend/alpha tasiyor olabilir.
+        // Alpha asagida buyume animasyonuna gore yeniden yazilir.
+        if (SnakeSkin.isReady()) SnakeSkin.resetAppearance(seg);
         // _animScale: this.scale ile ÇARPILAN büyüme/çöküş çarpanı (0..1).
         // animateIn=true → 0'dan başlar, _updateSegmentLifecycle ile 1'e büyür.
         seg._animScale = animateIn ? 0 : 1;
@@ -331,7 +347,7 @@ export class Snake {
         // _retiring: decimation yoğunlaşınca (stride ↑) fazlalık kalan sprite.
         // this.segments'ten ÇIKARILMAZ — kuyrukta path'i takip ederek solar.
         seg._retiring = false;
-        seg.setScale(animateIn ? 0 : this.scale);
+        SnakeSkin.setSpriteScale(seg, this.scale, animateIn ? 0 : 1);
         seg.setAlpha(animateIn ? 0 : 1);
         return seg;
     }
@@ -343,6 +359,11 @@ export class Snake {
         seg._growing = false;
         seg._retiring = false;
         seg._animScale = 1;
+        // Kuyruk dokusu havuza SIZMASIN (bkz. _acquireSegmentSprite notu).
+        if (seg._texKey === SnakeTexture.TAIL) {
+            SnakeSkin.applyTexture(seg, SnakeTexture.BODY);
+        }
+        if (this._tailSprite === seg) this._tailSprite = null;
         if (this._spritePool.length >= this.config.SEGMENT_POOL_MAX) {
             seg.destroy();
             return;
@@ -502,7 +523,15 @@ export class Snake {
     _refreshSegmentDepths() {
         if (this.head) {
             this.head.setDepth(this.sct + 1);
-            this.head.setTint(this.segmentPrimaryColor);
+            // TINT = CARPMA. Uretilmis daire dokusu BEYAZ oldugu icin tint orada
+            // bir "renklendirme" aracıydı (beyaz x altin = altin). Gercek renkli
+            // PNG'de ayni islem sanati karartir. Sprite skin aktifken doku kendi
+            // rengini tasir → tint NOTR kalmalidir.
+            if (SnakeSkin.isReady()) {
+                SnakeSkin.resetAppearance(this.head);
+            } else {
+                this.head.setTint(this.segmentPrimaryColor);
+            }
 
             // Fix eye depth disappearing
             this.eyeL?.setDepth(this.head.depth + 1);
@@ -519,7 +548,14 @@ export class Snake {
             // stride, şerit periyodunu (segmentStripeWidth) örnekleyerek moire
             // üretirdi. Çizilen indeksle bantlar stride'dan bağımsız olarak
             // decimation'sız haldeki görünümü korur.
-            this.segments[i].setTint(this._getSegmentColor(i));
+            // Serit rengi YALNIZCA daire dokusu yolunda uygulanir. Sprite
+            // skin'de serit, sanatin kendi deseninden gelir; ayrica burada
+            // uygulanan 0x2B2B2B (43,43,43) carpani dokuyu %83 karartiyordu.
+            if (SnakeSkin.isReady()) {
+                SnakeSkin.resetAppearance(this.segments[i]);
+            } else {
+                this.segments[i].setTint(this._getSegmentColor(i));
+            }
         }
     }
 
@@ -686,7 +722,7 @@ export class Snake {
                     this._releaseSegmentSprite(seg);
                     continue;
                 }
-                seg.setScale(this.scale * seg._animScale);
+                SnakeSkin.setSpriteScale(seg, this.scale, seg._animScale);
                 seg.setAlpha(seg._animScale);
                 continue;
             }
@@ -697,7 +733,7 @@ export class Snake {
                 seg._animScale = 1;
                 seg._growing = false;
             }
-            seg.setScale(this.scale * seg._animScale);
+            SnakeSkin.setSpriteScale(seg, this.scale, seg._animScale);
             seg.setAlpha(seg._animScale);
         }
 
@@ -713,7 +749,7 @@ export class Snake {
                     this._releaseSegmentSprite(d.sprite);
                     this._despawningSegments.splice(i, 1);
                 } else {
-                    d.sprite.setScale(this.scale * d.t);
+                    SnakeSkin.setSpriteScale(d.sprite, this.scale, d.t);
                     d.sprite.setAlpha(d.t);
                 }
             }
@@ -744,8 +780,16 @@ export class Snake {
         // path (see _sampleHeadToPath). Initialized on the head; snapped back
         // to the head in _initPathWarmup (spawn / hard resync).
         this._pathFollower = { x, y };
-        this.head = this.scene.registerWorld(this.scene.add.sprite(x, y, 'snake_head48')
-            .setOrigin(0.5));
+        // Doku SnakeSkin uzerinden atanir: anahtarla BIRLIKTE o dokuya ait
+        // normalizasyon carpani da sprite'a yazilir (bkz. applyTexture).
+        this.head = this.scene.registerWorld(
+            this.scene.add.sprite(x, y, SnakeSkin.textureKey(SnakeTexture.HEAD)).setOrigin(0.5));
+        SnakeSkin.applyTexture(this.head, SnakeTexture.HEAD);
+        if (SnakeSkin.isReady()) SnakeSkin.resetAppearance(this.head);
+        SnakeSkin.setSpriteScale(this.head, this.scale);
+        // head.rotation MANTIKSAL hareket acisidir ve kod tabaninin her yerinde
+        // bir YON VEKTORU olarak okunur. Sanatin +90°'lik yonelim farki dokuya
+        // PISIRILDIGI icin burada hicbir ofset YOKTUR (bkz. SnakeSkin.bakeRotated).
         this.head.rotation = angle;
         // NOT: kafada artık Arcade physics body YOK. Body yalnızca hız
         // entegrasyonu için kullanılıyordu (client'ta collider yok; ölüm
@@ -772,10 +816,19 @@ export class Snake {
         });
         this.trail.startFollow(this.head);
         this.scene.registerWorld(this.trail);
+        // ── PROSEDUREL GOZLER: SPRITE KAFADA GEREKSIZ ───────────────────────
+        // Daire dokusu ozelliksiz oldugu icin gozler ayri sprite'lar olarak
+        // ciziliyordu. snake_head.png'nin KENDI gozleri var; ustune ikinci bir
+        // goz cifti bindirmek ejderha yuzunu bozar. Sprite hazirsa gozler
+        // yaratilmaz — yaratilmayan nesne gizlenmeye, guncellenmeye ve yok
+        // edilmeye de ihtiyac duymaz (_updateEyes zaten null-guard'li).
+        this._useProceduralEyes = !SnakeSkin.isReady();
+        if (this._useProceduralEyes) {
         this.eyeL = this.scene.registerWorld(this.scene.add.image(x, y, 'eye10').setOrigin(0.5).setDepth(this.head.depth + 2));
         this.eyeR = this.scene.registerWorld(this.scene.add.image(x, y, 'eye10').setOrigin(0.5).setDepth(this.head.depth + 2));
         this.pupilL = this.scene.registerWorld(this.scene.add.image(x, y, 'pupil4').setOrigin(0.5).setDepth(this.head.depth + 3));
         this.pupilR = this.scene.registerWorld(this.scene.add.image(x, y, 'pupil4').setOrigin(0.5).setDepth(this.head.depth + 3));
+        }
         this._eyeLocalL = new Phaser.Math.Vector2(+15, -6);
         this._eyeLocalR = new Phaser.Math.Vector2(+15, +6);
         this._pupilMax = 3;
@@ -816,6 +869,9 @@ export class Snake {
         // yılan başına bir sprite kümesi sahnede sızıntı olarak kalırdı.
         this._spritePool?.forEach(seg => seg?.destroy());
         this._spritePool = [];
+        // Kuyruk referansi imha edilen bir sprite'i tutmasin (GC + bayat
+        // referans uzerinden setTexture cagrisi riski).
+        this._tailSprite = null;
         this.trail?.destroy();
         this.eyeL?.destroy();
         this.eyeR?.destroy();
@@ -1224,6 +1280,8 @@ export class Snake {
 
     _updateEyes(tx, ty) {
         if (!this.head.active) return;
+        // Sprite kafa kullaniliyorsa goz nesneleri hic yaratilmadi.
+        if (!this.eyeL) return;
         const dir = new Phaser.Math.Vector2(tx - this.head.x, ty - this.head.y);
         if (dir.lengthSq() < 0.0001) {
             dir.setTo(Math.cos(this.head.rotation), Math.sin(this.head.rotation));
@@ -1507,10 +1565,56 @@ export class Snake {
         }
 
         this._visibleSegmentCount = visibleCount;
+        this._syncTailTexture();
         // Konum entegrasyonundan SONRA rijit boyun kısıtı (bkz. _enforceNeckJoint).
         // Hedef mesafe stride ile ölçeklenir: segments[0] artık mantıksal
         // düğüm `stride`'a karşılık gelir, `1`'e değil.
         this._enforceNeckJoint(spacing * stride);
+    }
+
+    /**
+     * KUYRUK DOKUSUNU son cizilen segmente tasir.
+     *
+     * <p>NEDEN HER KARE HESAPLANIR: "son segment" sabit bir indeks DEGILDIR.
+     * Yilan buyudukce/kisaldikca, decimation stride'i degistikce ve retire olan
+     * sprite'lar kuyrukta soldukca dizinin sonu surekli el degistirir. Sabit bir
+     * indekse kuyruk dokusu atamak, govdenin ortasinda kuyruk gorunmesine yol
+     * acardi.
+     *
+     * <p>NEDEN UCUZ: geriye dogru tarama neredeyse her zaman ilk adimda biter ve
+     * kimlik degismediginde HICBIR setTexture cagrilmaz — steady-state maliyeti
+     * bir karsilastirmadir.
+     *
+     * <p>RETIRE OLANLAR ATLANIR: solmakta olan bir sprite'a kuyruk dokusu
+     * vermek, o sprite kaybolurken kuyrugun bir anligina yanip sonmesine yol
+     * acardi. Kuyruk her zaman KALICI son segmenttir.
+     */
+    _syncTailTexture() {
+        if (!SnakeSkin.isReady()) return;
+
+        const segs = this.segments;
+        let tail = null;
+        for (let i = segs.length - 1; i >= 0; i--) {
+            const seg = segs[i];
+            if (seg && seg.active && !seg._retiring) { tail = seg; break; }
+        }
+
+        if (tail === this._tailSprite) return;   // degisim yok — cikis
+
+        // Eski kuyrugu govdeye geri al (hala canliysa).
+        if (this._tailSprite && this._tailSprite.scene && this._tailSprite.active) {
+            SnakeSkin.applyTexture(this._tailSprite, SnakeTexture.BODY);
+            SnakeSkin.setSpriteScale(this._tailSprite, this.scale, this._tailSprite._animScale ?? 1);
+        }
+
+        this._tailSprite = tail;
+        if (tail) {
+            SnakeSkin.applyTexture(tail, SnakeTexture.TAIL);
+            // Doku degisti => normalizasyon carpani da degisti; olcek YENIDEN
+            // yazilmalidir, aksi halde kuyruk bir kare boyunca govde olceginde
+            // (yani ~%36 buyuk) cizilirdi.
+            SnakeSkin.setSpriteScale(tail, this.scale, tail._animScale ?? 1);
+        }
     }
 
     // ── RİJİT BOYUN EKLEMİ (kafa ↔ segment[0]) ───────────────────────────────
@@ -1653,7 +1757,7 @@ export class Snake {
     }
 
     _updateSegmentScaling() {
-        if (this.head) this.head.setScale(this.scale);
+        if (this.head) SnakeSkin.setSpriteScale(this.head, this.scale);
 
         // Stride yarıçaptan (= SEGMENT_RADIUS * scale) türediği için sunucudan
         // gelen her scale değişimi decimation yoğunluğunu değiştirebilir.
@@ -1666,7 +1770,7 @@ export class Snake {
         this.segments.forEach(seg => {
             // Büyüme animasyonundaki segmentin ölçeği _animScale ile çarpılır —
             // aksi halde sunucu scale güncellemesi büyüme "pop"unu geri getirirdi.
-            if (seg && seg.active) seg.setScale(this.scale * (seg._animScale ?? 1));
+            if (seg && seg.active) SnakeSkin.setSpriteScale(seg, this.scale, seg._animScale ?? 1);
         });
     }
 

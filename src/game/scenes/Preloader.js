@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import * as SnakeSkin from '../render/SnakeSkin.js';
 
 // Izgara dokusunun zemin rengi — TEK DOGRULUK KAYNAGI.
 // Hem 'grid32' dokusunu üreten makeNeonSquareGrid hem de ana kameranın arka
@@ -12,6 +13,17 @@ export class Preloader extends Phaser.Scene {
   constructor() { super('Preloader'); }
 
   preload() {
+    // Yilan sprite'lari (public/assets/snake/*.png). Yalnizca HAM dosyalar
+    // kuyruga alinir; dondurme + olcek normalizasyonu dosyalar indikten sonra
+    // create() icinde yapilir (bkz. SnakeSkin.build).
+    SnakeSkin.preload(this);
+
+    // Bir varlik yuklenemezse oyun ACILMAYA DEVAM ETMELI: eksik doku
+    // SnakeSkin tarafindan daire dokusuna geri dusurulur. Bu dinleyici olmadan
+    // Phaser sessizce bekler ve sahne hic baslamazdi.
+    this.load.on('loaderror', (file) => {
+      console.warn('[Preloader] varlik yuklenemedi:', file?.src ?? file?.key);
+    });
   }
 
   create() {
@@ -30,6 +42,11 @@ export class Preloader extends Phaser.Scene {
     // şekiller kaldırıldı). 16 canlı renk varyantı, additive-blend'e uygun neon
     // radyal parıltı. Tek spritesheet → tek Blitter → tüm yemler tek draw call.
     makeGlowCircleSpritesheet(this, 'food_glow', 26);
+
+    // Yilan sprite dokularini hazirla: 90° dondur (sanat yukari bakiyor,
+    // Phaser rotation=0 saga bakar) + carpisma kesitini 48 px'e normalize et.
+    // Basarisiz olursa false doner ve yukaridaki daire dokulari kullanilir.
+    SnakeSkin.build(this);
 
     // Set linear filtering for smooth scaled rendering
     ['snake_body48', 'snake_head48', 'eye10', 'pupil4'].forEach(k => {
