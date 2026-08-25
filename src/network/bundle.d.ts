@@ -938,6 +938,9 @@ export namespace server {
 
         /** StartInformation worldRadius */
         worldRadius?: (number|null);
+
+        /** StartInformation invulnerableSeconds */
+        invulnerableSeconds?: (number|null);
     }
 
     /** Represents a StartInformation. */
@@ -969,6 +972,9 @@ export namespace server {
 
         /** StartInformation worldRadius. */
         public worldRadius: number;
+
+        /** StartInformation invulnerableSeconds. */
+        public invulnerableSeconds: number;
 
         /**
          * Creates a new StartInformation instance using the specified properties.
@@ -1195,6 +1201,9 @@ export namespace server {
 
         /** EntityCollection fullyDataNicknames */
         fullyDataNicknames?: (string[]|null);
+
+        /** EntityCollection invulnerableEntityIds */
+        invulnerableEntityIds?: (number[]|null);
     }
 
     /** Represents an EntityCollection. */
@@ -1229,6 +1238,9 @@ export namespace server {
 
         /** EntityCollection fullyDataNicknames. */
         public fullyDataNicknames: string[];
+
+        /** EntityCollection invulnerableEntityIds. */
+        public invulnerableEntityIds: number[];
 
         /**
          * Creates a new EntityCollection instance using the specified properties.
@@ -1449,6 +1461,9 @@ export namespace server {
 
         /** SelfPosition totalScore */
         totalScore?: (number|null);
+
+        /** SelfPosition invulnerable */
+        invulnerable?: (boolean|null);
     }
 
     /** Represents a SelfPosition. */
@@ -1477,6 +1492,9 @@ export namespace server {
 
         /** SelfPosition totalScore. */
         public totalScore: number;
+
+        /** SelfPosition invulnerable. */
+        public invulnerable: boolean;
 
         /**
          * Creates a new SelfPosition instance using the specified properties.

@@ -83,6 +83,29 @@ const SnakeConfig = {
     // per-frame alternating corrections are attenuated ~3x.
     PATH_SMOOTHING_FACTOR: 0.5,
 
+    // ── DOGUM DOKUNULMAZLIGI GORSELI ────────────────────────────────────────
+    //
+    // NEDEN setTint(0xffffff) DEGIL: Phaser'da tint bir BOYAMA degil CARPMADIR
+    // (sonuc = doku_rgb x tint_rgb). Beyaz (0xffffff) carpmanin ETKISIZ
+    // ELEMANIDIR — yani `setTint(0xffffff)` tam renkli bir doku uzerinde
+    // GORUNUR HICBIR SEY YAPMAZ. (Eski daire dokulari beyaz oldugu icin tint
+    // orada renklendirme gibi calisiyordu; sprite dokulariyla artik calismaz.)
+    //
+    // Dogru primitif setTintFill(): dokunun rengini TAMAMEN degistirir ve
+    // duz beyaz bir siluet verir. Efekt bu ikisi arasinda gidip gelir:
+    //   setTintFill(0xffffff)  →  beyaz flas
+    //   clearTint()            →  normal sanat
+    // Ayrica hafif bir alfa nabzi eklenir; ikisi birlikte "dokunulmaz" mesajini
+    // renk korlugu olan oyuncularda bile okunur kilar (yalnizca renk degil,
+    // parlaklik ve saydamlik da degisir).
+    //
+    // OLCEK/DOKU GUVENLIGI: efekt YALNIZCA tint ve alpha yazar. setScale,
+    // setTexture ve _texNorm'a HIC dokunulmaz, dolayisiyla SnakeSkin'in
+    // normalizasyonu ve kuyruk/govde doku atamalari bozulmaz.
+    INVULN_FLASH_HZ: 6,          // saniyedeki tam flas dongusu
+    INVULN_MIN_ALPHA: 0.55,      // nabzin en saydam ani
+    INVULN_FILL_COLOR: 0xffffff,
+
     // ── GÖRSEL DECIMATION (mantıksal sct'den BAĞIMSIZ) ───────────────────
     // Gövde, yarıçapı `SEGMENT_RADIUS * scale` olan dairelerin `spacing`
     // aralıklarla dizilmesiyle çizilir. spacing scale ile BÜYÜMEZ (12.5→16.9)
@@ -222,6 +245,12 @@ export class Snake {
         // yaratıp yok etmesini (GC spike) önler. Serbest bırakılanlar
         // görünmez+pasif olarak burada bekler.
         this._spritePool = [];
+        // Dogum dokunulmazligi — SUNUCU OTORITERDIR. Istemci bu bayragi
+        // yalnizca OKUR (paketten gelir) ve gorsel efekt icin kullanir;
+        // sureyi uzatamaz, yenileyemez. Bayrak dustugunde efekt derhal
+        // temizlenir (bkz. _updateInvulnerabilityFx).
+        this._invulnerable = false;
+        this._invulnPhase = 0;
         // Su an KUYRUK dokusunu tasiyan sprite. Cizilen segment sayisi her
         // karede degisebildigi icin (decimation stride, buyume, retire) kuyruk
         // kimligi de degisir; referansi tutmak, degisim OLMADIGI karelerde
@@ -923,6 +952,75 @@ export class Snake {
         this.lastReconciledSequenceId = 0;
     }
 
+    /**
+     * Sunucudan gelen dokunulmazlik bayragini uygular.
+     *
+     * <p>SUNUCU OTORITERDIR: bu metot yalnizca paketten okunan durumu yansitir.
+     * Istemcide sure sayaci YOKTUR — efekt, sunucu bayragi true kaldigi surece
+     * oynar ve bayrak dustugu ANDA temizlenir. Dolayisiyla istemci tarafinda
+     * hile ile uzatilabilecek bir durum bulunmaz.
+     */
+    setInvulnerable(flag) {
+        const next = !!flag;
+        if (next === this._invulnerable) return;
+        this._invulnerable = next;
+        if (!next) {
+            this._clearInvulnerabilityFx();   // bayrak dustu → aninda normale don
+        } else {
+            this._invulnPhase = 0;
+        }
+    }
+
+    /**
+     * Dokunulmazlik nabzini ilerletir. postPhysicsUpdate icinden her kare
+     * cagrilir; kapaliyken maliyeti tek bir boolean kontroludur.
+     */
+    _updateInvulnerabilityFx(dtMs) {
+        if (!this._invulnerable) return;
+
+        this._invulnPhase += (dtMs / 1000) * this.config.INVULN_FLASH_HZ;
+        // Kare-hizindan BAGIMSIZ: faz saniyeye bagli ilerler, dolayisiyla
+        // 60Hz ve 144Hz'de flas hizi ayni gorunur.
+        const wave = 0.5 + 0.5 * Math.sin(this._invulnPhase * Math.PI * 2);
+        const filled = wave > 0.5;
+        const alpha = Phaser.Math.Linear(this.config.INVULN_MIN_ALPHA, 1, wave);
+
+        this._forEachLiveSprite((sprite) => {
+            // setTintFill: dokunun rengini TAMAMEN degistirir (duz beyaz
+            // siluet). setTint olsaydi beyaz carpma etkisiz kalir ve HICBIR
+            // sey gorunmezdi — bkz. INVULN_FLASH_HZ basligindaki not.
+            if (filled) sprite.setTintFill(this.config.INVULN_FILL_COLOR);
+            else sprite.clearTint();
+            sprite.setAlpha(alpha);
+        });
+    }
+
+    /** Efekti sokup sprite'lari normal gorunume dondurur. */
+    _clearInvulnerabilityFx() {
+        this._invulnPhase = 0;
+        this._forEachLiveSprite((sprite) => {
+            sprite.clearTint();
+            // Alfa'yi 1'e DEGIL, sprite'in kendi animasyon olcegine geri al:
+            // buyumekte olan bir segment 1'e zorlanirsa dogum animasyonunun
+            // ortasinda aniden tam opak olurdu.
+            sprite.setAlpha(sprite._animScale ?? 1);
+        });
+    }
+
+    /**
+     * Kafa + aktif govde/kuyruk sprite'lari uzerinde yurur.
+     *
+     * <p>Yalnizca TINT ve ALPHA yazan cagiranlar icindir; olcek ve doku
+     * SnakeSkin'in sorumlulugundadir ve buradan asla degistirilmez.
+     */
+    _forEachLiveSprite(fn) {
+        if (this.head?.active) fn(this.head);
+        for (let i = 0; i < this.segments.length; i++) {
+            const seg = this.segments[i];
+            if (seg && seg.active) fn(seg);
+        }
+    }
+
     setNickname(nickname) {
         if (!nickname) return;
         this.nickname = nickname;
@@ -1012,6 +1110,10 @@ export class Snake {
         // micro-corrections out of the body path (anti-cascade).
         // Remote snakes: their head is already interpolation-smoothed, extra
         // filtering would only add lag — follow exactly.
+        // Dogum dokunulmazligi nabzi — hem oyuncu hem uzak yilanlar icin.
+        // Kapaliyken tek boolean kontrolu; sicak yola olcusebilir yuk getirmez.
+        this._updateInvulnerabilityFx(this._delta || 16.67);
+
         if (this.isPlayerControlled) {
             const dMs = this._delta || 16.67;
 

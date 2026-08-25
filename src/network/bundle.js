@@ -2362,6 +2362,7 @@ export const server = $root.server = (() => {
          * @property {number|null} [startDirection] StartInformation startDirection
          * @property {number|null} [scale] StartInformation scale
          * @property {number|null} [worldRadius] StartInformation worldRadius
+         * @property {number|null} [invulnerableSeconds] StartInformation invulnerableSeconds
          */
 
         /**
@@ -2436,6 +2437,14 @@ export const server = $root.server = (() => {
         StartInformation.prototype.worldRadius = 0;
 
         /**
+         * StartInformation invulnerableSeconds.
+         * @member {number} invulnerableSeconds
+         * @memberof server.StartInformation
+         * @instance
+         */
+        StartInformation.prototype.invulnerableSeconds = 0;
+
+        /**
          * Creates a new StartInformation instance using the specified properties.
          * @function create
          * @memberof server.StartInformation
@@ -2473,6 +2482,8 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 6, wireType 5 =*/53).float(message.scale);
             if (message.worldRadius != null && Object.hasOwnProperty.call(message, "worldRadius"))
                 writer.uint32(/* id 7, wireType 5 =*/61).float(message.worldRadius);
+            if (message.invulnerableSeconds != null && Object.hasOwnProperty.call(message, "invulnerableSeconds"))
+                writer.uint32(/* id 8, wireType 5 =*/69).float(message.invulnerableSeconds);
             return writer;
         };
 
@@ -2537,6 +2548,10 @@ export const server = $root.server = (() => {
                         message.worldRadius = reader.float();
                         break;
                     }
+                case 8: {
+                        message.invulnerableSeconds = reader.float();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -2593,6 +2608,9 @@ export const server = $root.server = (() => {
             if (message.worldRadius != null && message.hasOwnProperty("worldRadius"))
                 if (typeof message.worldRadius !== "number")
                     return "worldRadius: number expected";
+            if (message.invulnerableSeconds != null && message.hasOwnProperty("invulnerableSeconds"))
+                if (typeof message.invulnerableSeconds !== "number")
+                    return "invulnerableSeconds: number expected";
             return null;
         };
 
@@ -2622,6 +2640,8 @@ export const server = $root.server = (() => {
                 message.scale = Number(object.scale);
             if (object.worldRadius != null)
                 message.worldRadius = Number(object.worldRadius);
+            if (object.invulnerableSeconds != null)
+                message.invulnerableSeconds = Number(object.invulnerableSeconds);
             return message;
         };
 
@@ -2646,6 +2666,7 @@ export const server = $root.server = (() => {
                 object.startDirection = 0;
                 object.scale = 0;
                 object.worldRadius = 0;
+                object.invulnerableSeconds = 0;
             }
             if (message.clientId != null && message.hasOwnProperty("clientId"))
                 object.clientId = message.clientId;
@@ -2661,6 +2682,8 @@ export const server = $root.server = (() => {
                 object.scale = options.json && !isFinite(message.scale) ? String(message.scale) : message.scale;
             if (message.worldRadius != null && message.hasOwnProperty("worldRadius"))
                 object.worldRadius = options.json && !isFinite(message.worldRadius) ? String(message.worldRadius) : message.worldRadius;
+            if (message.invulnerableSeconds != null && message.hasOwnProperty("invulnerableSeconds"))
+                object.invulnerableSeconds = options.json && !isFinite(message.invulnerableSeconds) ? String(message.invulnerableSeconds) : message.invulnerableSeconds;
             return object;
         };
 
@@ -3005,6 +3028,7 @@ export const server = $root.server = (() => {
          * @property {Array.<number>|null} [fullyDataSegmentCounts] EntityCollection fullyDataSegmentCounts
          * @property {Array.<number>|null} [scales] EntityCollection scales
          * @property {Array.<string>|null} [fullyDataNicknames] EntityCollection fullyDataNicknames
+         * @property {Array.<number>|null} [invulnerableEntityIds] EntityCollection invulnerableEntityIds
          */
 
         /**
@@ -3024,6 +3048,7 @@ export const server = $root.server = (() => {
             this.fullyDataSegmentCounts = [];
             this.scales = [];
             this.fullyDataNicknames = [];
+            this.invulnerableEntityIds = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -3095,6 +3120,14 @@ export const server = $root.server = (() => {
         EntityCollection.prototype.fullyDataNicknames = $util.emptyArray;
 
         /**
+         * EntityCollection invulnerableEntityIds.
+         * @member {Array.<number>} invulnerableEntityIds
+         * @memberof server.EntityCollection
+         * @instance
+         */
+        EntityCollection.prototype.invulnerableEntityIds = $util.emptyArray;
+
+        /**
          * Creates a new EntityCollection instance using the specified properties.
          * @function create
          * @memberof server.EntityCollection
@@ -3163,6 +3196,12 @@ export const server = $root.server = (() => {
             if (message.fullyDataNicknames != null && message.fullyDataNicknames.length)
                 for (let i = 0; i < message.fullyDataNicknames.length; ++i)
                     writer.uint32(/* id 8, wireType 2 =*/66).string(message.fullyDataNicknames[i]);
+            if (message.invulnerableEntityIds != null && message.invulnerableEntityIds.length) {
+                writer.uint32(/* id 9, wireType 2 =*/74).fork();
+                for (let i = 0; i < message.invulnerableEntityIds.length; ++i)
+                    writer.uint32(message.invulnerableEntityIds[i]);
+                writer.ldelim();
+            }
             return writer;
         };
 
@@ -3282,6 +3321,17 @@ export const server = $root.server = (() => {
                         message.fullyDataNicknames.push(reader.string());
                         break;
                     }
+                case 9: {
+                        if (!(message.invulnerableEntityIds && message.invulnerableEntityIds.length))
+                            message.invulnerableEntityIds = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.invulnerableEntityIds.push(reader.uint32());
+                        } else
+                            message.invulnerableEntityIds.push(reader.uint32());
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -3373,6 +3423,13 @@ export const server = $root.server = (() => {
                     if (!$util.isString(message.fullyDataNicknames[i]))
                         return "fullyDataNicknames: string[] expected";
             }
+            if (message.invulnerableEntityIds != null && message.hasOwnProperty("invulnerableEntityIds")) {
+                if (!Array.isArray(message.invulnerableEntityIds))
+                    return "invulnerableEntityIds: array expected";
+                for (let i = 0; i < message.invulnerableEntityIds.length; ++i)
+                    if (!$util.isInteger(message.invulnerableEntityIds[i]))
+                        return "invulnerableEntityIds: integer[] expected";
+            }
             return null;
         };
 
@@ -3444,6 +3501,13 @@ export const server = $root.server = (() => {
                 for (let i = 0; i < object.fullyDataNicknames.length; ++i)
                     message.fullyDataNicknames[i] = String(object.fullyDataNicknames[i]);
             }
+            if (object.invulnerableEntityIds) {
+                if (!Array.isArray(object.invulnerableEntityIds))
+                    throw TypeError(".server.EntityCollection.invulnerableEntityIds: array expected");
+                message.invulnerableEntityIds = [];
+                for (let i = 0; i < object.invulnerableEntityIds.length; ++i)
+                    message.invulnerableEntityIds[i] = object.invulnerableEntityIds[i] >>> 0;
+            }
             return message;
         };
 
@@ -3469,6 +3533,7 @@ export const server = $root.server = (() => {
                 object.fullyDataSegmentCounts = [];
                 object.scales = [];
                 object.fullyDataNicknames = [];
+                object.invulnerableEntityIds = [];
             }
             if (message.entityIds && message.entityIds.length) {
                 object.entityIds = [];
@@ -3509,6 +3574,11 @@ export const server = $root.server = (() => {
                 object.fullyDataNicknames = [];
                 for (let j = 0; j < message.fullyDataNicknames.length; ++j)
                     object.fullyDataNicknames[j] = message.fullyDataNicknames[j];
+            }
+            if (message.invulnerableEntityIds && message.invulnerableEntityIds.length) {
+                object.invulnerableEntityIds = [];
+                for (let j = 0; j < message.invulnerableEntityIds.length; ++j)
+                    object.invulnerableEntityIds[j] = message.invulnerableEntityIds[j];
             }
             return object;
         };
@@ -3852,6 +3922,7 @@ export const server = $root.server = (() => {
          * @property {number|null} [scale] SelfPosition scale
          * @property {number|null} [lastProcessedSequenceId] SelfPosition lastProcessedSequenceId
          * @property {number|null} [totalScore] SelfPosition totalScore
+         * @property {boolean|null} [invulnerable] SelfPosition invulnerable
          */
 
         /**
@@ -3918,6 +3989,14 @@ export const server = $root.server = (() => {
         SelfPosition.prototype.totalScore = 0;
 
         /**
+         * SelfPosition invulnerable.
+         * @member {boolean} invulnerable
+         * @memberof server.SelfPosition
+         * @instance
+         */
+        SelfPosition.prototype.invulnerable = false;
+
+        /**
          * Creates a new SelfPosition instance using the specified properties.
          * @function create
          * @memberof server.SelfPosition
@@ -3953,6 +4032,8 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.lastProcessedSequenceId);
             if (message.totalScore != null && Object.hasOwnProperty.call(message, "totalScore"))
                 writer.uint32(/* id 6, wireType 0 =*/48).uint32(message.totalScore);
+            if (message.invulnerable != null && Object.hasOwnProperty.call(message, "invulnerable"))
+                writer.uint32(/* id 7, wireType 0 =*/56).bool(message.invulnerable);
             return writer;
         };
 
@@ -4013,6 +4094,10 @@ export const server = $root.server = (() => {
                         message.totalScore = reader.uint32();
                         break;
                     }
+                case 7: {
+                        message.invulnerable = reader.bool();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -4066,6 +4151,9 @@ export const server = $root.server = (() => {
             if (message.totalScore != null && message.hasOwnProperty("totalScore"))
                 if (!$util.isInteger(message.totalScore))
                     return "totalScore: integer expected";
+            if (message.invulnerable != null && message.hasOwnProperty("invulnerable"))
+                if (typeof message.invulnerable !== "boolean")
+                    return "invulnerable: boolean expected";
             return null;
         };
 
@@ -4093,6 +4181,8 @@ export const server = $root.server = (() => {
                 message.lastProcessedSequenceId = object.lastProcessedSequenceId >>> 0;
             if (object.totalScore != null)
                 message.totalScore = object.totalScore >>> 0;
+            if (object.invulnerable != null)
+                message.invulnerable = Boolean(object.invulnerable);
             return message;
         };
 
@@ -4116,6 +4206,7 @@ export const server = $root.server = (() => {
                 object.scale = 0;
                 object.lastProcessedSequenceId = 0;
                 object.totalScore = 0;
+                object.invulnerable = false;
             }
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 object.entityId = message.entityId;
@@ -4129,6 +4220,8 @@ export const server = $root.server = (() => {
                 object.lastProcessedSequenceId = message.lastProcessedSequenceId;
             if (message.totalScore != null && message.hasOwnProperty("totalScore"))
                 object.totalScore = message.totalScore;
+            if (message.invulnerable != null && message.hasOwnProperty("invulnerable"))
+                object.invulnerable = message.invulnerable;
             return object;
         };
 

@@ -603,6 +603,11 @@ export class Game extends Phaser.Scene {
             // Limiter aynı yönle tohumlanır: oyuncu direksiyonu devraldığı ilk
             // karede filtre doğru yerden başlar, sıfırdan süzülmez.
             this._resetSteeringLimiter(spawnHeadingRad);
+            // KENDI dokunulmazligimiz: sure SUNUCUDAN gelir ve yalnizca
+            // efektin ne kadar suregidini bildirir. Bayragin kendisi her tick
+            // EntityCollection ile teyit edilir; burada yalnizca ILK kareden
+            // itibaren efekt gorunsun diye onden aciyoruz (paket gelene kadar
+            // bir-iki karelik bosluk olusmasin).
         }
 
         if (Number.isFinite(worldRadius)) {
@@ -708,6 +713,20 @@ export class Game extends Phaser.Scene {
         const angles = entityCollection?.angles ?? [];
         const scales = entityCollection?.scales ?? [];
 
+        // ── DOGUM DOKUNULMAZLIGI (SEYREK LISTE) ─────────────────────────
+        // Sunucu yalnizca SU AN dokunulmaz olan entity id'lerini gonderir;
+        // normal durumda liste TAMAMEN BOSTUR (proto3'te sifir bayt). Set'e
+        // cevirmek O(1) sorgu verir ve asagidaki dongude entity basina tek
+        // bir kontrole iner.
+        //
+        // OTORITE: bu bayrak her tick sunucudan YENIDEN gelir. Istemci onu
+        // saklamaz, uzatmaz ya da kendi zamanlayicisiyla surdurmez — paket
+        // gelmeyi kestiginde efekt de biter.
+        const invulnerableIds = entityCollection?.invulnerableEntityIds ?? [];
+        const invulnerableSet = invulnerableIds.length > 0
+            ? new Set(invulnerableIds.map(v => this.toId(v)))
+            : null;
+
         const fullyDataIds = entityCollection?.fullyDataEntityIds ?? [];
         const fullyDataCounts = entityCollection?.fullyDataSegmentCounts ?? [];
         const fullyDataNicknames = entityCollection?.fullyDataNicknames ?? [];
@@ -810,6 +829,10 @@ export class Game extends Phaser.Scene {
             }
 
             snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
+            // Dokunulmazlik bayragi HER tick sunucudan gelir. Liste bossa
+            // (invulnerableSet === null) hicbir entity dokunulmaz degildir,
+            // dolayisiyla bayrak false'a duser ve efekt temizlenir.
+            snake.setInvulnerable(invulnerableSet ? invulnerableSet.has(entityId) : false);
             this.flushPendingSegmentMutations(entityId, snake);
 
             // SIRA ÖNEMLİ: tohum EN SON uygulanır. Yukarıdaki
@@ -927,6 +950,13 @@ export class Game extends Phaser.Scene {
             Number.isFinite(y) ? y : 0
         );
         this.flushPendingSegmentMutations(entityId, snake);
+
+        // KENDI dokunulmazligimiz — HER TICK sunucudan. Oyuncunun kendi
+        // entity'si EntityCollection'da BULUNMADIGI icin (sunucu gozlemciyi
+        // kendi gorunur kumesinden cikarir) bayrak SelfPosition'da tasinir.
+        // Istemcide sayac YOK: bayrak dustugu anda efekt biter, dolayisiyla
+        // sure istemci tarafinda uzatilamaz.
+        snake.setInvulnerable(!!(selfPosition?.invulnerable));
 
         // İlk otoriter kare LERP'SİZ uygulanır; true dönerse bu KARE baseline'dı.
         const didTeleport = snake.updateSelfPositionFromServer(selfPosition);

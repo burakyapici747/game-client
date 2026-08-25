@@ -10,4 +10,9 @@ message StartInformation {
   uint32 start_direction = 5;
   float scale = 6;
   float world_radius = 7;
+
+  // Oyuncunun KENDI dogum dokunulmazliginin suresi (saniye).
+  // Istemci gorsel efekti bu sureye gore calistirir; sure SUNUCUDA islenir,
+  // istemci uzatamaz (bkz. InvulnerabilitySystem).
+  float invulnerable_seconds = 8;
 }
