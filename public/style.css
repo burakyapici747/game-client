@@ -2086,6 +2086,91 @@ input:checked + .settings-slider:before {
 }
 
 /* ═══════════════════════════════════════════════
+   FULLSCREEN TOGGLE — universal, all screens
+   ═══════════════════════════════════════════════ */
+
+.fullscreen-btn {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    z-index: 55;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(39, 20, 72, 0.45);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(235, 221, 255, 0.1);
+    border-radius: 10px;
+    color: rgba(235, 221, 255, 0.6);
+    cursor: pointer;
+    padding: 0;
+    pointer-events: auto;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    overflow: visible;
+}
+
+.fullscreen-btn svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+    overflow: visible;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+}
+
+.fullscreen-btn:hover {
+    background: rgba(50, 32, 83, 0.75);
+    color: #ebddff;
+    -webkit-transform: translateZ(0) scale(1.08);
+    transform: translateZ(0) scale(1.08);
+}
+
+.fullscreen-btn:active {
+    -webkit-transform: translateZ(0) scale(0.94);
+    transform: translateZ(0) scale(0.94);
+}
+
+@media (max-width: 768px), (max-height: 500px) {
+    .fullscreen-btn {
+        bottom: 10px;
+        left: 10px;
+        width: 32px;
+        height: 32px;
+    }
+
+    .fullscreen-btn svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+/* ── iOS Safari pseudo-fullscreen fallback ── */
+html.pseudo-fullscreen,
+html.pseudo-fullscreen body {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+    z-index: 0;
+}
+
+html.pseudo-fullscreen #app {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 1;
+}
+
+/* ═══════════════════════════════════════════════
    GAME HUD — In-game Overlay (Match reference design exactly)
    ═══════════════════════════════════════════════ */
 
@@ -2215,46 +2300,50 @@ input:checked + .settings-slider:before {
 .hud-leaderboard-pod {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 16px;
-    border-radius: 16px;
-    width: 256px;
+    gap: 5px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    width: 220px;
     font-family: 'Quicksand', sans-serif;
 }
 
 .hud-leaderboard-pod.hud-bubbly-panel {
-    background-color: rgba(50, 32, 83, 0.85);
+    background-color: rgba(39, 20, 72, 0.55);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(235, 221, 255, 0.08);
+    box-shadow: 0 2px 12px rgba(26, 15, 46, 0.3);
 }
 
 .leaderboard-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
 .leaderboard-title {
     font-family: 'Quicksand', sans-serif;
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 28px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 18px;
     text-transform: uppercase;
-    tracking-wider: 1.25px;
+    letter-spacing: 1.5px;
     color: var(--hud-primary);
 }
 
 .leaderboard-icon {
     color: var(--hud-secondary-container);
-    font-size: 20px;
+    font-size: 16px;
     font-variation-settings: 'FILL' 1;
 }
 
 .leaderboard-info {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 700;
-    line-height: 16px;
+    line-height: 14px;
     color: var(--hud-on-surface-variant);
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
 #hud-players {
@@ -2265,46 +2354,49 @@ input:checked + .settings-slider:before {
 .leaderboard-entries {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 3px;
 }
 
 .leaderboard-entry {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px;
-    border-radius: 8px;
-    font-size: 12px;
-    line-height: 16px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 15px;
 }
 
 .leaderboard-entry.rank-1 {
-    background-color: var(--hud-surface-container-lowest);
+    background-color: rgba(21, 1, 54, 0.5);
 }
 
 .leaderboard-entry.rank-you {
     border-top: 1px solid var(--hud-surface-container-highest);
-    padding-top: 16px;
-    margin-top: 8px;
+    padding-top: 8px;
+    margin-top: 4px;
 }
 
 .rank-number, .rank-crown {
-    min-width: 16px;
+    min-width: 14px;
     text-align: center;
     color: var(--hud-on-surface-variant);
     font-weight: 700;
-    line-height: 16px;
+    line-height: 15px;
 }
 
 .rank-crown {
-    font-size: 16px;
+    font-size: 13px;
 }
 
 .player-name {
     flex: 1;
-    margin-left: 8px;
+    margin-left: 6px;
     color: var(--hud-on-surface);
     font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .leaderboard-entry.rank-1 .player-name {
@@ -2331,12 +2423,41 @@ input:checked + .settings-slider:before {
 /* Boş durum: sıralama paketi henüz gelmedi ya da haritada sıralanacak oyuncu
    yok. Sahte oyuncu satırlarının yerini alan tek, nötr mesaj satırı. */
 .leaderboard-empty {
-    padding: 8px;
-    font-size: 12px;
-    line-height: 16px;
+    padding: 4px;
+    font-size: 10px;
+    line-height: 14px;
     text-align: center;
     color: var(--hud-on-surface-variant);
     opacity: 0.7;
+}
+
+/* Leaderboard expand/collapse toggle */
+.leaderboard-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 20px;
+    margin-top: 2px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0 0 8px 8px;
+    color: var(--hud-on-surface-variant);
+    cursor: pointer;
+    pointer-events: auto;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.leaderboard-toggle:hover {
+    color: var(--hud-primary-container);
+    background: rgba(21, 1, 54, 0.4);
+}
+
+.leaderboard-toggle-icon {
+    font-size: 18px;
+    line-height: 1;
+    transition: transform 0.2s ease;
 }
 
 /* Minimap: Phaser tarafında çizilir (Game.js drawMinimap) — DOM elemanı yok. */
@@ -2383,47 +2504,56 @@ input:checked + .settings-slider:before {
         line-height: 24px;
     }
 
-    /* Leaderboard: subtle but readable */
+    /* Leaderboard: compact for mobile field-of-view */
     .hud-leaderboard-pod {
-        width: 168px;
-        padding: 10px 12px;
-        gap: 4px;
-        border-radius: 12px;
+        width: 148px;
+        padding: 7px 8px;
+        gap: 3px;
+        border-radius: 10px;
     }
 
     .leaderboard-header {
-        margin-bottom: 2px;
+        margin-bottom: 1px;
     }
 
     .leaderboard-title {
-        font-size: 12px;
-        line-height: 16px;
+        font-size: 10px;
+        line-height: 14px;
         letter-spacing: 1px;
     }
 
     .leaderboard-icon {
-        font-size: 14px;
+        font-size: 12px;
     }
 
     .leaderboard-info {
-        font-size: 10px;
-        line-height: 14px;
-        margin-bottom: 2px;
+        font-size: 9px;
+        line-height: 12px;
+        margin-bottom: 1px;
     }
 
     .leaderboard-entries {
-        gap: 4px;
+        gap: 2px;
     }
 
     .leaderboard-entry {
-        padding: 4px 6px;
-        font-size: 10px;
-        line-height: 14px;
+        padding: 2px 4px;
+        font-size: 9px;
+        line-height: 13px;
     }
 
     .leaderboard-entry.rank-you {
-        padding-top: 8px;
-        margin-top: 4px;
+        padding-top: 5px;
+        margin-top: 2px;
+    }
+
+    .leaderboard-toggle {
+        height: 16px;
+        margin-top: 1px;
+    }
+
+    .leaderboard-toggle-icon {
+        font-size: 14px;
     }
 }
 

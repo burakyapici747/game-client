@@ -787,6 +787,9 @@ export namespace server {
 
         /** ServerEnvelope leaderboardUpdate */
         leaderboardUpdate?: (server.ILeaderboardUpdate|null);
+
+        /** ServerEnvelope pathSeedCollection */
+        pathSeedCollection?: (server.IPathSeedCollection|null);
     }
 
     /** Represents a ServerEnvelope. */
@@ -827,6 +830,9 @@ export namespace server {
 
         /** ServerEnvelope leaderboardUpdate. */
         public leaderboardUpdate?: (server.ILeaderboardUpdate|null);
+
+        /** ServerEnvelope pathSeedCollection. */
+        public pathSeedCollection?: (server.IPathSeedCollection|null);
 
         /** ServerEnvelope payload. */
         public payload?: ("startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification");
@@ -932,6 +938,9 @@ export namespace server {
 
         /** StartInformation worldRadius */
         worldRadius?: (number|null);
+
+        /** StartInformation invulnerableSeconds */
+        invulnerableSeconds?: (number|null);
     }
 
     /** Represents a StartInformation. */
@@ -963,6 +972,9 @@ export namespace server {
 
         /** StartInformation worldRadius. */
         public worldRadius: number;
+
+        /** StartInformation invulnerableSeconds. */
+        public invulnerableSeconds: number;
 
         /**
          * Creates a new StartInformation instance using the specified properties.
@@ -1189,6 +1201,9 @@ export namespace server {
 
         /** EntityCollection fullyDataNicknames */
         fullyDataNicknames?: (string[]|null);
+
+        /** EntityCollection invulnerableEntityIds */
+        invulnerableEntityIds?: (number[]|null);
     }
 
     /** Represents an EntityCollection. */
@@ -1223,6 +1238,9 @@ export namespace server {
 
         /** EntityCollection fullyDataNicknames. */
         public fullyDataNicknames: string[];
+
+        /** EntityCollection invulnerableEntityIds. */
+        public invulnerableEntityIds: number[];
 
         /**
          * Creates a new EntityCollection instance using the specified properties.
@@ -1440,6 +1458,12 @@ export namespace server {
 
         /** SelfPosition lastProcessedSequenceId */
         lastProcessedSequenceId?: (number|null);
+
+        /** SelfPosition totalScore */
+        totalScore?: (number|null);
+
+        /** SelfPosition invulnerable */
+        invulnerable?: (boolean|null);
     }
 
     /** Represents a SelfPosition. */
@@ -1465,6 +1489,12 @@ export namespace server {
 
         /** SelfPosition lastProcessedSequenceId. */
         public lastProcessedSequenceId: number;
+
+        /** SelfPosition totalScore. */
+        public totalScore: number;
+
+        /** SelfPosition invulnerable. */
+        public invulnerable: boolean;
 
         /**
          * Creates a new SelfPosition instance using the specified properties.
@@ -2401,6 +2431,230 @@ export namespace server {
 
         /**
          * Gets the default type url for LeaderboardUpdate
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
+    /** Properties of a PathSeed. */
+    interface IPathSeed {
+
+        /** PathSeed entityId */
+        entityId?: (number|null);
+
+        /** PathSeed originX */
+        originX?: (number|null);
+
+        /** PathSeed originY */
+        originY?: (number|null);
+
+        /** PathSeed quantization */
+        quantization?: (number|null);
+
+        /** PathSeed dx */
+        dx?: (number[]|null);
+
+        /** PathSeed dy */
+        dy?: (number[]|null);
+    }
+
+    /** Represents a PathSeed. */
+    class PathSeed implements IPathSeed {
+
+        /**
+         * Constructs a new PathSeed.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.IPathSeed);
+
+        /** PathSeed entityId. */
+        public entityId: number;
+
+        /** PathSeed originX. */
+        public originX: number;
+
+        /** PathSeed originY. */
+        public originY: number;
+
+        /** PathSeed quantization. */
+        public quantization: number;
+
+        /** PathSeed dx. */
+        public dx: number[];
+
+        /** PathSeed dy. */
+        public dy: number[];
+
+        /**
+         * Creates a new PathSeed instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns PathSeed instance
+         */
+        public static create(properties?: server.IPathSeed): server.PathSeed;
+
+        /**
+         * Encodes the specified PathSeed message. Does not implicitly {@link server.PathSeed.verify|verify} messages.
+         * @param message PathSeed message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.IPathSeed, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified PathSeed message, length delimited. Does not implicitly {@link server.PathSeed.verify|verify} messages.
+         * @param message PathSeed message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.IPathSeed, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a PathSeed message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns PathSeed
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.PathSeed;
+
+        /**
+         * Decodes a PathSeed message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns PathSeed
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.PathSeed;
+
+        /**
+         * Verifies a PathSeed message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a PathSeed message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns PathSeed
+         */
+        public static fromObject(object: { [k: string]: any }): server.PathSeed;
+
+        /**
+         * Creates a plain object from a PathSeed message. Also converts values to other types if specified.
+         * @param message PathSeed
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.PathSeed, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this PathSeed to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for PathSeed
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
+    /** Properties of a PathSeedCollection. */
+    interface IPathSeedCollection {
+
+        /** PathSeedCollection seeds */
+        seeds?: (server.IPathSeed[]|null);
+    }
+
+    /** Represents a PathSeedCollection. */
+    class PathSeedCollection implements IPathSeedCollection {
+
+        /**
+         * Constructs a new PathSeedCollection.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.IPathSeedCollection);
+
+        /** PathSeedCollection seeds. */
+        public seeds: server.IPathSeed[];
+
+        /**
+         * Creates a new PathSeedCollection instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns PathSeedCollection instance
+         */
+        public static create(properties?: server.IPathSeedCollection): server.PathSeedCollection;
+
+        /**
+         * Encodes the specified PathSeedCollection message. Does not implicitly {@link server.PathSeedCollection.verify|verify} messages.
+         * @param message PathSeedCollection message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.IPathSeedCollection, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified PathSeedCollection message, length delimited. Does not implicitly {@link server.PathSeedCollection.verify|verify} messages.
+         * @param message PathSeedCollection message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.IPathSeedCollection, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a PathSeedCollection message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns PathSeedCollection
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.PathSeedCollection;
+
+        /**
+         * Decodes a PathSeedCollection message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns PathSeedCollection
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.PathSeedCollection;
+
+        /**
+         * Verifies a PathSeedCollection message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a PathSeedCollection message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns PathSeedCollection
+         */
+        public static fromObject(object: { [k: string]: any }): server.PathSeedCollection;
+
+        /**
+         * Creates a plain object from a PathSeedCollection message. Also converts values to other types if specified.
+         * @param message PathSeedCollection
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.PathSeedCollection, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this PathSeedCollection to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for PathSeedCollection
          * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
          * @returns The default type url
          */

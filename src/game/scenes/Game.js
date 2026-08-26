@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Snake } from './Snake';
+import { VOID_BACKGROUND_COLOR } from './Preloader';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
 import {
@@ -67,29 +68,101 @@ const FOOD_EAT_DESTROY_DIST = 6;    // px — kafa merkezine bu kadar yaklaşın
 // (bkz. update() içindeki ayrıntılı not).
 const FOOD_PREDICTION_TIMEOUT_MS = 1000;
 
-// SUNUCU AYNASI — game-server ScoreConfig.SCORE_PER_SEGMENT. Boost/shrink ile
-// bir segment kaybında HUD skoru bu kadar düşürülür (GÖREV 2.4, gerçek-zamanlı).
-const CLIENT_SCORE_PER_SEGMENT = 50;
+// ── GİRDİ AÇI SLEW-RATE LIMITER (client ⇄ server hedef-açı sözleşmesi) ──────
+//
+// KÖK NEDEN — GİRDİ AKIŞI ALIASING'İ, "istemci snap'liyor sunucu snap'lemiyor"
+// DEĞİL. İki taraf da dönüşü ω_max ile kelepçeler ve sabitler birebir aynıdır
+// (TURN_ANGLE_BASE 3.3, scale/speed faktörleri — bkz. Snake.getTurnRateRadPerSec
+// ⇄ server SnakeDynamicsSystem). Ayrışan şey KELEPÇE değil, iki simülasyonun
+// BESLENDİĞİ HEDEF AÇI DİZİSİDİR:
+//
+//   1) Yerel tahmin hedef açıyı HER RENDER KARESİNDE tüketir (60–144 Hz).
+//   2) Ağ gönderimi 30 Hz'e kısılmıştır (NetworkManager.angleSendIntervalMoving)
+//      — yalnızca zamanlayıcının dolduğu ANDAKİ örnek gider, aradakiler ATILIR.
+//   3) Sunucu, tick başına kanal başına TEK açı tutar (last-write-wins;
+//      Game.java → bufferedAngleInputByChannel.put) ve 60 Hz'de boşaltır.
+//
+// Hedef açı yavaş değişirken (normal oyun) bu üç eleme kayıpsızdır: ardışık
+// örnekler zaten birbirine yakındır. Ama oyuncu fareyi silkelediğinde hedef
+// sinyali ~10 Hz'in üstünde enerji taşır; client TAM diziyi, sunucu ise onun
+// rastgele fazlı 30 Hz alt-örneğini entegre eder. İKİ FARKLI GİRDİ → İKİ FARKLI
+// YÖRÜNGE. Fark süre boyunca birikir ve paket geldiğinde reconciliation onu
+// kapatmak zorunda kalır: ekrandaki sert kayma/snap budur.
+//
+// ÇÖZÜM — hedef açıyı GÖNDERİMDEN ÖNCE bant-sınırlı hale getir. İki kısıt:
+//
+//   (A) SLEW: |θ_t − θ_{t−1}| ≤ ω_max · dt   → ağa giden sinyal artık yılanın
+//       fiziksel dönüş hızından hızlı değişemez. 30 Hz örneklemede ardışık
+//       örnekler arası fark en fazla ω_max·33ms ≈ 7° olur (π yerine) — aliasing
+//       hatası ~25 kat düşer.
+//   (B) LEAD: |θ_t − heading| ≤ ω_max · LEAD_SEC → hedef, ULAŞILABİLİR olanın
+//       çok ilerisine kaçamaz. "Baş 0°'ye bakarken hedef 180°" durumu (mevcut
+//       kodun 0.83 sn boyunca sürdürdüğü hâl) yapısal olarak imkânsızlaşır.
+//
+// DÖNÜŞ HIZI YAVAŞLAMAZ: referans (heading) dönüş sırasında zaten ω_max ile
+// ilerlediğinden, hedef de ω_max ile ilerler; sadece SABİT bir faz kadar önde
+// durur. LEAD_SEC bilerek gönderim aralığından (33 ms) ve bir sunucu tick'inden
+// (16.7 ms) büyük seçilir: aksi halde sunucu hedefe erişip bir sonraki pakete
+// kadar BEKLER (merdiven duraklaması) ve dönüş gerçekten yavaşlardı.
+const STEER_LIMITER = {
+    // Hedefin heading'i geçebileceği azami faz (sn cinsinden ω_max çarpanı).
+    // 80 ms ≈ 33 ms gönderim aralığı + 16.7 ms sunucu tick + jitter payı.
+    // ω_max=3.8 rad/s'de ≈ 0.30 rad (17°) tavan sapma.
+    LEAD_SEC: 0.080,
+
+    // ── Ani ters çevirme (flick) tespiti ────────────────────────────────────
+    // Bu pencereden kısa sürede, bu eşikten büyük ve ÖNCEKİNİN TERSİ yönde bir
+    // ham açı sıçraması "silkeleme" sayılır. Tek bir hızlı ama TUTARLI dönüş
+    // (oyuncunun gerçekten istediği manevra) yön değiştirmediği için tetiklemez.
+    FLICK_WINDOW_MS: 50,
+    FLICK_STEP_RAD: 0.9,        // ~52° — tek karede bu kadar ham sıçrama
+    FLICK_GAIN: 0.55,           // her tespit ajitasyonu bu kadar yükseltir
+    AGITATION_DECAY_SEC: 0.28,  // τ — silkeleme bitince bu sabitle söner
+
+    // Ajitasyon 0 iken filtre ŞEFFAF olsun diye üst oran yüksek (τ≈25 ms:
+    // normal dönüşte hissedilmez), 1 iken ağır sönümlü (τ≈167 ms: salınım
+    // ortalamaya oturur ve ters kadranlar arası zıplama biter).
+    SMOOTH_RATE_CALM: 40,       // 1/s
+    SMOOTH_RATE_AGITATED: 6,    // 1/s
+    AGITATION_EPSILON: 0.02,    // bunun altında filtre tamamen atlanır
+
+    // Filtrelenmiş hedef bu kadar değiştiyse paket ÜRETİLMELİDİR: ham girdi
+    // sabitlenmiş olsa bile limiter hâlâ ona doğru süzülüyor olabilir ve o
+    // hareket sunucuya bildirilmezse iki taraf ayrışır. 0.012 rad ≈ 0.7° =
+    // ağ kuantasının (1.44°) yarısı — yani "bir kova değişimi" eşiği.
+    WIRE_EPSILON_RAD: 0.012,
+};
 
 // ── AOI DEBUG OVERLAY (sunucu görünürlük sınırının görselleştirilmesi) ──────
-// Sunucu algoritması: AOICalculationSystem.fill3x3AOI — AOI, oyuncunun
-// KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 3x3 sektörlük
+// Sunucu algoritması: AOICalculationSystem.fillAoiMask — AOI, oyuncunun
+// KAFASINA değil, kafanın bulunduğu SEKTÖRE merkezlenmiş 5x5 sektörlük
 // bloktur ve sektör GRID'ine hizalıdır: kafa bir sektör çizgisini geçtiği
 // anda sınır bir sektör kayar (sürekli kayan bir kutu DEĞİLDİR — despawn
 // eşiğini doğrulamak için bunu aynen çizmek gerekir).
 // SENKRON SÖZLEŞMESİ: SECTOR_COUNT_* ve AOI_SECTOR_RADIUS sunucudaki
-// MapConfig.SECTOR_COUNT_X/Y (30) ve fill3x3AOI (±1) ile BIREBIR aynı
-// tutulmalıdır. Sektör boyutu = dünya boyutu / 30 ≈ 666.67px.
+// MapConfig.SECTOR_COUNT_X/Y (30) ve AOICalculationSystem.AOI_SECTOR_RADIUS
+// (±2) ile BIREBIR aynı tutulmalıdır. Sektör boyutu = dünya / 30 ≈ 666.67px,
+// yani 5x5 blok ≈ 3333px kenarlı bir kare.
 // Y-EKSENİ NOTU: sunucu sektör satırını metre uzayında (Y-yukarı) hesaplar,
 // client piksel uzayında (Y-aşağı) çizer; grid tam 30 satır olduğundan sınır
-// çizgileri çakışır ve "oyuncunun sektörü ± 1" bloğu ayna-değişmezidir —
+// çizgileri çakışır ve "oyuncunun sektörü ± R" bloğu ayna-değişmezidir —
 // piksel uzayında çizilen dikdörtgen geometrik olarak birebir doğrudur.
+// MENZİL NOTU: bu kutu SEGMENT tabanlı görünürlüğü gösterir (tam konum, ±R).
+// Kafa-kafaya menzil bunun İKİ KATIDIR: SectorIndexSystem her kafayı kendi
+// AOI maskesinin tüm sektörlerine kaydeder, dolayısıyla iki kafa 2*R sektör
+// mesafesine kadar birbirini görür. Kutunun dışındaki bir yılanın hâlâ
+// replike ediliyor olması bu yüzden bug değildir.
 const AOIDebugConfig = {
-    SHOW_AOI_DEBUG: false,     // başlangıç durumu (O tuşu ile aç/kapa)
+    // Başlangıç durumu. O tuşu ile aç/kapa; ayrıca sayfa yüklenmeden önce
+    // `window.DEBUG_AOI = true` verilirse overlay açık başlar.
+    SHOW_AOI_DEBUG: (typeof window !== 'undefined' && window.DEBUG_AOI === true),
     TOGGLE_KEY: 'keydown-O',
     SECTOR_COUNT_X: 30,        // sunucu: MapConfig.SECTOR_COUNT_X
     SECTOR_COUNT_Y: 30,        // sunucu: MapConfig.SECTOR_COUNT_Y
-    AOI_SECTOR_RADIUS: 1,      // sunucu: fill3x3AOI → merkez ± 1 sektör
+    // SUNUCU İLE BİREBİR: AOICalculationSystem.AOI_SECTOR_RADIUS.
+    // 1 → 3x3 (9 sektör), 2 → 5x5 (25 sektör). Orada değişirse BURASI da
+    // değişmelidir; aksi halde overlay gerçek görünürlük alanını yanlış çizer.
+    AOI_SECTOR_RADIUS: 2,      // sunucu: fillAoiMask → merkez ± 2 sektör (5x5)
     OUTLINE_COLOR: 0x39ff14,   // neon yeşil
     OUTLINE_ALPHA: 0.9,
     OUTLINE_WIDTH: 2,
@@ -98,6 +171,11 @@ const AOIDebugConfig = {
     DASH_LENGTH: 14,
     GAP_LENGTH: 10,
 };
+
+// Perde kalktıktan sonraki siyahtan-açılma süresi (ms). Kısa tutulur: amaç
+// bir "sahne geçişi" hissi vermek değil, hizalanmış ilk karenin ani belirmesini
+// yumuşatmak. Girdi tam da bu süre dolduğunda açılır (bkz. _revealGameplay).
+const REVEAL_FADE_MS = 250;
 
 export class Game extends Phaser.Scene {
     constructor() {
@@ -111,6 +189,9 @@ export class Game extends Phaser.Scene {
         this.pendingConsumption = new Map();
         this.foodBlitter = null; // Tüm yemler için tek havuzlanmış Blitter (tek draw call)
         this.pendingSegmentMutations = new Map();
+        // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
+        // emit'inden ÖNCE gelebildiği için entityId → seed olarak beklemeye alınır.
+        this.pendingPathSeeds = new Map();
         this.myId = null;
         this.networkManager = null;
         this.gameStarted = false;
@@ -125,6 +206,8 @@ export class Game extends Phaser.Scene {
         // Client-side score tracking: yenen yemin sunucudan gelen value'suna göre puan
         this.playerScore = 0;
         this.foodsEaten = 0;
+        // Otoriter skor akisi basladi mi (bkz. onSelfPosition / onLeaderboardUpdate).
+        this._hasAuthoritativeScore = false;
 
         // AOI debug overlay durumu
         this.aoiDebugGraphics = null;
@@ -141,6 +224,9 @@ export class Game extends Phaser.Scene {
         this.eatingFoods = new Map();
         this.pendingConsumption = new Map();
         this.pendingSegmentMutations = new Map();
+        // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
+        // emit'inden ÖNCE gelebildiği için entityId → seed olarak beklemeye alınır.
+        this.pendingPathSeeds = new Map();
         this.myId = null;
         this.foodBlitter = null;
         this.grid = null;
@@ -149,6 +235,8 @@ export class Game extends Phaser.Scene {
 
         this.playerScore = 0;
         this.foodsEaten = 0;
+        // Otoriter skor akisi basladi mi (bkz. onSelfPosition / onLeaderboardUpdate).
+        this._hasAuthoritativeScore = false;
 
         // Input-delay kuyruğu — restart'ta önceki tura ait girdiler sızmasın.
         this._inputDelayQueue = [];
@@ -156,10 +244,54 @@ export class Game extends Phaser.Scene {
         // Steering deadzone/epsilon guard'inin son TAAHHUT edilen aci degeri (rad).
         // Bu acidan MIN_ROTATION_RADIUS ya da ANGLE_EPSILON altinda kalan girdi
         // ne yerel tahmini ne de agi gunceller. Respawn'da sifirlanmali.
+        // Spawn'da sunucunun verdigi baslangic yonuyle TOHUMLANIR (onStartGame).
         this._lastCommittedAngleRad = null;
 
+        // Sunucunun StartInformation'da verdigi baslangic yonu (rad). Girdi
+        // katmani, oyuncu gercekten yon verene kadar bu acida kalir.
+        this._spawnHeadingRad = null;
+
+        // ── POINTER STEERING ARMING (masaustu) ──────────────────────────────
+        // input.activePointer spawn aninda oyuncunun SON fare konumunu tasir —
+        // cogu zaman PLAY dugmesinin oldugu yer ya da fare hic canvas'a
+        // girmediyse (0, 0). Eski akis ilk update() karesinde o bayat noktaya
+        // dogru bir aci hesaplayip HEM yerel tahmine HEM aga gonderiyordu:
+        // yilan, sunucunun verdigi spawn yonunu birakip aninda imlecin oldugu
+        // yone donuyordu ("spawn'da yanlis yone bakma").
+        //
+        // Artik pointer yalnizca oyuncu fareyi GERCEKTEN oynattiktan sonra
+        // direksiyonu devralir; o ana kadar sunucunun spawn yonu korunur ve
+        // aga aci paketi uretilmez.
+        this._pointerSteeringArmed = false;
+
+        // ── SLEW-RATE LIMITER DURUMU (bkz. STEER_LIMITER) ───────────────────
+        // angle      : ağa ve tahmine giden SON filtrelenmiş hedef açı (rad).
+        //              null = henüz tohumlanmadı; ilk kare ham açıya oturur.
+        // lastRawRad : ham fare açısının bir önceki kare değeri — flick tespiti
+        //              ADIM YÖNÜNÜ karşılaştırdığı için gereklidir.
+        // lastRawTime: o ölçümün zaman damgası (ms) — sıçramanın FLICK_WINDOW_MS
+        //              içinde olup olmadığı buradan bilinir.
+        // lastRawStep: bir önceki ham adım (işaretli) — ardışık adımların
+        //              işareti değişiyorsa bu bir ters çevirmedir (salınım),
+        //              aynı kalıyorsa oyuncunun tutarlı bir manevrasıdır.
+        // agitation  : [0..1] silkeleme şiddeti; sönümleme oranını belirler.
+        // (scene.restart() constructor'ı yeniden koşturmaz — sıfırlama BURADA
+        // yapılmalı, yoksa önceki turun filtre durumu yeni tura sızar.)
+        this._resetSteeringLimiter(null);
+
         this.gameStarted = false;
-        this.initialDataFlags = { startInfo: false, entities: false };
+        // selfBaseline: oyuncunun İLK otoriter SelfPosition karesi uygulandı mı.
+        // Perde (loading veil) YALNIZCA bu da true olduğunda kalkar — aksi halde
+        // oyuncu, sunucunun çoktan ilerlettiği duruma yetişen bir yılan görürdü.
+        this.initialDataFlags = { startInfo: false, entities: false, selfBaseline: false };
+
+        // ── REVEAL PIPELINE DURUMU ──────────────────────────────────────────
+        // Girdi, fade-in TAMAMLANDIĞI anda açılır (bkz. _revealGameplay).
+        // O ana kadar tahmin çalışır ama oyuncunun fare/joystick girdisi
+        // OKUNMAZ: perde ardında verilen bir yön, perde kalkar kalkmaz
+        // beklenmedik bir dönüş olarak görünürdü.
+        this._inputEnabled = false;
+        this._revealStarted = false;
         this.networkManager = new NetworkManager(this);
         // Restart/kapanışta eski soketi sessizce kapat (yeni tura 'disconnected' sızmasın)
         this.events.once('shutdown', () => this.networkManager?.disconnect());
@@ -176,12 +308,21 @@ export class Game extends Phaser.Scene {
         this.events.once('shutdown', () =>
             document.removeEventListener('visibilitychange', this._onVisibilityChange));
 
+        // Fare GERÇEKTEN oynadığında direksiyonu pointer'a devret (bkz.
+        // _pointerSteeringArmed). Referans saklanır ki shutdown'da kaldırılabilsin —
+        // inline arrow'lar off() ile sökülemez ve restart'ta üst üste birikir.
+        this._onPointerMove = () => { this._pointerSteeringArmed = true; };
+        this.input.on('pointermove', this._onPointerMove, this);
+        this.events.once('shutdown', () =>
+            this.input.off('pointermove', this._onPointerMove, this));
+
         this.events.on('start_game', this.onStartGame, this);
         this.events.on('self_position', this.onSelfPosition, this);
         this.events.on('entity_collection', this.onEntityCollection, this);
 
 
         this.events.on('segment_mutation_collection', this.onSegmentMutationCollection, this);
+        this.events.on('path_seed_collection', this.onPathSeedCollection, this);
         this.events.on('food_collection', this.onFoodCollection, this);
         this.events.on('food_mutation_collection', this.onFoodMutationCollection, this);
         this.events.on('remove_entity', this.onRemoveEntity, this);
@@ -221,6 +362,7 @@ export class Game extends Phaser.Scene {
             this.events.off('self_position', this.onSelfPosition, this);
             this.events.off('entity_collection', this.onEntityCollection, this);
             this.events.off('segment_mutation_collection', this.onSegmentMutationCollection, this);
+            this.events.off('path_seed_collection', this.onPathSeedCollection, this);
             this.events.off('food_collection', this.onFoodCollection, this);
             this.events.off('food_mutation_collection', this.onFoodMutationCollection, this);
             this.events.off('remove_entity', this.onRemoveEntity, this);
@@ -256,6 +398,21 @@ export class Game extends Phaser.Scene {
         this.cameras.main.setSize(this.scale.width, this.scale.height);
         this.baseZoom = this.computeBaseZoom();
         this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
+
+        // Kamera harita dışına çıkabildiği için (bkz. onStartGame →
+        // removeBounds) zemin rengi ızgara dokusuyla AYNI olmalı. Motorun
+        // varsayılan #202020 gri zemini, ızgara karosunun kaplayamadığı
+        // alt-piksel kenarlarda gri bir şerit olarak görünürdü.
+        this.cameras.main.setBackgroundColor(VOID_BACKGROUND_COLOR);
+
+        // ── DÜNYA KAMERASI PERDE ARDINDA KAPALI ─────────────────────────────
+        // Sunucu, oyuncu daha yükleme ekranını izlerken yılanı simüle etmeye
+        // başlar ve konum paketleri arka planda akar. Dünya kamerası açık
+        // kalsaydı, HTML perdesinin kalktığı kare ile hizalamanın tamamlandığı
+        // kare arasında CANLI (henüz hizalanmamış) durum bir an görünebilirdi.
+        // Kamera _revealGameplay'de, hizalama BİTTİKTEN sonra açılır.
+        // (HUD'u çizen uiCamera etkilenmez; HUD'un kendi gizleme yolu var.)
+        this.cameras.main.setVisible(false);
 
         // ── Zoom-independent UI camera ──────────────────────────────────────
         // Camera zoom scales scrollFactor(0) objects too: with mobile baseZoom
@@ -308,10 +465,17 @@ export class Game extends Phaser.Scene {
 
         this.registerHUD(this.minimapGraphics);
 
-        // Bağlantı öncesi yer tutucu liste. null → overlays.js mockup'ı çizer;
-        // ilk gerçek 'leaderboard_update' paketi geldiğinde tamamen değişir.
-        // (Eskiden [] geçiliyordu; artık boş dizi GEÇERLİ bir "0 oyuncu"
-        // sıralaması anlamına geldiği için yer tutucu ile karışmamalı.)
+        // Sunucudan GEÇERLİ bir sıralama paketi işlendi mi? Restart'ta Phaser
+        // sahne örneğini yeniden kullandığı için bayrak create() içinde
+        // sıfırlanmalı — aksi halde yeni turda eski turun bayrağı taşınır ve
+        // onStartGame'deki boş-çerçeve yedeği hiç çalışmaz.
+        this.leaderboardReady = false;
+
+        // Bağlantı öncesi yer tutucu liste. null → overlays.js "Connecting…"
+        // çizer; ilk gerçek 'leaderboard_update' paketi geldiğinde tamamen
+        // değişir. (Eskiden [] geçiliyordu; artık boş dizi GEÇERLİ bir
+        // "0 oyuncu" sıralaması anlamına geldiği için yer tutucu ile
+        // karışmamalı.)
         updateHUDLeaderboard(null);
 
         // Bağlantı ekranı artık Phaser içinde çizilmiyor — HTML/CSS overlay
@@ -393,6 +557,22 @@ export class Game extends Phaser.Scene {
         this.myId = clientId;
         this.initialDataFlags.startInfo = true;
 
+        // ── GİRDİ / TAHMİN TAMPONLARINI SPAWN ONAYINDA SIFIRLA ──────────────
+        // Bu paket "yeni tur başlıyor" demektir. Önceki tura (ya da bağlantı
+        // öncesi kareye) ait gecikmeli girdiler kuyrukta kalırsa, spawn'dan
+        // hemen sonra eski bir açı uygulanır ve yılan bir anlığına yanlış yöne
+        // sapar. Kuyruk + son uygulanan girdi + taahhüt edilen açı burada
+        // tamamen düşürülür.
+        this._inputDelayQueue = [];
+        this._lastDelayedInput = null;
+        this._lastCommittedAngleRad = null;
+        this._pointerSteeringArmed = false;
+        // Slew-rate limiter da bu tura ait DEĞİL: önceki turun filtrelenmiş
+        // hedefi ve ajitasyon skoru kalırsa, yeni yılan spawn yönü yerine
+        // ölmüş yılanın son bakış açısına doğru süzülmeye başlardı. Aşağıda
+        // spawn yönü okunduğunda o açıya TOHUMLANIR.
+        this._resetSteeringLimiter(null);
+
         const startX = Number(startInfo?.x);
         const startY = Number(startInfo?.y);
         const startSegmentCount = Number(startInfo?.segmentCount ?? startInfo?.segment_count);
@@ -400,14 +580,61 @@ export class Game extends Phaser.Scene {
         const worldRadius = Number(startInfo?.worldRadius ?? startInfo?.world_radius);
         const startDirection = Number(startInfo?.startDirection ?? startInfo?.start_direction ?? 0);
 
+        // ── GİRDİ KATMANINI SUNUCUNUN SPAWN YÖNÜNE TOHUMLA ──────────────────
+        // Sunucu yılanı rastgele bir yöne bakar halde yaratır (bkz. server
+        // Game.createPlayer → start_direction) ve kendi simülasyonunda hem
+        // currentAngle hem targetAngle bu yöndedir. Client aynı yönde
+        // başlamazsa iki simülasyon daha ilk kareden ayrışır: sunucu düz
+        // giderken client döner, aradaki fark reconciliation'a hata olarak
+        // yansır ve ilk saniyelerde düzeltme olarak geri boşalır.
+        //
+        // 0 rad'a ya da uydurma bir vektöre ASLA düşülmez: değer okunamazsa
+        // tohumlama yapılmaz ve girdi katmanı yılanın kendi head.rotation'ını
+        // (Snake ctor'da yine sunucu açısıyla kurulmuştur) kullanır.
+        const spawnHeadingRad = Number.isFinite(startDirection)
+            ? Snake.decodeServerAngle(startDirection)
+            : null;
+        if (Number.isFinite(spawnHeadingRad)) {
+            this._spawnHeadingRad = spawnHeadingRad;
+            // Deadzone/epsilon guard'ının referansı da spawn yönüdür: oyuncu
+            // fareyi oynatana kadar "değişiklik yok" kabul edilir, açı paketi
+            // üretilmez ve yerel tahmin sunucuyla aynı yönde kalır.
+            this._lastCommittedAngleRad = spawnHeadingRad;
+            // Limiter aynı yönle tohumlanır: oyuncu direksiyonu devraldığı ilk
+            // karede filtre doğru yerden başlar, sıfırdan süzülmez.
+            this._resetSteeringLimiter(spawnHeadingRad);
+            // KENDI dokunulmazligimiz: sure SUNUCUDAN gelir ve yalnizca
+            // efektin ne kadar suregidini bildirir. Bayragin kendisi her tick
+            // EntityCollection ile teyit edilir; burada yalnizca ILK kareden
+            // itibaren efekt gorunsun diye onden aciyoruz (paket gelene kadar
+            // bir-iki karelik bosluk olusmasin).
+        }
+
         if (Number.isFinite(worldRadius)) {
             this.worldRadius = worldRadius;
             const worldSize = worldRadius * 2;
-            this.cameras.main.setBounds(0, 0, worldSize, worldSize);
-            // Physics world bounds'u kamera sınırından çok büyük tut:
-            // cameras.main.setBounds() bazı Phaser sürümlerinde physics.world.setBounds()'ı
-            // tetikler ve snake head body sınırda sıkışır. Bunu önlemek için fizik sınırını
-            // görsel sınırın çok ötesine alıyoruz — ölüm kontrolü sunucu tarafından yapılıyor.
+
+            // ── KAMERA SINIRI YOK (oyuncu HER ZAMAN ekran merkezinde) ────────
+            // Eskiden burada setBounds(0, 0, worldSize, worldSize) vardı.
+            // Phaser, useBounds açıkken her preRender'da scrollX/scrollY'yi
+            // clampX/clampY ile sınırın içine kelepçeler. Sonuç: oyuncu haritanın
+            // kenarına veya köşesine yaklaştığında kamera durur, yılan ekranın
+            // ortasından ayrılıp kenara doğru kayar — takip "kopmuş" hissi verir.
+            //
+            // removeBounds() useBounds'u kapatır; kamera artık kafayı harita
+            // dışına taşsa bile merkezde tutar. Sınır DIŞINDA kalan alan boş
+            // kalmaz: ızgara arka planı her karede kameranın worldView'ine göre
+            // yeniden konumlanır (bkz. update() → this.grid) ve kameranın zemin
+            // rengi ızgarayla aynı tondur (bkz. create() → VOID_BACKGROUND_COLOR),
+            // dolayısıyla siyah boşluk/yırtılma oluşmaz.
+            this.cameras.main.removeBounds();
+
+            // Physics world bounds'u görsel sınırın çok ötesinde tut ki arcade
+            // body'ler kenarda sıkışmasın (ölüm kontrolü sunucuda yapılıyor).
+            // NOT: bu çağrı artık kameradan bağımsızdır — eskiden setBounds'un
+            // bazı Phaser sürümlerinde physics.world.setBounds'u tetiklemesine
+            // karşı bir önlemdi; kamera sınırı kalktıktan sonra da gerekli,
+            // çünkü aksi halde fizik dünyası canvas boyutuna düşer.
             const physicsPadding = worldRadius * 2;
             this.physics.world.setBounds(
                 -physicsPadding, -physicsPadding,
@@ -425,7 +652,7 @@ export class Game extends Phaser.Scene {
             this.boundaryGraphics.setDepth(500);
         }
 
-        this.ensurePlayerSnake(
+        const mySnake = this.ensurePlayerSnake(
             clientId,
             Number.isFinite(startX) ? startX : 0,
             Number.isFinite(startY) ? startY : 0,
@@ -433,6 +660,38 @@ export class Game extends Phaser.Scene {
             Number.isFinite(startScale) ? startScale : undefined,
             startDirection
         );
+
+        // Kamerayı spawn konumuna LERP'SİZ oturt. startFollow(…, 0.15, 0.15)
+        // yumuşatmalı olduğundan, kamera bir önceki scroll konumundan (restart'ta
+        // (0,0)) yeni kafaya doğru gözle görülür şekilde SÜZÜLÜRDÜ. centerOn
+        // scroll'u tek adımda yazar; yumuşatma bir sonraki kareden itibaren
+        // normal takip için devrede kalır.
+        const spawnHead = mySnake?.getHead();
+        if (spawnHead) {
+            this.cameras.main.centerOn(spawnHead.x, spawnHead.y);
+        }
+
+        // ── SIRALAMA: YER TUTUCUYU HANDSHAKE'TE KAPAT ───────────────────────
+        // Normal akışta sunucu sıralamayı bu zarfın İÇİNDE gönderir ve
+        // 'leaderboard_update' bu noktadan önce işlenmiş olur (bkz.
+        // NetWorkManager.handleMessage sırası) → leaderboardReady true'dur ve
+        // burada yapılacak bir şey yoktur.
+        //
+        // Bu dal yalnızca sıralama gelmediğinde çalışır: sıralamayı handshake'e
+        // eklemeyen ESKİ bir sunucu. O durumda "Connecting…" yer tutucusu ilk
+        // periyodik yayına (5 sn'ye kadar) dek ekranda asılı kalırdı. Handshake
+        // tamamlandığına göre bağlantı aşaması bitmiştir; yer tutucu yerine
+        // nötr BOŞ ÇERÇEVE çizilir ve ilk gerçek paket onu doldurur.
+        if (!this.leaderboardReady) {
+            updateHUDLeaderboard({
+                entries: [],
+                totalPlayers: 0,
+                selfRank: 0,
+                selfScore: 0,
+                selfName: window.gameSettings?.nickname || 'You',
+            });
+        }
+
         this.checkInitialDataComplete();
     }
 
@@ -453,6 +712,20 @@ export class Game extends Phaser.Scene {
         const ys = entityCollection?.ys ?? [];
         const angles = entityCollection?.angles ?? [];
         const scales = entityCollection?.scales ?? [];
+
+        // ── DOGUM DOKUNULMAZLIGI (SEYREK LISTE) ─────────────────────────
+        // Sunucu yalnizca SU AN dokunulmaz olan entity id'lerini gonderir;
+        // normal durumda liste TAMAMEN BOSTUR (proto3'te sifir bayt). Set'e
+        // cevirmek O(1) sorgu verir ve asagidaki dongude entity basina tek
+        // bir kontrole iner.
+        //
+        // OTORITE: bu bayrak her tick sunucudan YENIDEN gelir. Istemci onu
+        // saklamaz, uzatmaz ya da kendi zamanlayicisiyla surdurmez — paket
+        // gelmeyi kestiginde efekt de biter.
+        const invulnerableIds = entityCollection?.invulnerableEntityIds ?? [];
+        const invulnerableSet = invulnerableIds.length > 0
+            ? new Set(invulnerableIds.map(v => this.toId(v)))
+            : null;
 
         const fullyDataIds = entityCollection?.fullyDataEntityIds ?? [];
         const fullyDataCounts = entityCollection?.fullyDataSegmentCounts ?? [];
@@ -556,7 +829,17 @@ export class Game extends Phaser.Scene {
             }
 
             snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
+            // Dokunulmazlik bayragi HER tick sunucudan gelir. Liste bossa
+            // (invulnerableSet === null) hicbir entity dokunulmaz degildir,
+            // dolayisiyla bayrak false'a duser ve efekt temizlenir.
+            snake.setInvulnerable(invulnerableSet ? invulnerableSet.has(entityId) : false);
             this.flushPendingSegmentMutations(entityId, snake);
+
+            // SIRA ÖNEMLİ: tohum EN SON uygulanır. Yukarıdaki
+            // syncSegmentCountFromServer ve segment mutasyonları path'i yeniden
+            // kurabilir/uzatabilir; tohumu sona bırakmak sunucunun gerçek
+            // geometrisinin her hâlükârda kazanmasını garanti eder.
+            this.flushPendingPathSeed(entityId, snake);
         }
     }
 
@@ -568,18 +851,16 @@ export class Game extends Phaser.Scene {
             const entityId = this.toId(mutation?.entityId ?? mutation?.entity_id);
             if (entityId === null) return;
 
-            // GÖREV 2.4: Oyuncunun KENDİ yılanı segment KAYBEDERSE (boost/shrink →
-            // sunucu drainOneSegment), HUD skorunu gerçek-zamanlı düşür. Sunucu
-            // ScoreConfig.SCORE_PER_SEGMENT aynası. Segment EKLEME'de skor DEĞİŞMEZ
-            // (puan yem yenirken addPlayerScoreForFood ile eklenir; çift sayım olmaz).
-            if (entityId === this.myId) {
-                const removed = this._parseRemovedSegmentCount(mutation);
-                if (removed > 0) {
-                    this.playerScore = Math.max(0, this.playerScore - removed * CLIENT_SCORE_PER_SEGMENT);
-                    updateHUDScore(this.playerScore);
-                }
-            }
-
+            // SKOR BURADAN YAZILMAZ (eskiden yazilirdi).
+            //
+            // Eski kod segment KAYBINI gorup HUD skorundan removed*50 dusuyordu
+            // — yani uzunluk sinyalinden skoru TAHMIN ediyordu. Bu tahmin,
+            // yem yeme tahminiyle (addPlayerScoreForFood) ayni degiskeni
+            // yaristigi icin ikisi kacinilmaz olarak ayrisiyor, 5 sn'de bir
+            // gelen otoriter leaderboard degeri farki tek karede kapatinca HUD
+            // gorunur sekilde zipliyordu. Skor artik SelfPosition ile HER TICK
+            // otoriter geliyor (bkz. onSelfPosition), dolayisiyla buradaki
+            // tahmine gerek de yok, yeri de yok.
             const snake = this.snakes.get(entityId);
             if (!snake) {
                 this.queuePendingSegmentMutation(entityId, mutation);
@@ -588,17 +869,6 @@ export class Game extends Phaser.Scene {
 
             snake.applySegmentMutationFromServer(mutation);
         });
-    }
-
-    // Bir segment mutasyonundan çıkarılan segment sayısını çözer (SEGMENT_REMOVE
-    // değilse 0). Tip kodlaması Snake.applySegmentMutationFromServer ile aynıdır:
-    // SEGMENT_REMOVE = 'SEGMENT_REMOVE' veya sayısal 1.
-    _parseRemovedSegmentCount(mutation) {
-        const type = mutation?.mutationType ?? mutation?.mutation_type;
-        const isRemove = type === 'SEGMENT_REMOVE' || type === 1;
-        if (!isRemove) return 0;
-        const count = Number(mutation?.removedSegmentCount ?? mutation?.removed_segment_count ?? 0);
-        return Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
     }
 
     onFoodCollection(foodCollection) {
@@ -648,7 +918,29 @@ export class Game extends Phaser.Scene {
         if (entityId !== this.myId) return;
 
         this.initialDataFlags.entities = true;
-        this.checkInitialDataComplete();
+
+        // ── OTORITER SKOR (her tick) ────────────────────────────────────────
+        // Sunucu skoru artik SelfPosition icinde gonderiyor (total_score).
+        // Bu, HUD skorunun TEK yazma kaynagidir.
+        //
+        // ESKI AKIS UC AYRI YAZAR TASIYORDU ve titremenin sebebi tam olarak
+        // buydu:
+        //   1) addPlayerScoreForFood(): yem yenince +value (istemci tahmini)
+        //   2) segment_mutation: segment kaybinda -50 (uzunluktan SKOR TAHMINI)
+        //   3) leaderboard self_score: 5 SANIYEDE BIR otoriter duzeltme
+        // (1) ve (2) birbirinden bagimsiz tahminlerdi; aralarindaki her sapma
+        // (3) geldiginde tek karede geri alinip HUD'a sicrama olarak yansiyordu.
+        // Ozellikle (2) yanlis yondeydi: uzunluk sinyalinden skor cikarmaya
+        // calisiyordu, oysa iliski tersidir (skor uzunlugu belirler).
+        const authoritativeScore = Number(
+            selfPosition?.totalScore ?? selfPosition?.total_score);
+        if (Number.isFinite(authoritativeScore) && authoritativeScore >= 0) {
+            if (authoritativeScore !== this.playerScore) {
+                this.playerScore = authoritativeScore;
+                updateHUDScore(this.playerScore);
+            }
+            this._hasAuthoritativeScore = true;
+        }
 
         const x = Number(selfPosition?.x);
         const y = Number(selfPosition?.y);
@@ -658,7 +950,36 @@ export class Game extends Phaser.Scene {
             Number.isFinite(y) ? y : 0
         );
         this.flushPendingSegmentMutations(entityId, snake);
-        snake.updateSelfPositionFromServer(selfPosition);
+
+        // KENDI dokunulmazligimiz — HER TICK sunucudan. Oyuncunun kendi
+        // entity'si EntityCollection'da BULUNMADIGI icin (sunucu gozlemciyi
+        // kendi gorunur kumesinden cikarir) bayrak SelfPosition'da tasinir.
+        // Istemcide sayac YOK: bayrak dustugu anda efekt biter, dolayisiyla
+        // sure istemci tarafinda uzatilamaz.
+        snake.setInvulnerable(!!(selfPosition?.invulnerable));
+
+        // İlk otoriter kare LERP'SİZ uygulanır; true dönerse bu KARE baseline'dı.
+        const didTeleport = snake.updateSelfPositionFromServer(selfPosition);
+        if (didTeleport) {
+            // Kamera da aynı karede ışınlanır. startFollow yumuşatması burada
+            // devrede olsaydı, yılan otoriter konuma anında oturup kamera ona
+            // ~1 sn boyunca süzülürdü — spawn'daki kayma hissinin görsel yarısı.
+            const head = snake.getHead();
+            if (head) this.cameras.main.centerOn(head.x, head.y);
+
+            // Baseline anında gecikmeli girdi kuyruğu da düşürülür: spawn ile
+            // ilk otoriter kare arasında sıraya girmiş açılar, artık geçersiz
+            // olan spawn-öncesi tahmine aitti.
+            this._inputDelayQueue = [];
+            this._lastDelayedInput = null;
+
+            this.initialDataFlags.selfBaseline = true;
+        }
+
+        // SIRA ÖNEMLİ: perde kontrolü konum UYGULANDIKTAN SONRA yapılır.
+        // Eskiden bu çağrı metodun başındaydı; perde, oyuncunun otoriter konumu
+        // yılana yazılmadan bir kare önce kalkabiliyordu.
+        this.checkInitialDataComplete();
     }
 
     onRemoveEntity(removeEntity) {
@@ -685,6 +1006,12 @@ export class Game extends Phaser.Scene {
      */
     _nuclearCleanEntity(entityId) {
         this.pendingSegmentMutations.delete(entityId);
+        // DİKKAT: pendingPathSeeds BİLEREK silinmez. Bu temizlik AOI yeniden
+        // girişinde/respawn'da, yılan YENİDEN kurulmadan hemen önce koşar ve
+        // bekleyen tohum tam da o YENİ gövdeye aittir (aynı zarfta geldi).
+        // Burada silmek, özelliğin var olma sebebi olan senaryoyu bozardı.
+        // Tohum ya flushPendingPathSeed ile tüketilir ya da queuePendingPathSeed
+        // içindeki tavan tarafından düşürülür.
 
         const snake = this.snakes.get(entityId);
         if (!snake) return;
@@ -714,6 +1041,14 @@ export class Game extends Phaser.Scene {
         const existingSnake = this.snakes.get(entityId);
         const nickname = window.gameSettings?.nickname || '';
         if (existingSnake?.isPlayerControlled && existingSnake.alive) {
+            // Yılan, StartInformation'dan ÖNCE işlenen bir pakette (ör. ilk
+            // SelfPosition) yaratılmış olabilir; o yolda açı GEÇİLMEZ ve yılan
+            // 0 rad ile — sağa bakar halde — kurulur. Buraya bir sunucu yönü
+            // geldiyse geriye dönük uygulanır; applyServerHeading yalnızca bir
+            // kez etki eder, sonraki çağrılar oyuncunun dönüşünü bozmaz.
+            if (angleRaw !== undefined) {
+                existingSnake.applyServerHeading(angleRaw);
+            }
             if (segmentCount !== undefined) {
                 existingSnake.syncSegmentCountFromServer(segmentCount);
             }
@@ -735,12 +1070,28 @@ export class Game extends Phaser.Scene {
         }
 
         const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw, nickname);
+        // Açı bu yolda GEÇİLDİYSE yılan zaten sunucu yönüyle kurulmuştur; yönü
+        // "uygulanmış" işaretle ki sonradan gelen bir StartInformation tekrarı
+        // (applyServerHeading) oyuncunun o ana kadarki dönüşünü geri almasın.
+        // angleRaw === undefined ise yön HENÜZ bilinmiyor demektir ve bayrak
+        // false kalır — StartInformation geldiğinde geriye dönük uygulanır.
+        if (angleRaw !== undefined) {
+            playerSnake._hasServerHeading = true;
+        }
         if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
             playerSnake.scale = scale;
             playerSnake._updateSegmentScaling(); // görsel boyut = sunucu scale, ilk kareden itibaren
         }
         this.snakes.set(entityId, playerSnake);
+
+        // Kamera kafayı takip eder ve HER ZAMAN ekran merkezine kilitler.
+        // followOffset (0, 0) → hedef tam merkezde; removeBounds() (bkz.
+        // onStartGame) sayesinde harita kenarında da merkezden kaymaz.
         this.cameras.main.startFollow(playerSnake.getHead(), true, 0.15, 0.15);
+        this.cameras.main.setFollowOffset(0, 0);
+        // Savunma amaçlı: sahne yeniden başlarken kamera örneği yeniden
+        // kullanılırsa önceki turdan kalan sınır burada da düşürülür.
+        this.cameras.main.removeBounds();
         this.cameras.main.setRoundPixels(false);
         return playerSnake;
     }
@@ -763,14 +1114,172 @@ export class Game extends Phaser.Scene {
         this.pendingSegmentMutations.delete(entityId);
     }
 
-    checkInitialDataComplete() {
-        if (!this.gameStarted && this.initialDataFlags.startInfo && this.initialDataFlags.entities) {
-            this.gameStarted = true;
-            if (!this.grid) {
-                this.createTiledBackground();
+    // ── İLK KARŞILAŞMA PATH TOHUMU ──────────────────────────────────────────
+    // Sunucu, bir entity'yi bu istemciye İLK kez gösterdiğinde (veya uzun bir
+    // görünürlük boşluğundan sonra yeniden gösterdiğinde) gövde polyline'ını
+    // sıkıştırılmış olarak bir KEZ ekler. Böylece istemci gövdeyi tahmin etmek
+    // zorunda kalmaz; kıvrımlı yılan ilk karede doğru şekliyle çizilir.
+    // Kablo formatı için bkz. newproto/server/upgrade/path-seed.proto.
+    onPathSeedCollection(pathSeedCollection) {
+        const seeds = pathSeedCollection?.seeds ?? [];
+        if (seeds.length === 0) return;
+
+        seeds.forEach((seed) => {
+            const entityId = this.toId(seed?.entityId ?? seed?.entity_id);
+            if (entityId === null) return;
+
+            const points = this._decodePathSeed(seed);
+            // İki AYRIK nokta yoksa yön tanımlı değildir; tohum atlanır ve
+            // yılan mevcut warmup'ında kalır (sessiz bozulma yok).
+            if (points.length < 2) return;
+
+            const snake = this.snakes.get(entityId);
+            if (!snake) {
+                // Tohum, yılanı yaratan EntityCollection emit'inden ÖNCE geldi
+                // (alan `oneof` dışında olduğu için switch'ten önce işleniyor).
+                this.queuePendingPathSeed(entityId, points);
+                return;
             }
-            this.hideLoader();
+            snake.seedPathFromServer(points);
+        });
+    }
+
+    // Delta + kuantalanmış polyline → mutlak dünya noktaları (kafadan geriye):
+    //     p[0]   = (origin_x, origin_y)
+    //     p[i+1] = p[i] + (dx[i] / quantization, dy[i] / quantization)
+    _decodePathSeed(seed) {
+        const originX = Number(seed?.originX ?? seed?.origin_x);
+        const originY = Number(seed?.originY ?? seed?.origin_y);
+        if (!Number.isFinite(originX) || !Number.isFinite(originY)) return [];
+
+        const dxs = seed?.dx ?? [];
+        const dys = seed?.dy ?? [];
+        // dx/dy eşit uzunlukta OLMALI; değilse kısa olanla sınırlanır —
+        // bozuk/yarım paket diziyi taşırmaz.
+        const count = Math.min(dxs.length ?? 0, dys.length ?? 0);
+
+        const rawQ = Number(seed?.quantization);
+        // 0/eksik/geçersiz → 1 (kuantalama yok). Sıfıra bölme imkânsız.
+        const q = Number.isFinite(rawQ) && rawQ > 0 ? rawQ : 1;
+
+        const points = [{ x: originX, y: originY }];
+        let x = originX;
+        let y = originY;
+        for (let i = 0; i < count; i++) {
+            const dx = Number(dxs[i]);
+            const dy = Number(dys[i]);
+            // Bozuk bileşende zinciri KES: sonrası kümülatif olarak yanlış olur.
+            if (!Number.isFinite(dx) || !Number.isFinite(dy)) break;
+            x += dx / q;
+            y += dy / q;
+            points.push({ x, y });
         }
+        return points;
+    }
+
+    queuePendingPathSeed(entityId, points) {
+        // Yalnızca EN SON tohum saklanır — aynı entity için yeni tohum gelirse
+        // eskisi tanımı gereği bayattır.
+        this.pendingPathSeeds.set(entityId, points);
+
+        // Sözleşme gereği tohum, entity'yi ortaya çıkaran EntityCollection ile
+        // AYNI zarfta gelir ve hemen tüketilir; yani harita normalde neredeyse
+        // boştur. Yine de sunucu sözleşmeyi çiğnerse (tohum gelir, entity
+        // gelmez) sınırsız birikmesin: en eski kayıtlar düşürülür.
+        const MAX_PENDING = 64;
+        while (this.pendingPathSeeds.size > MAX_PENDING) {
+            const oldest = this.pendingPathSeeds.keys().next().value;
+            this.pendingPathSeeds.delete(oldest);
+        }
+    }
+
+    flushPendingPathSeed(entityId, snake) {
+        const points = this.pendingPathSeeds.get(entityId);
+        if (!points || !snake) return;
+        snake.seedPathFromServer(points);
+        this.pendingPathSeeds.delete(entityId);
+    }
+
+    checkInitialDataComplete() {
+        if (this.gameStarted) return;
+        // selfBaseline KOŞULU KRİTİK: eskiden perde, StartInformation + herhangi
+        // bir entity paketi gelir gelmez kalkıyordu. Oyuncunun KENDİ otoriter
+        // konumu henüz uygulanmamış olabildiğinden, açılışta yılan spawn
+        // noktasında duruyor ve ilk SelfPosition ile sunucunun o ana kadar
+        // ilerlettiği yere doğru fırlıyordu — bildirilen "açılışta ileri sarma".
+        if (!this.initialDataFlags.startInfo
+            || !this.initialDataFlags.entities
+            || !this.initialDataFlags.selfBaseline) {
+            return;
+        }
+
+        this.gameStarted = true;
+        if (!this.grid) {
+            this.createTiledBackground();
+        }
+        this._revealGameplay();
+    }
+
+    /**
+     * PERDE → HİZALA → FADE-IN → GİRDİ sırası.
+     *
+     * Sıra bilerek bu şekilde: her adım bir öncekinin tamamlandığını varsayar.
+     *  1. HİZALA — yılan(lar) ve kamera EN SON otoriter duruma ışınlanır ve
+     *     yükleme boyunca birikmiş tüm tampon atılır. Bu adım perde HÂLÂ
+     *     kapalıyken yapılır; ışınlanma hiçbir zaman ekranda görünmez.
+     *  2. PERDEYİ KALDIR — HTML overlay gider, dünya kamerası açılır. Kamera
+     *     fade'in ilk karesinde tamamen siyah olduğundan araya hizalanmamış
+     *     tek bir kare bile giremez.
+     *  3. FADE-IN — kısa (REVEAL_FADE_MS) siyahtan açılma.
+     *  4. GİRDİ — fade BİTTİĞİ anda açılır (Phaser FADE_IN_COMPLETE).
+     */
+    _revealGameplay() {
+        if (this._revealStarted) return;
+        this._revealStarted = true;
+
+        // ── 1. HİZALA (perde hâlâ kapalı) ───────────────────────────────────
+        const mySnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+        const snapped = mySnake?.snapToServerBaseline() ?? null;
+
+        // Uzak yılanlar da yükleme boyunca snapshot biriktirdi; aralarında
+        // interpolasyon perde kalkınca "geriye sarma" olarak görünürdü.
+        this.snakes.forEach((snake) => {
+            if (snake !== mySnake) snake.snapToServerBaseline();
+        });
+
+        // Kamera hedefe LERP'SİZ kilitlenir (startFollow yumuşatması bir
+        // sonraki kareden itibaren devreye girer).
+        const head = mySnake?.getHead();
+        const focusX = snapped?.x ?? head?.x;
+        const focusY = snapped?.y ?? head?.y;
+        if (Number.isFinite(focusX) && Number.isFinite(focusY)) {
+            this.cameras.main.centerOn(focusX, focusY);
+        }
+
+        // Yükleme sırasında sıraya girmiş gecikmeli girdiler artık geçersiz:
+        // hepsi perde ardındaki (atılmış) tahmine aitti.
+        this._inputDelayQueue = [];
+        this._lastDelayedInput = null;
+
+        // ── 2. PERDEYİ KALDIR ───────────────────────────────────────────────
+        this.hideLoader();
+        this.cameras.main.setVisible(true);
+
+        // ── 3. FADE-IN ──────────────────────────────────────────────────────
+        // fadeIn ilk karede tam siyah başlar → HTML perdesi ile kamera arasında
+        // boşluk kalmaz. (Phaser fadeIn'i içeride force=true ile başlatır, yani
+        // restart'ta asılı kalmış bir efekt varsa yeniden başlatılır.)
+        this.cameras.main.fadeIn(REVEAL_FADE_MS, 0, 0, 0);
+
+        // ── 4. GİRDİYİ FADE BİTİNCE AÇ ──────────────────────────────────────
+        // Yedek zamanlayıcı: efekt bir şekilde tamamlanmazsa (sekme arka plana
+        // alınır ve kamera efekti güncellenmezse) girdi kalıcı olarak kilitli
+        // kalmamalı. İki yoldan hangisi önce gelirse girdiyi açar; _inputEnabled
+        // idempotenttir.
+        this.cameras.main.once(
+            Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE,
+            () => { this._inputEnabled = true; });
+        this.time.delayedCall(REVEAL_FADE_MS + 250, () => { this._inputEnabled = true; });
     }
 
     toId(rawId) {
@@ -925,11 +1434,16 @@ export class Game extends Phaser.Scene {
         this.eatingFoods.set(foodId, { sprite, targetSnake, elapsedMs: 0 });
     }
 
-    // Yenen yemin sunucudan gelen value'suna göre puan; HUD anında güncellenir.
+    // Yenen yem SAYACI. SKOR BURADAN YAZILMAZ.
+    //
+    // Skorun tek kaynagi sunucunun her tick gonderdigi SelfPosition.total_score
+    // degeridir (bkz. onSelfPosition). Burada tahmin yurutmek, otoriter deger
+    // her tick zaten geldigi icin en fazla ~1 RTT'lik bir "erken artis"
+    // kazandirirdi; bedeli ise iki yazarin surekli birbirini ezmesi ve gorunur
+    // skor titremesiydi. Yenen yem SAYISI (foodsEaten) tamamen kozmetiktir ve
+    // skoru etkilemedigi icin tahmini kalabilir.
     addPlayerScoreForFood(value) {
-        this.playerScore += Number.isFinite(value) ? value : 0;
         this.foodsEaten += 1;
-        updateHUDScore(this.playerScore);
     }
 
     // (_restoreFoodNode KALDIRILDI — zamanlayıcıya dayalı yem dirilmesi, sunucuda
@@ -963,11 +1477,15 @@ export class Game extends Phaser.Scene {
 
     // ── SIRALAMA PAKETİ ─────────────────────────────────────────────────────
     // Sunucu bunu 5 sn'de birden sık göndermez ve yalnızca sıralama
-    // değiştiğinde ekler (bkz. server LeaderboardSystem). Burada sadece wire
-    // formatı UI şekline çevrilir; DOM verimliliği overlays.js tarafında
-    // (satır havuzu + fark tabanlı yazma) çözülür.
+    // değiştiğinde ekler (bkz. server LeaderboardSystem) — TEK istisna, aynı
+    // alanın handshake zarfına da eklenmesidir (bkz. Game.buildInitialLeaderboard);
+    // ilk çağrı normalde oradan gelir. Burada sadece wire formatı UI şekline
+    // çevrilir; DOM verimliliği overlays.js tarafında (satır havuzu + fark
+    // tabanlı yazma) çözülür.
     onLeaderboardUpdate(leaderboardUpdate) {
         if (!leaderboardUpdate) return;
+
+        this.leaderboardReady = true;
 
         const rawEntries = Array.isArray(leaderboardUpdate.entries) ? leaderboardUpdate.entries : [];
         const entries = rawEntries.map((entry) => ({
@@ -975,13 +1493,27 @@ export class Game extends Phaser.Scene {
             score: Number(entry?.score ?? 0),
         }));
 
-        // protobufjs camelCase üretir; snake_case yedeği savunma amaçlı.
         const selfRank = Number(
             leaderboardUpdate.selfRank ?? leaderboardUpdate.self_rank ?? 0);
         const selfScore = Number(
             leaderboardUpdate.selfScore ?? leaderboardUpdate.self_score ?? 0);
         const totalPlayers = Number(
             leaderboardUpdate.totalPlayers ?? leaderboardUpdate.total_players ?? 0);
+
+        // TEK DOĞRULUK KAYNAGI: sunucunun otoriter selfScore'u client
+        // tahmini playerScore'u düzeltir. Bu sayede HUD skor podu (#hud-score)
+        // ve sıralamadaki kendi satırımız (#hud-your-score) her zaman aynı
+        // değeri gösterir. Client tahmini (yem yeme/segment kaybı) paketler
+        // arasında anlık güncelleme sağlar; leaderboard paketi geldiğinde
+        // birikerek oluşan fark burada sıfırlanır.
+        // SKOR BURADAN YAZILMAZ. self_score 5 saniyede bir yayinlanir; skor
+        // artik SelfPosition ile HER TICK geliyor, dolayisiyla bu deger daima
+        // daha BAYATTIR ve yazmasi HUD'da geriye sicrama uretirdi.
+        // Otoriter akis hic baslamadiysa (cok eski sunucu) yedek olarak kullan.
+        if (Number.isFinite(selfScore) && !this._hasAuthoritativeScore) {
+            this.playerScore = selfScore;
+            updateHUDScore(this.playerScore);
+        }
 
         updateHUDLeaderboard({
             entries,
@@ -1029,8 +1561,19 @@ export class Game extends Phaser.Scene {
     }
 
     onDisconnected() {
-        console.log("Bağlantı koptu!");
         this.gameStarted = false;
+
+        // Perde HENÜZ kalkmadıysa (reveal öncesi kopma) burada kaldırılmalı:
+        // aşağıdaki "bağlantı koptu" yazısı canvas üzerine çizilir ve opak HTML
+        // connecting-overlay'in ARKASINDA kalırdı — oyuncu boş bir yükleme
+        // ekranına bakakalırdı. Girdiyi de aç ki kilitli kalmasın.
+        if (!this._revealStarted) {
+            this._revealStarted = true;
+            hideConnectingOverlay();
+            this.cameras.main.setVisible(true);
+            this._inputEnabled = true;
+        }
+
         hideGameHUD();
         this.clearFoods();
         if (this.boundaryGraphics) {
@@ -1047,7 +1590,7 @@ export class Game extends Phaser.Scene {
 
     // ── AOI DEBUG OVERLAY ÇİZİMİ ─────────────────────────────────────────────
     // Sunucunun gerçek AOI'sini çizer: oyuncunun bulunduğu sektöre merkezli,
-    // GRID'e hizalı 3x3 sektör bloğu (dünya kenarlarında sunucu gibi kırpılır).
+    // GRID'e hizalı 5x5 sektör bloğu (dünya kenarlarında sunucu gibi kırpılır).
     // Kalın kesikli dış çizgi + çok soluk iç dolgu = AOI sınırı; ince düz iç
     // kutu = oyuncunun mevcut sektörü (kafa bu kutunun kenarını geçtiği anda
     // AOI bir sektör kayar → uzak yılanların spawn/despawn eşiği).
@@ -1078,7 +1621,7 @@ export class Game extends Phaser.Scene {
         this._aoiDebugLastSector.cx = cx;
         this._aoiDebugLastSector.cy = cy;
 
-        // Sunucu fill3x3AOI dünya kenarında komşuları atlar → aynı kırpma.
+        // Sunucu fillAoiMask dünya kenarında komşuları atlar → aynı kırpma.
         const r = AOIDebugConfig.AOI_SECTOR_RADIUS;
         const minCx = clampSector(cx - r, AOIDebugConfig.SECTOR_COUNT_X - 1);
         const maxCx = clampSector(cx + r, AOIDebugConfig.SECTOR_COUNT_X - 1);
@@ -1150,6 +1693,149 @@ export class Game extends Phaser.Scene {
         }
     }
 
+    // ── GİRDİ AÇI SLEW-RATE LIMITER ──────────────────────────────────────────
+    // Tasarım gerekçesi ve kök-neden analizi için dosya başındaki STEER_LIMITER
+    // bloğuna bakınız. Buradaki iki metot o sözleşmenin uygulamasıdır.
+
+    /**
+     * Limiter durumunu sıfırlar; verilen açı geçerliyse ona TOHUMLAR.
+     * Tohumlama, kontrollerin (fade-in bitişi, pointer arming, respawn, sekme
+     * dönüşü) devreye girdiği ilk karede filtrenin bayat bir açıdan hedefe
+     * doğru "süzülmeye" başlamasını — yani görünür bir açılış sapmasını —
+     * engeller: filtre daha ilk karede doğru yerde başlar.
+     */
+    _resetSteeringLimiter(angleRad = null) {
+        const seed = Number.isFinite(angleRad) ? Phaser.Math.Angle.Wrap(angleRad) : null;
+        this._steer = {
+            angle: seed,
+            lastRawRad: seed,
+            lastRawTime: 0,
+            lastRawStep: 0,
+            agitation: 0,
+        };
+    }
+
+    /**
+     * Ham fare/joystick açısını, yılanın FİZİKSEL dönüş kapasitesine (ω_max)
+     * uyan bant-sınırlı bir hedef açıya dönüştürür.
+     *
+     * @param {number} rawAngleRad  Ham girdi açısı (rad).
+     * @param {Snake}  snake        Oyuncunun yılanı — ω_max ve referans heading.
+     * @param {number} deltaMs      Kare süresi (ms).
+     * @param {number} timeMs       Sahne saati (ms) — flick penceresi için.
+     * @param {boolean} isBoosting  O karede gönderilecek boost niyeti (ω_max'i
+     *                              etkiler: boost hızı → speedTurnFactor).
+     * @returns {{angle: number, changed: boolean}} `changed`, filtrelenmiş
+     *          hedefin ağa bildirilmesi GEREKTİĞİNİ söyler.
+     */
+    _applySteeringLimiter(rawAngleRad, snake, deltaMs, timeMs, isBoosting) {
+        const cfg = STEER_LIMITER;
+        const s = this._steer;
+
+        if (!Number.isFinite(rawAngleRad)) {
+            return { angle: Number.isFinite(s.angle) ? s.angle : 0, changed: false };
+        }
+        const raw = Phaser.Math.Angle.Wrap(rawAngleRad);
+
+        // KELEPÇE REFERANSI — görsel head.rotation DEĞİL, tahminin MANTIKSAL
+        // movementAngle'ı. Tahmin, _inputDelayQueue sayesinde girdiyi ~tek-yön
+        // gecikme kadar GEÇ uygular; dolayısıyla movementAngle(t), sunucunun t
+        // anındaki currentAngle'ının en iyi client tahminidir. Sunucu da kendi
+        // kelepçesini tam olarak o değere göre uygular (MovementSystem:
+        // diff = target − currentAngle), yani iki taraf aynı referansı paylaşır.
+        const heading = Number.isFinite(snake?.movementAngle) ? snake.movementAngle : raw;
+
+        // İlk kare / respawn sonrası: tohumla ve olduğu gibi geç.
+        if (!Number.isFinite(s.angle)) {
+            s.angle = raw;
+            s.lastRawRad = raw;
+            s.lastRawTime = timeMs;
+            s.lastRawStep = 0;
+            s.agitation = 0;
+            return { angle: raw, changed: true };
+        }
+
+        // dt tavanı simülasyonunkiyle AYNI kaynaktan (MAX_SIM_DT_MS): limiter'ın
+        // ve tahminin farklı dt görmesi, tam da kapatmaya çalıştığımız türden
+        // bir ayrışma üretirdi.
+        const maxDtMs = snake?.config?.MAX_SIM_DT_MS ?? 50;
+        const dtSec = Math.min(deltaMs, maxDtMs) / 1000;
+
+        // ── 1) ANİ TERS ÇEVİRME (FLICK) TESPİTİ ─────────────────────────────
+        const rawStep = Phaser.Math.Angle.Wrap(raw - s.lastRawRad);
+        const dtRawMs = Math.max(1, timeMs - s.lastRawTime);
+
+        // Ajitasyon her karede üstel olarak söner (frame-rate agnostik).
+        s.agitation *= Math.exp(-dtRawMs / (cfg.AGITATION_DECAY_SEC * 1000));
+
+        const isFastStep = dtRawMs <= cfg.FLICK_WINDOW_MS
+            && Math.abs(rawStep) >= cfg.FLICK_STEP_RAD;
+        // TERS YÖN ŞARTI kritik: tutarlı (aynı işaretli) hızlı bir dönüş
+        // oyuncunun GERÇEK manevrasıdır ve sönümlenmemelidir. Silkeleme ise
+        // kendini işaret değiştiren ardışık büyük adımlarla belli eder.
+        // ~180°'lik tek sıçrama, işaret şartı aranmadan da ajitasyon sayılır:
+        // salınımın ilk yarısı henüz ters adım üretmemiştir ama zaten
+        // ulaşılamaz bir hedeftir.
+        const isReversal = rawStep * s.lastRawStep < 0;
+        if (isFastStep && (isReversal || Math.abs(rawStep) >= Math.PI * 0.75)) {
+            s.agitation = Math.min(1, s.agitation + cfg.FLICK_GAIN);
+        }
+
+        s.lastRawRad = raw;
+        s.lastRawTime = timeMs;
+        if (Math.abs(rawStep) > 1e-4) s.lastRawStep = rawStep;
+
+        // ── 2) ÜSTEL AÇISAL SÖNÜMLEME (yalnızca silkelemede devrede) ────────
+        // Ajitasyon 0 iken bu blok ATLANIR: normal dönüşe SIFIR gecikme eklenir.
+        // Devredeyken bile dönüş hızını yavaşlatmaz — aşağıdaki LEAD kelepçesi
+        // zaten hedefi heading'in hemen önünde tutar, sönümleme yalnızca ileri-
+        // geri SALINIMI ortalamaya oturtur (ters kadranlar arası zıplama biter).
+        let desired = raw;
+        if (s.agitation > cfg.AGITATION_EPSILON) {
+            const rate = Phaser.Math.Linear(
+                cfg.SMOOTH_RATE_CALM, cfg.SMOOTH_RATE_AGITATED, s.agitation);
+            const alpha = 1 - Math.exp(-rate * dtSec);
+            desired = Phaser.Math.Angle.Wrap(
+                s.angle + Phaser.Math.Angle.Wrap(raw - s.angle) * alpha);
+        }
+
+        // ── 3) SLEW (A) + LEAD (B) KELEPÇELERİ ──────────────────────────────
+        const omegaMax = typeof snake?.getTurnRateRadPerSec === 'function'
+            ? snake.getTurnRateRadPerSec(isBoosting)
+            : 0;
+        if (!(omegaMax > 0)) {
+            // ω_max okunamadı (yılan henüz tam kurulmamış). Uydurma bir limit
+            // dayatmaktansa eski davranışa düş — yanlış bir kelepçe, hiç
+            // kelepçe olmamasından daha kötü bir ayrışma üretirdi.
+            const changedRaw = Math.abs(
+                Phaser.Math.Angle.Wrap(desired - s.angle)) > cfg.WIRE_EPSILON_RAD;
+            s.angle = desired;
+            return { angle: desired, changed: changedRaw };
+        }
+
+        // (A) SLEW — kare başına azami değişim ω_max·dt. Ağa giden hedef sinyali
+        //     böylece bant-sınırlı olur: 30 Hz gönderimde ardışık örnekler arası
+        //     fark ≤ ω_max·33ms (~7°) kalır, π değil. Sunucunun gördüğü alt-örnek
+        //     ile client'in entegre ettiği tam dizi arasındaki fark ~25 kat düşer.
+        const maxSlew = omegaMax * dtSec;
+        let next = Phaser.Math.Angle.Wrap(s.angle + Phaser.Math.Clamp(
+            Phaser.Math.Angle.Wrap(desired - s.angle), -maxSlew, maxSlew));
+
+        // (B) LEAD — hedef, heading'i en fazla ω_max·LEAD_SEC kadar geçebilir.
+        //     "Baş 0°'ye bakarken hedef 180°" durumu artık oluşamaz. Dönüş
+        //     YAVAŞLAMAZ: heading dönüş boyunca ω_max ile ilerlediği için hedef
+        //     de ω_max ile ilerler, yalnızca sabit bir faz kadar önde kalır —
+        //     ve o faz sunucunun her tick'te tam maxTurn adımı atmasına yeter.
+        const maxLead = omegaMax * cfg.LEAD_SEC;
+        next = Phaser.Math.Angle.Wrap(heading + Phaser.Math.Clamp(
+            Phaser.Math.Angle.Wrap(next - heading), -maxLead, maxLead));
+
+        const changed = Math.abs(
+            Phaser.Math.Angle.Wrap(next - s.angle)) > cfg.WIRE_EPSILON_RAD;
+        s.angle = next;
+        return { angle: next, changed };
+    }
+
     update(time, delta) {
         if (!this.gameStarted) return;
 
@@ -1168,9 +1854,32 @@ export class Game extends Phaser.Scene {
                 // Deadzone / epsilon guard bunu false yaparsa: aci ne yerel tahmine
                 // ne de aga gonderilir (yalniz boost islenir).
                 let sendAngle = true;
+                // Slew-rate limiter yalnizca GERCEK bir oyuncu girdisi varken
+                // calisir. Girdinin tamamen kilitli oldugu dallarda (fade-in,
+                // pointer henuz devralmadi) hicbir paket uretilmez ve yon
+                // sunucunun bildigi acida tutulur — orada filtre CALISTIRILMAZ,
+                // o acaya TOHUMLANIR (bkz. _resetSteeringLimiter).
+                let steerActive = true;
 
                 const mob = window.mobileInput;
-                if (mob?.enabled) {
+                if (!this._inputEnabled) {
+                    // ── FADE-IN SÜRÜYOR: GİRDİ KİLİTLİ ────────────────────────
+                    // Kontroller tam olarak fade tamamlandığında açılır (bkz.
+                    // _revealGameplay). Perde ardında/fade sırasında verilen bir
+                    // yön, görüntü açılır açılmaz oyuncunun istemediği ani bir
+                    // dönüş olarak görünürdü.
+                    //
+                    // Tahmin DURMAZ: sunucu bu sırada yılanı hareket ettirmeye
+                    // devam ediyor. Sunucunun bildiği hedef açıda (spawn yönü ya
+                    // da son taahhüt) düz ilerlenir — iki simülasyon ayrışmaz.
+                    // Boost da okunmaz; sunucuya hiçbir girdi paketi gitmez.
+                    isBoosting = false;
+                    targetAngleRad = this._spawnHeadingRad
+                        ?? this._lastCommittedAngleRad
+                        ?? head.rotation;
+                    sendAngle = false;
+                    steerActive = false;
+                } else if (mob?.enabled) {
                     // ── Mobile: virtual joystick + boost button ───────────────
                     // Joystick açısı doğrudan ekran koordinatlarında atan2(dy,dx) olarak
                     // hesaplanır; kamera döndürme olmadığından world space ile örtüşür.
@@ -1181,9 +1890,28 @@ export class Game extends Phaser.Scene {
                     } else {
                         // Parmak yoksa yönü koru VE paket gönderme (eskiden her frame
                         // head.rotation gönderiliyordu — gereksiz trafik).
+                        // SPAWN'DA: _lastCommittedAngleRad, onStartGame'de sunucunun
+                        // start_direction'ı ile tohumlanmıştır — yani joystick'e
+                        // dokunulmadan önce yılan tam da sunucunun simüle ettiği
+                        // yönde ilerler. Joystick zaten merkezde (joystickActive
+                        // false) olduğundan ek bir "re-center" gerekmez.
                         targetAngleRad = this._lastCommittedAngleRad ?? head.rotation;
                         sendAngle = false;
                     }
+                } else if (!this._pointerSteeringArmed) {
+                    // ── Masaüstü, spawn: fare HENÜZ oynatılmadı ───────────────
+                    // activePointer bayat bir konum taşıyor (PLAY düğmesinin
+                    // yeri ya da fare canvas'a hiç girmediyse 0,0). Ondan bir
+                    // açı türetmek yılanı spawn yönünden koparırdı. Sunucunun
+                    // verdiği yönde düz devam et ve açı paketi ÜRETME —
+                    // sunucu zaten aynı hedef açıyla simüle ediyor, iki taraf
+                    // ayrışmaz. Boost yine de okunur (tıklama anlamlı bir girdi).
+                    isBoosting = this.input.activePointer.isDown;
+                    targetAngleRad = this._spawnHeadingRad
+                        ?? this._lastCommittedAngleRad
+                        ?? head.rotation;
+                    sendAngle = false;
+                    steerActive = false;
                 } else {
                     // ── Desktop: mouse ────────────────────────────────────────
                     this.pointer = this.input.activePointer;
@@ -1223,6 +1951,28 @@ export class Game extends Phaser.Scene {
                             sendAngle = true;
                         }
                     }
+                }
+
+                // ── GİRDİ AÇI SLEW-RATE LIMITER (kuantalamadan ÖNCE) ─────────
+                // Buradan çıkan açı, hem TELE hem de YEREL TAHMİNE giden TEK
+                // değerdir; ikisi aşağıda aynı kuantalama/gecikme yolundan
+                // geçer. Limiter'ın kuantalamadan önce çalışması şarttır:
+                // sonrasında uygulansaydı ağa bant-sınırsız (silkelenen) sinyal
+                // gitmeye devam eder ve 30 Hz gönderim + sunucunun tick başına
+                // last-write-wins tamponu onu yeniden aliasing'e sokardı.
+                if (!steerActive) {
+                    this._resetSteeringLimiter(targetAngleRad);
+                } else {
+                    const limited = this._applySteeringLimiter(
+                        targetAngleRad, mySnake, delta, time, isBoosting);
+                    targetAngleRad = limited.angle;
+                    // Ham girdi bastırılmış olsa bile (deadzone / ANGLE_EPSILON
+                    // guard) limiter hâlâ hedefe doğru süzülüyor olabilir. O
+                    // hareket ağa bildirilmezse sunucu client'in tuttuğu hedefi
+                    // ASLA öğrenemez ve iki simülasyon yeniden ayrışır — bu
+                    // yüzden gönderim burada zorlanır. (Ters yönde bir zorlama
+                    // yok: limiter durduğunda guard'ların sessizliği korunur.)
+                    if (limited.changed) sendAngle = true;
                 }
 
                 // ── Determinizm: açıyı ÖNCE ağ formatına (0-250) kuantala, sonra
@@ -1553,6 +2303,15 @@ export class Game extends Phaser.Scene {
         if (!this.gameStarted) return;
 
         this.snakes.forEach(snake => snake.hardResync());
+
+        // Sekme gizliyken rAF durmuştur: limiter'ın son ham örneği ve zaman
+        // damgası dakikalarca eski olabilir. Bu bayat durumla devam etmek,
+        // dönüşte tek karelik dev bir "flick" tespiti (gereksiz sönümleme) ya
+        // da hardResync'in yeni heading'ine göre anlamsız bir lead kelepçesi
+        // üretirdi. Otoriter heading'e yeniden tohumla.
+        const resyncSnake = this.myId !== null ? this.snakes.get(this.myId) : null;
+        this._resetSteeringLimiter(
+            Number.isFinite(resyncSnake?.movementAngle) ? resyncSnake.movementAngle : null);
 
         // Yarım kalmış yeme animasyonları bayat koordinatlarda titreşir — bitir.
         this.eatingFoods.forEach(({ sprite }) => sprite?.destroy());

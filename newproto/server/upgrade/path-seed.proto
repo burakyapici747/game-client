@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package server;
+
+option java_outer_classname = "PathSeedOuterClass";
+
+// ── İLK KARŞILAŞMA PATH TOHUMU (First-Encounter Path Seeding) ─────────────
+//
+// SORUN
+// Protokol steady-state'te segment koordinatı GÖNDERMEZ — yalnızca kafa
+// x/y/açı + mantıksal segment sayısı (sct). İstemci gövdeyi kafanın geçmiş
+// yolundan yeniden kurar. Bu, bant genişliği açısından doğru tercihtir
+// (yılan başına ~12 bayt, segment sayısından bağımsız) ama tek bir açığı
+// vardır: bir yılan AOI'ye İLK kez girdiğinde istemcinin elinde o yılanın
+// GEÇMİŞİ yoktur. Eski davranış düz bir ışın varsayıyordu, bu yüzden
+// kıvrılmakta olan yılan birkaç kare "çubuk" gibi görünüp sonra gerçek
+// şekline sıçrıyordu.
+//
+// ÇÖZÜM
+// Sunucu, bir entity'yi bir istemciye İLK kez gösterdiğinde (veya uzun bir
+// görünürlük boşluğundan sonra yeniden gösterdiğinde) o entity'nin gövde
+// polyline'ının SIKIŞTIRILMIŞ bir anlık görüntüsünü bir KEZ ekler. İstemci
+// bunu doğrudan path tamponuna yazar ve gövde 0. karede doğru kıvrımıyla
+// çizilir.
+//
+// GÖNDERİM KURALI (sunucu tarafı beklentisi)
+//   • Yalnızca ilk görünürlükte / yeniden görünürlükte gönderilir.
+//   • Steady-state tick'lerde alan HİÇ yazılmaz (proto3: sıfır bayt).
+//   • EntityCollection ile AYNI zarfa eklenir (ekstra round-trip yok);
+//     bu yüzden `oneof` DIŞINDA bir alandır (bkz. leaderboard_update).
+//
+// KODLAMA
+// Noktalar KAFADAN GERİYE doğru sıralıdır: p0 = kafa, p1 = kafanın biraz
+// gerisi, ... pN = kuyruk. İlk nokta mutlak (origin_x/origin_y), sonrakiler
+// bir öncekine göre delta'dır ve `quantization` ile ölçeklenip tamsayıya
+// yuvarlanır:
+//
+//     p[0]   = (origin_x, origin_y)
+//     p[i+1] = p[i] + (dx[i] / quantization, dy[i] / quantization)
+//
+// sint32 + packed → zigzag varint. Tipik anahtar nokta aralığı ~4 mantıksal
+// düğüm (~67 px) ve quantization=8 iken bileşen başına ~2 bayt; 500 segmentlik
+// bir yılan için TEK SEFERLİK ~530 bayt. Steady-state maliyeti değişmez.
+//
+// ANAHTAR NOKTA SEYRELTMESİ
+// Her mantıksal düğümü göndermek gerekmez. İstemci path'i yay uzunluğuna göre
+// örneklediğinden (bkz. Snake._positionSegmentsByPath) polyline daha seyrek
+// olabilir; ara noktalar doğrusal interpolasyonla üretilir. Sunucu, gövdenin
+// eğriliğine göre uygun bir seyreltme seçebilir — düz kısımlarda daha seyrek,
+// sıkı kıvrımlarda daha sık.
+//
+// KAPSAMA
+// Polyline'ın toplam yay uzunluğu gövdenin tamamını (≈ sct * segment aralığı)
+// kapsamalıdır. Kısa gelirse istemci kalanı son yön boyunca düz uzatarak
+// zarifçe tamamlar (görsel olarak yalnızca kuyruk ucu etkilenir).
+message PathSeed {
+  uint32 entity_id = 1;
+
+  // Polyline'ın ilk noktası: yakalama anındaki KAFA konumu (mutlak, dünya px).
+  float origin_x = 2;
+  float origin_y = 3;
+
+  // Delta'ların bölüneceği sabit (örn. 8 → 1/8 px çözünürlük). 0 gelirse
+  // istemci 1 varsayar.
+  uint32 quantization = 4;
+
+  // Kafadan geriye doğru delta zinciri. dx ve dy AYNI uzunlukta olmalıdır;
+  // uzunluk = (nokta sayısı - 1).
+  repeated sint32 dx = 5 [packed = true];
+  repeated sint32 dy = 6 [packed = true];
+}
+
+message PathSeedCollection {
+  repeated PathSeed seeds = 1;
+}

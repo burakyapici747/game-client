@@ -1,6 +1,7 @@
 import StartGame from './game/main';
-import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu } from './ui/overlays.js';
+import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle } from './ui/overlays.js';
 import { serverProbe, latencyTier } from './network/ServerProbe.js';
+import { initFullscreenToggle } from './ui/fullscreen.js';
 
 // ─── Mobile input state (read by Game.js every frame) ───────────────────────
 window.mobileInput = {
@@ -419,6 +420,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // support via this.sys.game.device.input.touch and builds itself with
         // this.add.circle()/this.add.zone() — no DOM activation needed here.
     }
+
+    initFullscreenToggle();
+    initLeaderboardToggle();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

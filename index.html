@@ -15,6 +15,9 @@
 
 <body>
     <div id="app">
+        <!-- Fullscreen Toggle — always visible, all screens -->
+        <button id="fullscreen-btn" class="fullscreen-btn" title="Enter Fullscreen"></button>
+
         <!-- Phaser Game Container (hidden initially or under UI) -->
         <div id="game-container"></div>
         
@@ -283,6 +286,9 @@
                     <div id="hud-leaderboard-list" class="leaderboard-entries">
                         <!-- Entries populated by JS -->
                     </div>
+                    <button id="hud-leaderboard-toggle" class="leaderboard-toggle" title="Show more">
+                        <span class="material-symbols-outlined leaderboard-toggle-icon">expand_more</span>
+                    </button>
                 </div>
             </div>
 

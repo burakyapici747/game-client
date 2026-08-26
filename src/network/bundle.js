@@ -1826,6 +1826,7 @@ export const server = $root.server = (() => {
          * @property {server.IFoodCollection|null} [foodCollection] ServerEnvelope foodCollection
          * @property {server.IFoodMutationCollection|null} [foodMutationCollection] ServerEnvelope foodMutationCollection
          * @property {server.ILeaderboardUpdate|null} [leaderboardUpdate] ServerEnvelope leaderboardUpdate
+         * @property {server.IPathSeedCollection|null} [pathSeedCollection] ServerEnvelope pathSeedCollection
          */
 
         /**
@@ -1923,6 +1924,14 @@ export const server = $root.server = (() => {
          */
         ServerEnvelope.prototype.leaderboardUpdate = null;
 
+        /**
+         * ServerEnvelope pathSeedCollection.
+         * @member {server.IPathSeedCollection|null|undefined} pathSeedCollection
+         * @memberof server.ServerEnvelope
+         * @instance
+         */
+        ServerEnvelope.prototype.pathSeedCollection = null;
+
         // OneOf field names bound to virtual getters and setters
         let $oneOfFields;
 
@@ -1981,6 +1990,8 @@ export const server = $root.server = (() => {
                 $root.server.FoodMutationCollection.encode(message.foodMutationCollection, writer.uint32(/* id 13, wireType 2 =*/106).fork()).ldelim();
             if (message.leaderboardUpdate != null && Object.hasOwnProperty.call(message, "leaderboardUpdate"))
                 $root.server.LeaderboardUpdate.encode(message.leaderboardUpdate, writer.uint32(/* id 14, wireType 2 =*/114).fork()).ldelim();
+            if (message.pathSeedCollection != null && Object.hasOwnProperty.call(message, "pathSeedCollection"))
+                $root.server.PathSeedCollection.encode(message.pathSeedCollection, writer.uint32(/* id 15, wireType 2 =*/122).fork()).ldelim();
             return writer;
         };
 
@@ -2055,6 +2066,10 @@ export const server = $root.server = (() => {
                     }
                 case 14: {
                         message.leaderboardUpdate = $root.server.LeaderboardUpdate.decode(reader, reader.uint32());
+                        break;
+                    }
+                case 15: {
+                        message.pathSeedCollection = $root.server.PathSeedCollection.decode(reader, reader.uint32());
                         break;
                     }
                 default:
@@ -2166,6 +2181,11 @@ export const server = $root.server = (() => {
                 if (error)
                     return "leaderboardUpdate." + error;
             }
+            if (message.pathSeedCollection != null && message.hasOwnProperty("pathSeedCollection")) {
+                let error = $root.server.PathSeedCollection.verify(message.pathSeedCollection);
+                if (error)
+                    return "pathSeedCollection." + error;
+            }
             return null;
         };
 
@@ -2231,6 +2251,11 @@ export const server = $root.server = (() => {
                     throw TypeError(".server.ServerEnvelope.leaderboardUpdate: object expected");
                 message.leaderboardUpdate = $root.server.LeaderboardUpdate.fromObject(object.leaderboardUpdate);
             }
+            if (object.pathSeedCollection != null) {
+                if (typeof object.pathSeedCollection !== "object")
+                    throw TypeError(".server.ServerEnvelope.pathSeedCollection: object expected");
+                message.pathSeedCollection = $root.server.PathSeedCollection.fromObject(object.pathSeedCollection);
+            }
             return message;
         };
 
@@ -2253,6 +2278,7 @@ export const server = $root.server = (() => {
                 object.foodCollection = null;
                 object.foodMutationCollection = null;
                 object.leaderboardUpdate = null;
+                object.pathSeedCollection = null;
             }
             if (message.startInformation != null && message.hasOwnProperty("startInformation")) {
                 object.startInformation = $root.server.StartInformation.toObject(message.startInformation, options);
@@ -2289,6 +2315,8 @@ export const server = $root.server = (() => {
                 object.foodMutationCollection = $root.server.FoodMutationCollection.toObject(message.foodMutationCollection, options);
             if (message.leaderboardUpdate != null && message.hasOwnProperty("leaderboardUpdate"))
                 object.leaderboardUpdate = $root.server.LeaderboardUpdate.toObject(message.leaderboardUpdate, options);
+            if (message.pathSeedCollection != null && message.hasOwnProperty("pathSeedCollection"))
+                object.pathSeedCollection = $root.server.PathSeedCollection.toObject(message.pathSeedCollection, options);
             return object;
         };
 
@@ -2334,6 +2362,7 @@ export const server = $root.server = (() => {
          * @property {number|null} [startDirection] StartInformation startDirection
          * @property {number|null} [scale] StartInformation scale
          * @property {number|null} [worldRadius] StartInformation worldRadius
+         * @property {number|null} [invulnerableSeconds] StartInformation invulnerableSeconds
          */
 
         /**
@@ -2408,6 +2437,14 @@ export const server = $root.server = (() => {
         StartInformation.prototype.worldRadius = 0;
 
         /**
+         * StartInformation invulnerableSeconds.
+         * @member {number} invulnerableSeconds
+         * @memberof server.StartInformation
+         * @instance
+         */
+        StartInformation.prototype.invulnerableSeconds = 0;
+
+        /**
          * Creates a new StartInformation instance using the specified properties.
          * @function create
          * @memberof server.StartInformation
@@ -2445,6 +2482,8 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 6, wireType 5 =*/53).float(message.scale);
             if (message.worldRadius != null && Object.hasOwnProperty.call(message, "worldRadius"))
                 writer.uint32(/* id 7, wireType 5 =*/61).float(message.worldRadius);
+            if (message.invulnerableSeconds != null && Object.hasOwnProperty.call(message, "invulnerableSeconds"))
+                writer.uint32(/* id 8, wireType 5 =*/69).float(message.invulnerableSeconds);
             return writer;
         };
 
@@ -2509,6 +2548,10 @@ export const server = $root.server = (() => {
                         message.worldRadius = reader.float();
                         break;
                     }
+                case 8: {
+                        message.invulnerableSeconds = reader.float();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -2565,6 +2608,9 @@ export const server = $root.server = (() => {
             if (message.worldRadius != null && message.hasOwnProperty("worldRadius"))
                 if (typeof message.worldRadius !== "number")
                     return "worldRadius: number expected";
+            if (message.invulnerableSeconds != null && message.hasOwnProperty("invulnerableSeconds"))
+                if (typeof message.invulnerableSeconds !== "number")
+                    return "invulnerableSeconds: number expected";
             return null;
         };
 
@@ -2594,6 +2640,8 @@ export const server = $root.server = (() => {
                 message.scale = Number(object.scale);
             if (object.worldRadius != null)
                 message.worldRadius = Number(object.worldRadius);
+            if (object.invulnerableSeconds != null)
+                message.invulnerableSeconds = Number(object.invulnerableSeconds);
             return message;
         };
 
@@ -2618,6 +2666,7 @@ export const server = $root.server = (() => {
                 object.startDirection = 0;
                 object.scale = 0;
                 object.worldRadius = 0;
+                object.invulnerableSeconds = 0;
             }
             if (message.clientId != null && message.hasOwnProperty("clientId"))
                 object.clientId = message.clientId;
@@ -2633,6 +2682,8 @@ export const server = $root.server = (() => {
                 object.scale = options.json && !isFinite(message.scale) ? String(message.scale) : message.scale;
             if (message.worldRadius != null && message.hasOwnProperty("worldRadius"))
                 object.worldRadius = options.json && !isFinite(message.worldRadius) ? String(message.worldRadius) : message.worldRadius;
+            if (message.invulnerableSeconds != null && message.hasOwnProperty("invulnerableSeconds"))
+                object.invulnerableSeconds = options.json && !isFinite(message.invulnerableSeconds) ? String(message.invulnerableSeconds) : message.invulnerableSeconds;
             return object;
         };
 
@@ -2977,6 +3028,7 @@ export const server = $root.server = (() => {
          * @property {Array.<number>|null} [fullyDataSegmentCounts] EntityCollection fullyDataSegmentCounts
          * @property {Array.<number>|null} [scales] EntityCollection scales
          * @property {Array.<string>|null} [fullyDataNicknames] EntityCollection fullyDataNicknames
+         * @property {Array.<number>|null} [invulnerableEntityIds] EntityCollection invulnerableEntityIds
          */
 
         /**
@@ -2996,6 +3048,7 @@ export const server = $root.server = (() => {
             this.fullyDataSegmentCounts = [];
             this.scales = [];
             this.fullyDataNicknames = [];
+            this.invulnerableEntityIds = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -3067,6 +3120,14 @@ export const server = $root.server = (() => {
         EntityCollection.prototype.fullyDataNicknames = $util.emptyArray;
 
         /**
+         * EntityCollection invulnerableEntityIds.
+         * @member {Array.<number>} invulnerableEntityIds
+         * @memberof server.EntityCollection
+         * @instance
+         */
+        EntityCollection.prototype.invulnerableEntityIds = $util.emptyArray;
+
+        /**
          * Creates a new EntityCollection instance using the specified properties.
          * @function create
          * @memberof server.EntityCollection
@@ -3135,6 +3196,12 @@ export const server = $root.server = (() => {
             if (message.fullyDataNicknames != null && message.fullyDataNicknames.length)
                 for (let i = 0; i < message.fullyDataNicknames.length; ++i)
                     writer.uint32(/* id 8, wireType 2 =*/66).string(message.fullyDataNicknames[i]);
+            if (message.invulnerableEntityIds != null && message.invulnerableEntityIds.length) {
+                writer.uint32(/* id 9, wireType 2 =*/74).fork();
+                for (let i = 0; i < message.invulnerableEntityIds.length; ++i)
+                    writer.uint32(message.invulnerableEntityIds[i]);
+                writer.ldelim();
+            }
             return writer;
         };
 
@@ -3254,6 +3321,17 @@ export const server = $root.server = (() => {
                         message.fullyDataNicknames.push(reader.string());
                         break;
                     }
+                case 9: {
+                        if (!(message.invulnerableEntityIds && message.invulnerableEntityIds.length))
+                            message.invulnerableEntityIds = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.invulnerableEntityIds.push(reader.uint32());
+                        } else
+                            message.invulnerableEntityIds.push(reader.uint32());
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -3345,6 +3423,13 @@ export const server = $root.server = (() => {
                     if (!$util.isString(message.fullyDataNicknames[i]))
                         return "fullyDataNicknames: string[] expected";
             }
+            if (message.invulnerableEntityIds != null && message.hasOwnProperty("invulnerableEntityIds")) {
+                if (!Array.isArray(message.invulnerableEntityIds))
+                    return "invulnerableEntityIds: array expected";
+                for (let i = 0; i < message.invulnerableEntityIds.length; ++i)
+                    if (!$util.isInteger(message.invulnerableEntityIds[i]))
+                        return "invulnerableEntityIds: integer[] expected";
+            }
             return null;
         };
 
@@ -3416,6 +3501,13 @@ export const server = $root.server = (() => {
                 for (let i = 0; i < object.fullyDataNicknames.length; ++i)
                     message.fullyDataNicknames[i] = String(object.fullyDataNicknames[i]);
             }
+            if (object.invulnerableEntityIds) {
+                if (!Array.isArray(object.invulnerableEntityIds))
+                    throw TypeError(".server.EntityCollection.invulnerableEntityIds: array expected");
+                message.invulnerableEntityIds = [];
+                for (let i = 0; i < object.invulnerableEntityIds.length; ++i)
+                    message.invulnerableEntityIds[i] = object.invulnerableEntityIds[i] >>> 0;
+            }
             return message;
         };
 
@@ -3441,6 +3533,7 @@ export const server = $root.server = (() => {
                 object.fullyDataSegmentCounts = [];
                 object.scales = [];
                 object.fullyDataNicknames = [];
+                object.invulnerableEntityIds = [];
             }
             if (message.entityIds && message.entityIds.length) {
                 object.entityIds = [];
@@ -3481,6 +3574,11 @@ export const server = $root.server = (() => {
                 object.fullyDataNicknames = [];
                 for (let j = 0; j < message.fullyDataNicknames.length; ++j)
                     object.fullyDataNicknames[j] = message.fullyDataNicknames[j];
+            }
+            if (message.invulnerableEntityIds && message.invulnerableEntityIds.length) {
+                object.invulnerableEntityIds = [];
+                for (let j = 0; j < message.invulnerableEntityIds.length; ++j)
+                    object.invulnerableEntityIds[j] = message.invulnerableEntityIds[j];
             }
             return object;
         };
@@ -3823,6 +3921,8 @@ export const server = $root.server = (() => {
          * @property {number|null} [y] SelfPosition y
          * @property {number|null} [scale] SelfPosition scale
          * @property {number|null} [lastProcessedSequenceId] SelfPosition lastProcessedSequenceId
+         * @property {number|null} [totalScore] SelfPosition totalScore
+         * @property {boolean|null} [invulnerable] SelfPosition invulnerable
          */
 
         /**
@@ -3881,6 +3981,22 @@ export const server = $root.server = (() => {
         SelfPosition.prototype.lastProcessedSequenceId = 0;
 
         /**
+         * SelfPosition totalScore.
+         * @member {number} totalScore
+         * @memberof server.SelfPosition
+         * @instance
+         */
+        SelfPosition.prototype.totalScore = 0;
+
+        /**
+         * SelfPosition invulnerable.
+         * @member {boolean} invulnerable
+         * @memberof server.SelfPosition
+         * @instance
+         */
+        SelfPosition.prototype.invulnerable = false;
+
+        /**
          * Creates a new SelfPosition instance using the specified properties.
          * @function create
          * @memberof server.SelfPosition
@@ -3914,6 +4030,10 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 4, wireType 5 =*/37).float(message.scale);
             if (message.lastProcessedSequenceId != null && Object.hasOwnProperty.call(message, "lastProcessedSequenceId"))
                 writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.lastProcessedSequenceId);
+            if (message.totalScore != null && Object.hasOwnProperty.call(message, "totalScore"))
+                writer.uint32(/* id 6, wireType 0 =*/48).uint32(message.totalScore);
+            if (message.invulnerable != null && Object.hasOwnProperty.call(message, "invulnerable"))
+                writer.uint32(/* id 7, wireType 0 =*/56).bool(message.invulnerable);
             return writer;
         };
 
@@ -3970,6 +4090,14 @@ export const server = $root.server = (() => {
                         message.lastProcessedSequenceId = reader.uint32();
                         break;
                     }
+                case 6: {
+                        message.totalScore = reader.uint32();
+                        break;
+                    }
+                case 7: {
+                        message.invulnerable = reader.bool();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -4020,6 +4148,12 @@ export const server = $root.server = (() => {
             if (message.lastProcessedSequenceId != null && message.hasOwnProperty("lastProcessedSequenceId"))
                 if (!$util.isInteger(message.lastProcessedSequenceId))
                     return "lastProcessedSequenceId: integer expected";
+            if (message.totalScore != null && message.hasOwnProperty("totalScore"))
+                if (!$util.isInteger(message.totalScore))
+                    return "totalScore: integer expected";
+            if (message.invulnerable != null && message.hasOwnProperty("invulnerable"))
+                if (typeof message.invulnerable !== "boolean")
+                    return "invulnerable: boolean expected";
             return null;
         };
 
@@ -4045,6 +4179,10 @@ export const server = $root.server = (() => {
                 message.scale = Number(object.scale);
             if (object.lastProcessedSequenceId != null)
                 message.lastProcessedSequenceId = object.lastProcessedSequenceId >>> 0;
+            if (object.totalScore != null)
+                message.totalScore = object.totalScore >>> 0;
+            if (object.invulnerable != null)
+                message.invulnerable = Boolean(object.invulnerable);
             return message;
         };
 
@@ -4067,6 +4205,8 @@ export const server = $root.server = (() => {
                 object.y = 0;
                 object.scale = 0;
                 object.lastProcessedSequenceId = 0;
+                object.totalScore = 0;
+                object.invulnerable = false;
             }
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 object.entityId = message.entityId;
@@ -4078,6 +4218,10 @@ export const server = $root.server = (() => {
                 object.scale = options.json && !isFinite(message.scale) ? String(message.scale) : message.scale;
             if (message.lastProcessedSequenceId != null && message.hasOwnProperty("lastProcessedSequenceId"))
                 object.lastProcessedSequenceId = message.lastProcessedSequenceId;
+            if (message.totalScore != null && message.hasOwnProperty("totalScore"))
+                object.totalScore = message.totalScore;
+            if (message.invulnerable != null && message.hasOwnProperty("invulnerable"))
+                object.invulnerable = message.invulnerable;
             return object;
         };
 
@@ -6195,6 +6339,603 @@ export const server = $root.server = (() => {
         };
 
         return LeaderboardUpdate;
+    })();
+
+    server.PathSeed = (function() {
+
+        /**
+         * Properties of a PathSeed.
+         * @memberof server
+         * @interface IPathSeed
+         * @property {number|null} [entityId] PathSeed entityId
+         * @property {number|null} [originX] PathSeed originX
+         * @property {number|null} [originY] PathSeed originY
+         * @property {number|null} [quantization] PathSeed quantization
+         * @property {Array.<number>|null} [dx] PathSeed dx
+         * @property {Array.<number>|null} [dy] PathSeed dy
+         */
+
+        /**
+         * Constructs a new PathSeed.
+         * @memberof server
+         * @classdesc Represents a PathSeed.
+         * @implements IPathSeed
+         * @constructor
+         * @param {server.IPathSeed=} [properties] Properties to set
+         */
+        function PathSeed(properties) {
+            this.dx = [];
+            this.dy = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * PathSeed entityId.
+         * @member {number} entityId
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.entityId = 0;
+
+        /**
+         * PathSeed originX.
+         * @member {number} originX
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.originX = 0;
+
+        /**
+         * PathSeed originY.
+         * @member {number} originY
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.originY = 0;
+
+        /**
+         * PathSeed quantization.
+         * @member {number} quantization
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.quantization = 0;
+
+        /**
+         * PathSeed dx.
+         * @member {Array.<number>} dx
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.dx = $util.emptyArray;
+
+        /**
+         * PathSeed dy.
+         * @member {Array.<number>} dy
+         * @memberof server.PathSeed
+         * @instance
+         */
+        PathSeed.prototype.dy = $util.emptyArray;
+
+        /**
+         * Creates a new PathSeed instance using the specified properties.
+         * @function create
+         * @memberof server.PathSeed
+         * @static
+         * @param {server.IPathSeed=} [properties] Properties to set
+         * @returns {server.PathSeed} PathSeed instance
+         */
+        PathSeed.create = function create(properties) {
+            return new PathSeed(properties);
+        };
+
+        /**
+         * Encodes the specified PathSeed message. Does not implicitly {@link server.PathSeed.verify|verify} messages.
+         * @function encode
+         * @memberof server.PathSeed
+         * @static
+         * @param {server.IPathSeed} message PathSeed message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        PathSeed.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.entityId != null && Object.hasOwnProperty.call(message, "entityId"))
+                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.entityId);
+            if (message.originX != null && Object.hasOwnProperty.call(message, "originX"))
+                writer.uint32(/* id 2, wireType 5 =*/21).float(message.originX);
+            if (message.originY != null && Object.hasOwnProperty.call(message, "originY"))
+                writer.uint32(/* id 3, wireType 5 =*/29).float(message.originY);
+            if (message.quantization != null && Object.hasOwnProperty.call(message, "quantization"))
+                writer.uint32(/* id 4, wireType 0 =*/32).uint32(message.quantization);
+            if (message.dx != null && message.dx.length) {
+                writer.uint32(/* id 5, wireType 2 =*/42).fork();
+                for (let i = 0; i < message.dx.length; ++i)
+                    writer.sint32(message.dx[i]);
+                writer.ldelim();
+            }
+            if (message.dy != null && message.dy.length) {
+                writer.uint32(/* id 6, wireType 2 =*/50).fork();
+                for (let i = 0; i < message.dy.length; ++i)
+                    writer.sint32(message.dy[i]);
+                writer.ldelim();
+            }
+            return writer;
+        };
+
+        /**
+         * Encodes the specified PathSeed message, length delimited. Does not implicitly {@link server.PathSeed.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.PathSeed
+         * @static
+         * @param {server.IPathSeed} message PathSeed message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        PathSeed.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a PathSeed message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.PathSeed
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.PathSeed} PathSeed
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        PathSeed.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.PathSeed();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.entityId = reader.uint32();
+                        break;
+                    }
+                case 2: {
+                        message.originX = reader.float();
+                        break;
+                    }
+                case 3: {
+                        message.originY = reader.float();
+                        break;
+                    }
+                case 4: {
+                        message.quantization = reader.uint32();
+                        break;
+                    }
+                case 5: {
+                        if (!(message.dx && message.dx.length))
+                            message.dx = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.dx.push(reader.sint32());
+                        } else
+                            message.dx.push(reader.sint32());
+                        break;
+                    }
+                case 6: {
+                        if (!(message.dy && message.dy.length))
+                            message.dy = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.dy.push(reader.sint32());
+                        } else
+                            message.dy.push(reader.sint32());
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a PathSeed message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.PathSeed
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.PathSeed} PathSeed
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        PathSeed.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a PathSeed message.
+         * @function verify
+         * @memberof server.PathSeed
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        PathSeed.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.entityId != null && message.hasOwnProperty("entityId"))
+                if (!$util.isInteger(message.entityId))
+                    return "entityId: integer expected";
+            if (message.originX != null && message.hasOwnProperty("originX"))
+                if (typeof message.originX !== "number")
+                    return "originX: number expected";
+            if (message.originY != null && message.hasOwnProperty("originY"))
+                if (typeof message.originY !== "number")
+                    return "originY: number expected";
+            if (message.quantization != null && message.hasOwnProperty("quantization"))
+                if (!$util.isInteger(message.quantization))
+                    return "quantization: integer expected";
+            if (message.dx != null && message.hasOwnProperty("dx")) {
+                if (!Array.isArray(message.dx))
+                    return "dx: array expected";
+                for (let i = 0; i < message.dx.length; ++i)
+                    if (!$util.isInteger(message.dx[i]))
+                        return "dx: integer[] expected";
+            }
+            if (message.dy != null && message.hasOwnProperty("dy")) {
+                if (!Array.isArray(message.dy))
+                    return "dy: array expected";
+                for (let i = 0; i < message.dy.length; ++i)
+                    if (!$util.isInteger(message.dy[i]))
+                        return "dy: integer[] expected";
+            }
+            return null;
+        };
+
+        /**
+         * Creates a PathSeed message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.PathSeed
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.PathSeed} PathSeed
+         */
+        PathSeed.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.PathSeed)
+                return object;
+            let message = new $root.server.PathSeed();
+            if (object.entityId != null)
+                message.entityId = object.entityId >>> 0;
+            if (object.originX != null)
+                message.originX = Number(object.originX);
+            if (object.originY != null)
+                message.originY = Number(object.originY);
+            if (object.quantization != null)
+                message.quantization = object.quantization >>> 0;
+            if (object.dx) {
+                if (!Array.isArray(object.dx))
+                    throw TypeError(".server.PathSeed.dx: array expected");
+                message.dx = [];
+                for (let i = 0; i < object.dx.length; ++i)
+                    message.dx[i] = object.dx[i] | 0;
+            }
+            if (object.dy) {
+                if (!Array.isArray(object.dy))
+                    throw TypeError(".server.PathSeed.dy: array expected");
+                message.dy = [];
+                for (let i = 0; i < object.dy.length; ++i)
+                    message.dy[i] = object.dy[i] | 0;
+            }
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a PathSeed message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.PathSeed
+         * @static
+         * @param {server.PathSeed} message PathSeed
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        PathSeed.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.arrays || options.defaults) {
+                object.dx = [];
+                object.dy = [];
+            }
+            if (options.defaults) {
+                object.entityId = 0;
+                object.originX = 0;
+                object.originY = 0;
+                object.quantization = 0;
+            }
+            if (message.entityId != null && message.hasOwnProperty("entityId"))
+                object.entityId = message.entityId;
+            if (message.originX != null && message.hasOwnProperty("originX"))
+                object.originX = options.json && !isFinite(message.originX) ? String(message.originX) : message.originX;
+            if (message.originY != null && message.hasOwnProperty("originY"))
+                object.originY = options.json && !isFinite(message.originY) ? String(message.originY) : message.originY;
+            if (message.quantization != null && message.hasOwnProperty("quantization"))
+                object.quantization = message.quantization;
+            if (message.dx && message.dx.length) {
+                object.dx = [];
+                for (let j = 0; j < message.dx.length; ++j)
+                    object.dx[j] = message.dx[j];
+            }
+            if (message.dy && message.dy.length) {
+                object.dy = [];
+                for (let j = 0; j < message.dy.length; ++j)
+                    object.dy[j] = message.dy[j];
+            }
+            return object;
+        };
+
+        /**
+         * Converts this PathSeed to JSON.
+         * @function toJSON
+         * @memberof server.PathSeed
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        PathSeed.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for PathSeed
+         * @function getTypeUrl
+         * @memberof server.PathSeed
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        PathSeed.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.PathSeed";
+        };
+
+        return PathSeed;
+    })();
+
+    server.PathSeedCollection = (function() {
+
+        /**
+         * Properties of a PathSeedCollection.
+         * @memberof server
+         * @interface IPathSeedCollection
+         * @property {Array.<server.IPathSeed>|null} [seeds] PathSeedCollection seeds
+         */
+
+        /**
+         * Constructs a new PathSeedCollection.
+         * @memberof server
+         * @classdesc Represents a PathSeedCollection.
+         * @implements IPathSeedCollection
+         * @constructor
+         * @param {server.IPathSeedCollection=} [properties] Properties to set
+         */
+        function PathSeedCollection(properties) {
+            this.seeds = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * PathSeedCollection seeds.
+         * @member {Array.<server.IPathSeed>} seeds
+         * @memberof server.PathSeedCollection
+         * @instance
+         */
+        PathSeedCollection.prototype.seeds = $util.emptyArray;
+
+        /**
+         * Creates a new PathSeedCollection instance using the specified properties.
+         * @function create
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {server.IPathSeedCollection=} [properties] Properties to set
+         * @returns {server.PathSeedCollection} PathSeedCollection instance
+         */
+        PathSeedCollection.create = function create(properties) {
+            return new PathSeedCollection(properties);
+        };
+
+        /**
+         * Encodes the specified PathSeedCollection message. Does not implicitly {@link server.PathSeedCollection.verify|verify} messages.
+         * @function encode
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {server.IPathSeedCollection} message PathSeedCollection message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        PathSeedCollection.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.seeds != null && message.seeds.length)
+                for (let i = 0; i < message.seeds.length; ++i)
+                    $root.server.PathSeed.encode(message.seeds[i], writer.uint32(/* id 1, wireType 2 =*/10).fork()).ldelim();
+            return writer;
+        };
+
+        /**
+         * Encodes the specified PathSeedCollection message, length delimited. Does not implicitly {@link server.PathSeedCollection.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {server.IPathSeedCollection} message PathSeedCollection message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        PathSeedCollection.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a PathSeedCollection message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.PathSeedCollection} PathSeedCollection
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        PathSeedCollection.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.PathSeedCollection();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        if (!(message.seeds && message.seeds.length))
+                            message.seeds = [];
+                        message.seeds.push($root.server.PathSeed.decode(reader, reader.uint32()));
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a PathSeedCollection message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.PathSeedCollection} PathSeedCollection
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        PathSeedCollection.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a PathSeedCollection message.
+         * @function verify
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        PathSeedCollection.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.seeds != null && message.hasOwnProperty("seeds")) {
+                if (!Array.isArray(message.seeds))
+                    return "seeds: array expected";
+                for (let i = 0; i < message.seeds.length; ++i) {
+                    let error = $root.server.PathSeed.verify(message.seeds[i]);
+                    if (error)
+                        return "seeds." + error;
+                }
+            }
+            return null;
+        };
+
+        /**
+         * Creates a PathSeedCollection message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.PathSeedCollection} PathSeedCollection
+         */
+        PathSeedCollection.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.PathSeedCollection)
+                return object;
+            let message = new $root.server.PathSeedCollection();
+            if (object.seeds) {
+                if (!Array.isArray(object.seeds))
+                    throw TypeError(".server.PathSeedCollection.seeds: array expected");
+                message.seeds = [];
+                for (let i = 0; i < object.seeds.length; ++i) {
+                    if (typeof object.seeds[i] !== "object")
+                        throw TypeError(".server.PathSeedCollection.seeds: object expected");
+                    message.seeds[i] = $root.server.PathSeed.fromObject(object.seeds[i]);
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a PathSeedCollection message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {server.PathSeedCollection} message PathSeedCollection
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        PathSeedCollection.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.arrays || options.defaults)
+                object.seeds = [];
+            if (message.seeds && message.seeds.length) {
+                object.seeds = [];
+                for (let j = 0; j < message.seeds.length; ++j)
+                    object.seeds[j] = $root.server.PathSeed.toObject(message.seeds[j], options);
+            }
+            return object;
+        };
+
+        /**
+         * Converts this PathSeedCollection to JSON.
+         * @function toJSON
+         * @memberof server.PathSeedCollection
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        PathSeedCollection.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for PathSeedCollection
+         * @function getTypeUrl
+         * @memberof server.PathSeedCollection
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        PathSeedCollection.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.PathSeedCollection";
+        };
+
+        return PathSeedCollection;
     })();
 
     return server;

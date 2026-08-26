@@ -14,4 +14,13 @@ message EntityCollection {
   repeated uint32 fully_data_segment_counts = 6 [packed=true];
   repeated float scales = 7 [packed=true];
   repeated string fully_data_nicknames = 8;
+
+  // SU AN DOKUNULMAZ olan entity id'leri (SEYREK liste).
+  //
+  // NEDEN PARALEL bool DIZISI DEGIL: dokunulmazlik 3 saniye surer ve ayni
+  // anda gorunur yilanlarin cok kucuk bir kismini kapsar. Paralel bir
+  // `repeated bool` her tick'te her entity icin bir bayt tasirdi; seyrek id
+  // listesi ise normal durumda TAMAMEN BOSTUR ve proto3'te sifir bayt
+  // serialize edilir. Istemci bunu bir Set'e cevirip O(1) sorgular.
+  repeated uint32 invulnerable_entity_ids = 9 [packed=true];
 }

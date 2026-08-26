@@ -34,6 +34,13 @@ export class NetworkManager {
         this.pingNonce = 0;
         this.pendingPings = new Map();   // nonce -> performance.now() @ send
         this.pingEmaMs = null;           // yumuşatılmış RTT (EMA)
+        // RTT SAPMASI (jitter) — |rtt - ema|'nın EMA'sı, RFC 3550 ruhunda.
+        // Adaptif interpolasyon buffer'ı (EntityInterpolator) bunu doğrudan
+        // tüketir: buffer derinliğini belirleyen şey ortalama gecikme DEĞİL,
+        // gecikmenin oynaklığıdır. Heartbeat 2.5 s'de bir örneklendiği için
+        // burası yavaş bir taban terimdir; hızlı tepki paket-varış jitter'ından
+        // (interpolatörün kendi ölçümü) gelir.
+        this.pingJitterMs = 0;
 
         // ── Kalibrasyon (ilk ping spike düzeltmesi) ──────────────────────────
         // İlk pong, bağlantı ısınması yüzünden şişkin ölçülür (~200ms görünüp
@@ -124,10 +131,33 @@ export class NetworkManager {
 
         // Sıralama: sunucu bunu 5 sn'de birden sık GÖNDERMEZ ve yalnızca
         // sıralama değiştiğinde ekler — alan çoğu pakette hiç bulunmaz.
+        //
+        // TEK İSTİSNA: handshake. Sunucu, StartInformation zarfına da o anki
+        // sıralama anlık görüntüsünü ekler (bkz. Game.buildInitialLeaderboard),
+        // böylece oyuncu 5 sn'lik yayın penceresini beklemeden listeyi görür.
+        // Alan `oneof` DIŞINDA olduğu için bu blok her iki durumu da tek yoldan
+        // karşılar; ayrı bir handshake dalı gerekmez.
+        //
+        // SIRA ÖNEMLİ: bu emit, aşağıdaki 'start_game'den ÖNCE gelir. onStartGame
+        // sıralama hâlâ boşsa "Connecting…" yer tutucusunu boş çerçeveyle
+        // değiştirir; sıralamayı önce işlemek o yedek yolun gereksiz yere
+        // çalışmasını (ve aynı karede iki kez DOM yazılmasını) önler.
         const leaderboardUpdate =
             envelope.leaderboardUpdate ?? envelope.leaderboard_update;
         if (leaderboardUpdate) {
             this.scene.events.emit('leaderboard_update', leaderboardUpdate);
+        }
+
+        // İlk karşılaşma path tohumu: bir entity AOI'ye ilk girdiğinde gövde
+        // polyline'ı bir KEZ eklenir (bkz. newproto/server/upgrade/path-seed.proto).
+        // leaderboard ile aynı gerekçeyle `oneof` DIŞINDA olduğu için burada,
+        // payload switch'inden ÖNCE karşılanır — bu emit yılan HENÜZ
+        // yaratılmamışken gelebilir, o yüzden Game tarafı tohumu kuyruğa alıp
+        // entity kurulduktan sonra uygular (bkz. queuePendingPathSeed).
+        const pathSeedCollection =
+            envelope.pathSeedCollection ?? envelope.path_seed_collection;
+        if (pathSeedCollection) {
+            this.scene.events.emit('path_seed_collection', pathSeedCollection);
         }
 
         // Start Info kontrolu (payload tipine bakılmaksızın)
@@ -195,6 +225,7 @@ export class NetworkManager {
         this.pingSamplesSeen = 0;
         this.pingCalibrated = false;
         this.pingEmaMs = null;
+        this.pingJitterMs = 0;
         this.sendPing(); // ilk örneği bekletmeden al
         // Kalibrasyon fazı: hızlandırılmış aralık. _handlePong yeterli örnek
         // toplandığında _switchToSteadyPingInterval() ile normale döndürür.
@@ -248,6 +279,13 @@ export class NetworkManager {
         // Kalibrasyon: ilk örnek(ler) bağlantı ısınması artefaktıdır — EMA'yı
         // kirletmesin diye tamamen atılır (bkz. constructor'daki açıklama).
         if (this.pingSamplesSeen <= this.pingCalibDiscard) return;
+
+        // Jitter, EMA GÜNCELLENMEDEN ÖNCE ölçülür: sapma, o örneğin mevcut
+        // beklentiden ne kadar saptığıdır (kendi kendini yiyen bir ölçüm değil).
+        if (this.pingEmaMs !== null) {
+            const deviation = Math.abs(rtt - this.pingEmaMs);
+            this.pingJitterMs += (deviation - this.pingJitterMs) / 8;
+        }
 
         // EMA (0.3): tekil spike'lar UI'da zıplama yaratmasın, yine de
         // gerçek değişimlere birkaç örnek içinde yakınsasın.

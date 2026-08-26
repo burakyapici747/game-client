@@ -7,9 +7,15 @@ import Phaser, { Game } from 'phaser';
 const config = {
   type: Phaser.AUTO,
   parent: 'game-container',
-  backgroundColor: '#202020',
+  backgroundColor: '#fff',
   pixelArt: false,
-  render: { antialias: true, roundPixels: false, mipmapFilter: 'NEAREST' },
+  render: {
+    resolution: window.devicePixelRatio || 1,
+    antialias: true,
+    antialiasGL: true,
+    roundPixels: false,
+    mipmapFilter: 'LINEAR',
+  },
   scale: {
     mode: Phaser.Scale.RESIZE,
     // NO_CENTER is required with RESIZE: ScaleManager.updateCenter() runs in
