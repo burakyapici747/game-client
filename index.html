@@ -10,6 +10,10 @@
     <link rel="stylesheet" href="/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&family=Quicksand:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet">
+    <!-- Google Identity Services — resmî SDK. async/defer: sayfa render'ını
+         bloklamaz, hazır olduğunda src/auth/GoogleAuth.js tarafından beklenir. -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
     <title>TABUMU GAME</title>
 </head>
 
@@ -107,6 +111,22 @@
              UNIFIED HTML/CSS OVERLAYS (managed by src/ui/overlays.js)
              Intermediate screens live OVER the canvas, not inside Phaser.
              ══════════════════════════════════════════════════════════════ -->
+
+        <!-- Google Sign-In Gate — canvas'ın ve menünün ÜSTÜNDE, en yüksek katman.
+             Kimlik doğrulanana kadar açık kalır; GoogleAuth callback'i kapatır. -->
+        <div id="auth-overlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <div class="auth-card">
+                <div class="auth-logo">🐍</div>
+                <h2 id="auth-title" class="auth-title">Sign in to play</h2>
+                <p class="auth-subtitle">Your progress, score and skins are tied to your Google account.</p>
+
+                <!-- Resmî Google butonu buraya render edilir (renderSignInButton). -->
+                <div id="google-signin-button" class="auth-button-slot"></div>
+
+                <p id="auth-error" class="auth-error hidden"></p>
+                <p class="auth-legal">We only read your name, email and profile picture.</p>
+            </div>
+        </div>
 
         <!-- Connecting Screen -->
         <div id="connecting-overlay" class="connecting-overlay hidden">

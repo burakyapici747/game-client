@@ -1,5 +1,7 @@
 import StartGame from './game/main';
-import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle } from './ui/overlays.js';
+import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle,
+         showAuthOverlay, hideAuthOverlay, showAuthError, getGoogleButtonSlot } from './ui/overlays.js';
+import { initGoogleAuth, isSignedIn } from './auth/GoogleAuth.js';
 import { serverProbe, latencyTier } from './network/ServerProbe.js';
 import { fallbackServerEntry } from './network/endpoint.js';
 import { initFullscreenToggle } from './ui/fullscreen.js';
@@ -28,6 +30,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const serverIndicator  = document.getElementById('selected-server-indicator');
     const indicatorName    = document.getElementById('selected-server-name');
     const indicatorPing    = document.getElementById('selected-server-ping');
+
+    // Giriş kapısı: overlay açılır ama menü/config yüklemesi ARKADA devam eder,
+    // böylece kullanıcı giriş yaparken sunucu ölçümleri çoktan bitmiş olur.
+    bootstrapGoogleAuth(nicknameInput);
 
     let selectedServer = null;   // config'ten gelen sunucu objesi {id, name, ip, port, wsUrl}
     // Kullanici listeden elle secim yaptiysa otomatik (en dusuk ping) secim
@@ -425,6 +431,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     initFullscreenToggle();
     initLeaderboardToggle();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOOGLE SIGN-IN GATE
+// Auth mantığının tamamı src/auth/GoogleAuth.js'te; burada yalnızca overlay
+// yaşam döngüsü ve giriş sonrası menü davranışı bağlanır.
+// ─────────────────────────────────────────────────────────────────────────────
+async function bootstrapGoogleAuth(nicknameInput) {
+    if (isSignedIn()) return;          // aynı sekmede token hâlâ geçerli
+
+    showAuthOverlay();
+
+    try {
+        await initGoogleAuth({
+            buttonContainer: getGoogleButtonSlot(),
+            autoPrompt: true,          // One Tap: geri dönen kullanıcı için sessiz giriş
+            onSignIn: ({ profile }) => {
+                hideAuthOverlay();
+
+                // Nickname'i Google adıyla ön-doldur; kullanıcı değiştirebilir.
+                if (nicknameInput && !nicknameInput.value && profile?.name) {
+                    nicknameInput.value = profile.name.slice(0, 16);
+                }
+
+                // ── SONRAKİ ADIM ────────────────────────────────────────────
+                // LootLocker oturumu burada başlatılacak:
+                //   startLootLockerSession(window.googleIdToken)
+                // Token ~1 saat geçerli; oturumu hemen açıp LootLocker'ın kendi
+                // session token'ıyla devam etmek doğru olan.
+            },
+        });
+    } catch (err) {
+        // SDK bloklanmış/çevrimdışı: kullanıcı boş kutuya bakmasın.
+        console.error('[auth] Google Sign-In başlatılamadı:', err);
+        showAuthError(err.message);
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENT CONFIG LOADER

@@ -10,6 +10,30 @@
 
 const $ = (id) => document.getElementById(id);
 
+// ── Google Sign-In gate ──────────────────────────────────────────────────────
+// Auth mantığı src/auth/GoogleAuth.js'te; burada yalnızca DOM görünürlüğü
+// yönetilir — overlay show/hide'ın tek sahibi bu modül olsun diye.
+
+export function showAuthOverlay() {
+    $('auth-overlay')?.classList.remove('hidden');
+}
+
+export function hideAuthOverlay() {
+    $('auth-overlay')?.classList.add('hidden');
+}
+
+// SDK yüklenemediğinde kullanıcı boş bir kutuya bakmasın.
+export function showAuthError(message) {
+    const el = $('auth-error');
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
+export function getGoogleButtonSlot() {
+    return $('google-signin-button');
+}
+
 // ── Connecting overlay ───────────────────────────────────────────────────────
 
 export function showConnectingOverlay(serverName, initialPingMs = null) {
