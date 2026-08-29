@@ -1,6 +1,7 @@
 import StartGame from './game/main';
 import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle } from './ui/overlays.js';
 import { serverProbe, latencyTier } from './network/ServerProbe.js';
+import { fallbackServerEntry } from './network/endpoint.js';
 import { initFullscreenToggle } from './ui/fullscreen.js';
 
 // ─── Mobile input state (read by Game.js every frame) ───────────────────────
@@ -442,10 +443,12 @@ async function loadClientConfig() {
         return cfg;
     } catch (err) {
         console.warn('config.json yüklenemedi, fallback kullanılıyor:', err);
-        const ip = import.meta.env.VITE_SERVER_URL || 'localhost';
+        // Adres ve şema src/network/endpoint.js'te çözülür: HTTPS sayfada aynı
+        // origin, dev sunucusunda .env, native kabukta doğrudan üretim.
+        const fallback = fallbackServerEntry();
         return {
-            servers: [{ id: 'local', name: 'Local Server', ip, port: 8080, wsUrl: `ws://${ip}:8080/ws` }],
-            defaultServerId: 'local',
+            servers: [fallback],
+            defaultServerId: fallback.id,
             ping: { heartbeatIntervalMs: 2500, calibration: { discardSamples: 1, minSamples: 3, intervalMs: 500 } },
         };
     }

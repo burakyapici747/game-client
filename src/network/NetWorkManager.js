@@ -1,4 +1,5 @@
 import { client, server } from './bundle.js';
+import { resolveWsUrl } from './endpoint.js';
 
 
 export class NetworkManager {
@@ -9,9 +10,10 @@ export class NetworkManager {
 
 
         // Config-driven sunucu seçimi: kullanıcının menüden seçtiği sunucunun
-        // wsUrl'i (public/config.json) önceliklidir; yoksa env fallback.
-        const serverIP = import.meta.env.VITE_SERVER_URL || '127.0.0.1';
-        this.wsUrl = window.gameSettings?.serverUrl || `ws://${serverIP}:8080/ws`;
+        // wsUrl'i (public/config.json) önceliklidir; yoksa şema-duyarlı fallback
+        // devreye girer. Şema artık sabit değil — HTTPS sayfada ws:// mixed
+        // content olarak bloklanır. Tek sahiplik noktası: ./endpoint.js.
+        this.wsUrl = resolveWsUrl(options.wsUrl);
         this.isCurrentlyBoosting = false;
 
         this.lastSentAngleValue = -1;
