@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Snake } from './Snake';
 import { VOID_BACKGROUND_COLOR } from './Preloader';
+import { TerrainRenderer } from './../render/Terrain';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
 import {
@@ -199,7 +200,7 @@ export class Game extends Phaser.Scene {
 
         this.pointer = null;
         this.fpsText = null;
-        this.grid = null;
+        this.terrain = null;
         this.minimapGraphics = null;
         this.worldRadius = 0;
 
@@ -229,7 +230,7 @@ export class Game extends Phaser.Scene {
         this.pendingPathSeeds = new Map();
         this.myId = null;
         this.foodBlitter = null;
-        this.grid = null;
+        this.terrain = null;
         this.boundaryGraphics = null;
         this.worldRadius = 0;
 
@@ -388,7 +389,7 @@ export class Game extends Phaser.Scene {
         // Self-heal: if the ScaleManager's snapshot has drifted from the real
         // parent size (e.g. boot raced a keyboard/viewport transition on
         // mobile), force a re-measure. refresh() emits 'resize', which lands
-        // in handleResize below and re-syncs camera/grid/controls.
+        // in handleResize below and re-syncs camera/terrain/controls.
         const ps = this.scale.parentSize;
         if (ps.width && ps.height &&
             (this.scale.width !== ps.width || this.scale.height !== ps.height)) {
@@ -400,8 +401,8 @@ export class Game extends Phaser.Scene {
         this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
 
         // Kamera harita dışına çıkabildiği için (bkz. onStartGame →
-        // removeBounds) zemin rengi ızgara dokusuyla AYNI olmalı. Motorun
-        // varsayılan #202020 gri zemini, ızgara karosunun kaplayamadığı
+        // removeBounds) zemin rengi terrain karolarının kenar tonuyla AYNI
+        // olmalı. Motorun varsayılan #202020 gri zemini, karonun kaplayamadığı
         // alt-piksel kenarlarda gri bir şerit olarak görünürdü.
         this.cameras.main.setBackgroundColor(VOID_BACKGROUND_COLOR);
 
@@ -416,7 +417,7 @@ export class Game extends Phaser.Scene {
 
         // ── Zoom-independent UI camera ──────────────────────────────────────
         // Camera zoom scales scrollFactor(0) objects too: with mobile baseZoom
-        // ~0.5 the whole HUD (grid background, FPS text, minimap, joystick/
+        // ~0.5 the whole HUD (FPS text, minimap, joystick/
         // boost touch zones) rendered shrunken into a centered rectangle, and
         // — because input hit-testing goes through the same camera transform —
         // touches only registered inside that rectangle. The fix: a second
@@ -521,7 +522,7 @@ export class Game extends Phaser.Scene {
         return Phaser.Math.Clamp(minDim / REFERENCE_MIN_DIM, MIN_ZOOM, MAX_ZOOM);
     }
 
-    // Keeps the camera viewport, background grid, minimap and any still-visible
+    // Keeps the camera viewport, terrain background, minimap and any still-visible
     // loading UI in sync whenever the game/canvas size changes — e.g. mobile
     // orientation changes or the browser address bar showing/hiding (which
     // changes window.innerHeight after the page has already loaded).
@@ -534,8 +535,10 @@ export class Game extends Phaser.Scene {
         this.uiCamera?.setSize(width, height);
         this.baseZoom = this.computeBaseZoom();
 
-        // (grid is world-space now — update() re-fits it to the camera's
-        // worldView every frame, so no screen-size sync is needed here.)
+        // Zemin dunya uzayindadir ve kendi gorunur-hucre araligini kameranin
+        // worldView'inden turetir; viewport degisince o aralik onbellegi
+        // gecersizdir (yeni ekran orani daha fazla/az karo gerektirebilir).
+        this.terrain?.refresh();
 
         this.mobileControls?.resize(width, height);
 
@@ -623,10 +626,11 @@ export class Game extends Phaser.Scene {
             //
             // removeBounds() useBounds'u kapatır; kamera artık kafayı harita
             // dışına taşsa bile merkezde tutar. Sınır DIŞINDA kalan alan boş
-            // kalmaz: ızgara arka planı her karede kameranın worldView'ine göre
-            // yeniden konumlanır (bkz. update() → this.grid) ve kameranın zemin
-            // rengi ızgarayla aynı tondur (bkz. create() → VOID_BACKGROUND_COLOR),
-            // dolayısıyla siyah boşluk/yırtılma oluşmaz.
+            // kalmaz: zemin karoları harita dışında da aynı deterministik
+            // desenle devam eder (bkz. Terrain.clipToWorldBounds = false) ve
+            // kameranın zemin rengi karoların kenar tonuyla aynıdır
+            // (bkz. create() → VOID_BACKGROUND_COLOR), dolayısıyla siyah
+            // boşluk/yırtılma oluşmaz.
             this.cameras.main.removeBounds();
 
             // Physics world bounds'u görsel sınırın çok ötesinde tut ki arcade
@@ -642,6 +646,11 @@ export class Game extends Phaser.Scene {
                 worldSize + physicsPadding * 2
             );
             console.log(`Dünya sınırı ayarlandı: ${worldSize}x${worldSize}`);
+
+            // Zemin bu paketten SONRA yaratilir (checkInitialDataComplete),
+            // ama yeniden dogusta zaten ayakta olabilir — dunya boyutu
+            // degistiyse karo araligi yeniden hesaplanmalidir.
+            this.terrain?.setWorldSize(worldSize);
 
             if (this.boundaryGraphics) {
                 this.boundaryGraphics.destroy();
@@ -1214,8 +1223,8 @@ export class Game extends Phaser.Scene {
         }
 
         this.gameStarted = true;
-        if (!this.grid) {
-            this.createTiledBackground();
+        if (!this.terrain) {
+            this.createTerrain();
         }
         this._revealGameplay();
     }
@@ -2028,21 +2037,11 @@ export class Game extends Phaser.Scene {
             }
         });
 
-        if (this.grid) {
-            // World-space background: cover the camera's visible world rect
-            // (worldView already accounts for zoom) and pin the repeating
-            // texture to world coordinates via tilePosition, so the pattern
-            // stays put while the sprite itself moves with the camera.
-            const view = this.cameras.main.worldView;
-            if (view.width > 0 && view.height > 0) {
-                const x = Math.floor(view.x);
-                const y = Math.floor(view.y);
-                this.grid.setPosition(x, y);
-                this.grid.setSize(Math.ceil(view.width) + 2, Math.ceil(view.height) + 2);
-                this.grid.tilePositionX = x;
-                this.grid.tilePositionY = y;
-            }
-        }
+        // Zemin: kameranin gorunur hucre araligi degismediyse ANINDA doner
+        // (dort tam sayi karsilastirmasi). Aralik degistiginde — kamera 2048
+        // px'lik bir karo sinirini gectiginde — havuzdaki Image'lar yeniden
+        // konumlanir. Hicbir yolda tahsis yoktur.
+        this.terrain?.update();
 
         // ── GÖREV 1: Birleşik eşikli yeme tahmini (rubber-band'siz) ──────────
         // Yem KONUMU asla değişmez (yaslanma/geri-dönüş kaldırıldı). Çekim
@@ -2281,18 +2280,30 @@ export class Game extends Phaser.Scene {
         }
     }
 
-    createTiledBackground() {
-        // WORLD-space background (not HUD): it must render on the zoomed main
-        // camera so food/snakes (depth >= 0) draw on top of it. On the UI
-        // camera the opaque checker would be composited AFTER the world camera
-        // and cover every world object. Each frame, update() stretches it over
-        // the camera's visible world rectangle and offsets the texture so the
-        // pattern stays fixed in world space (cells scale naturally with zoom).
-        this.grid = this.registerWorld(
-            this.add.tileSprite(0, 0, 32, 32, 'grid32')
-                .setOrigin(0, 0)
-                .setDepth(-1)
-        );
+    // ── STATIK ZEMIN (gecici izgaranin yerini alir) ──────────────────────────
+    // DUNYA uzayinda cizilir (HUD degil): yem/yilan (depth >= 0) ustune gelsin
+    // diye zoom'lu ana kamerada render edilmelidir. UI kamerasinda olsaydi opak
+    // zemin, dunya kamerasindan SONRA kompoze edilip her seyi orterdi — bu
+    // yuzden her karo registerWorld ile ana kameraya baglanir.
+    //
+    // Hucre (0,0) tam olarak dunya orijinine (0,0) oturur; dunya karesi
+    // [0, worldRadius*2] oldugundan karo izgarasi fizik sinirlari ve spawn
+    // koordinatlariyla BIREBIR hizalidir. Karolarin origin'i (0,0)'dir —
+    // 0.5 origin, 2048'lik karolarda yarim-piksel kaymasi riskini getirirdi.
+    createTerrain() {
+        this.terrain = new TerrainRenderer(this, {
+            worldSize: this.worldRadius > 0 ? this.worldRadius * 2 : 0,
+            // Kamera harita disina cikabildigi icin (removeBounds) desen
+            // disarida da surer; true yapilirsa zemin dunya karesinde biter ve
+            // disarisi duz VOID_BACKGROUND_COLOR kalir.
+            clipToWorldBounds: false,
+            register: (obj) => this.registerWorld(obj),
+        });
+
+        this.events.once('shutdown', () => {
+            this.terrain?.destroy();
+            this.terrain = null;
+        });
     }
 
     // Sekme tekrar görünür olduğunda çağrılır (Page Visibility API).
