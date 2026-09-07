@@ -1,5 +1,12 @@
 import StartGame from './game/main';
-import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle } from './ui/overlays.js';
+import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle,
+         hideAuthOverlay, clearAuthError, getGoogleButtonSlot, getInlineGoogleButtonSlot,
+         initAuthOverlayClose, initServiceBanner } from './ui/overlays.js';
+import { initGoogleAuth, isSignedIn, renderSignInButton } from './auth/GoogleAuth.js';
+import { initSessionBridge, establishSession, startGuestSession, endSession,
+         getAuthMode, getSessionProfile } from './auth/SessionManager.js';
+import { initLoginTabs, setActiveTab, showSocialError, clearSocialError } from './ui/LoginTabs.js';
+import { initSidePanel, hideSidePanel, showSidePanelIfSignedIn } from './ui/SidePanel.js';
 import { serverProbe, latencyTier } from './network/ServerProbe.js';
 import { fallbackServerEntry } from './network/endpoint.js';
 import { initFullscreenToggle } from './ui/fullscreen.js';
@@ -28,6 +35,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     const serverIndicator  = document.getElementById('selected-server-indicator');
     const indicatorName    = document.getElementById('selected-server-name');
     const indicatorPing    = document.getElementById('selected-server-ping');
+
+    // 401/503 kancaları ve banner düğmeleri, HERHANGİ bir API çağrısından ÖNCE
+    // kurulmalı: aksi halde ilk oturum isteğinin hatası dinleyicisiz kalır ve
+    // kullanıcı sessizce boş bir ekrana bakar.
+    initServiceBanner();
+    initAuthOverlayClose();
+    initSessionBridge();
+
+    // Giriş sekmeleri (GUEST | SOCIAL LOGIN) ve giriş sonrası sol panel.
+    // İkisi de SessionManager.onSessionChange'e abone olur; abone olurken
+    // mevcut durumu da aldıkları için sıralama önemli değildir.
+    initLoginTabs();
+    initSidePanel({ onSignOut: handleSignOut });
+
+    // ARTIK KAPI DEĞİL: Google SDK arka planda hazırlanır, buton SOCIAL LOGIN
+    // sekmesine çizilir. Menü ve sunucu ölçümleri hiçbir şey beklemez —
+    // misafir oyuncu doğrudan PLAY'e basabilir.
+    bootstrapGoogleAuth(nicknameInput);
 
     let selectedServer = null;   // config'ten gelen sunucu objesi {id, name, ip, port, wsUrl}
     // Kullanici listeden elle secim yaptiysa otomatik (en dusuk ping) secim
@@ -346,6 +371,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         gameInstance = null;
         gameStarted = false;
         uiLayer.classList.remove('hidden');
+        // Panel oyun boyunca gizliydi (canvas'ı kapatmasın diye); menüye
+        // dönüldüğünde oturum hâlâ duruyorsa geri gelir.
+        showSidePanelIfSignedIn();
     };
     onConnectingCancel(teardownGameToMenu);
 
@@ -366,9 +394,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (gameStarted) return;
         gameStarted = true; // set immediately: boot below is deferred, block double-taps
 
+        // Takma ad kaynagi sirasi: kutuya yazilan > oturum profili (Google adi
+        // ya da onceki misafir adi) > uretilen ad. Kullanicinin GUEST panelinde
+        // yazdigi ad her zaman kazanir.
         let nickname = nicknameInput.value.trim();
+        if (!nickname) nickname = getSessionProfile()?.nickname?.trim() ?? '';
         if (!nickname) nickname = 'Player' + Math.floor(Math.random() * 10000);
         localStorage.setItem('snake_nickname', nickname);
+
+        // MISAFIR GIRISI: Google oturumu yoksa PLAY yerel oturumu kurar. Bu,
+        // GUEST sekmesinin sozunu tutar (sosyal saglayici olmadan hizli giris)
+        // ve yan panelin kime ait oldugunu bilmesini saglar.
+        if (getAuthMode() !== 'google') startGuestSession(nickname);
+
+        // Panel oyun sirasinda canvas'i ve mobil kontrolleri kapatmasin.
+        hideSidePanel();
 
         window.gameSettings = {
             nickname,
@@ -425,6 +465,84 @@ document.addEventListener('DOMContentLoaded', async () => {
     initFullscreenToggle();
     initLeaderboardToggle();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOOGLE SIGN-IN — SEKME İÇİ AKIŞ (artık açılış kapısı DEĞİL)
+//
+// Eskiden burada tam ekran bir auth overlay'i açılıyordu ve kimlik doğrulanana
+// kadar menü kullanılamıyordu. GUEST sekmesi bu kapıyla çelişir: misafir,
+// tanım gereği, hiçbir sosyal sağlayıcıya uğramadan oynayabilmelidir.
+//
+// Yeni akış: SDK arka planda hazırlanır, resmî buton SOCIAL LOGIN sekmesine
+// çizilir. Overlay yalnızca 401 sonrası yeniden giriş istemi olarak açılır
+// (bkz. SessionManager.initSessionBridge) ve artık kapatılabilir.
+//
+// Auth mantığının tamamı src/auth/GoogleAuth.js'te; burada yalnızca butonun
+// nereye çizileceği ve giriş sonrası menü davranışı bağlanır.
+// ─────────────────────────────────────────────────────────────────────────────
+async function bootstrapGoogleAuth(nicknameInput) {
+    try {
+        await initGoogleAuth({
+            // Buton giriş kartındaki sekmeye çizilir.
+            buttonContainer: getInlineGoogleButtonSlot(),
+            // One Tap: geri dönen kullanıcı için sessiz giriş. Zaten geçerli
+            // bir token varsa istemi açmanın anlamı yok.
+            autoPrompt: !isSignedIn(),
+            onSignIn: ({ profile }) => {
+                clearAuthError();
+                clearSocialError();
+                hideAuthOverlay();          // 401 istemi açıksa kapansın
+                setActiveTab('social', false);
+
+                // Nickname'i Google adıyla ön-doldur; kullanıcı değiştirebilir.
+                if (nicknameInput && !nicknameInput.value && profile?.name) {
+                    nicknameInput.value = profile.name.slice(0, 16);
+                }
+
+                // ── PROXY OTURUMU ───────────────────────────────────────────
+                // ID Token'ı Java proxy'ye taşır; proxy onu LootLocker'ın native
+                // /game/session/google ucuna verir ve oyuncuyu eşler. Başarıda
+                // SessionManager 'google' kipine geçer ve yan panel (cüzdan,
+                // envanter, skinler) kendiliğinden dolar.
+                //
+                // BİLEREK await EDİLMEZ: menü ve sunucu ölçümleri beklemez,
+                // oyuncu oturum kurulurken PLAY'e basabilir. establishSession
+                // throw etmez, 401/503 kullanıcı bildirimini global kancalar
+                // yapar (bkz. SessionManager.initSessionBridge) — bu yüzden
+                // burada yakalanmamış bir promise reddi oluşamaz.
+                establishSession().then((result) => {
+                    if (!result.ok) {
+                        console.warn('[auth] proxy oturumu kurulamadı:', result.reason);
+                    }
+                });
+            },
+        });
+
+        // 401 sonrası açılan overlay'de de çalışan bir buton bulunsun. Google
+        // SDK'sı aynı client_id için birden fazla kaba buton çizebilir; iki
+        // yuva birbirinden bağımsızdır.
+        renderSignInButton(getGoogleButtonSlot());
+    } catch (err) {
+        // SDK bloklanmış/çevrimdışı. Oyun ENGELLENMEZ: misafir girişi hâlâ
+        // çalışıyor, hata yalnızca sosyal panelde bir satır olarak görünür.
+        console.error('[auth] Google Sign-In başlatılamadı:', err);
+        showSocialError(err.message);
+    }
+}
+
+/**
+ * Yan paneldeki "Sign out" eyleminin hedefi.
+ *
+ * <p>Oturumu düşürmek main.js'in işidir: panel kimliği sahiplenmez, yalnızca
+ * gösterir. endSession hem yerel Google state'ini temizler hem de kip
+ * değişikliğini yayınlar — sekmeler GUEST'e döner, panel gizlenir.
+ */
+function handleSignOut() {
+    endSession();
+    clearAuthError();
+    clearSocialError();
+    hideAuthOverlay();
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENT CONFIG LOADER

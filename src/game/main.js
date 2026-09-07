@@ -14,7 +14,14 @@ const config = {
     antialias: true,
     antialiasGL: true,
     roundPixels: false,
-    mipmapFilter: 'LINEAR',
+    // 2048x2048 zemin karolari POWER-OF-TWO'dur ve Phaser mipmapFilter'i
+    // YALNIZCA POT dokulara uygular (WebGLRenderer.createTextureFromSource).
+    // Kamera uzaklastiginda (mobil baseZoom ~0.45, buyuyen yilanda daha da
+    // dusuk) mip zinciri hem titremeyi/aliasing'i kaldirir hem de doku
+    // onbellegi isabetini artirir. NPOT dokular (yem spritesheet'i, yilan
+    // sprite'lari) bu ayardan etkilenmez; NEAREST isteyen px* dokulari kendi
+    // setFilter cagrilariyla bunu zaten ezer (bkz. Preloader.create).
+    mipmapFilter: 'LINEAR_MIPMAP_LINEAR',
   },
   scale: {
     mode: Phaser.Scale.RESIZE,
