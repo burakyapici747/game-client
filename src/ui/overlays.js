@@ -34,6 +34,76 @@ export function getGoogleButtonSlot() {
     return $('google-signin-button');
 }
 
+/**
+ * Giris kartindaki SOCIAL LOGIN sekmesinin Google buton yuvasi.
+ *
+ * <p>Overlay yuvasindan AYRI bir dugumdur: ayni id iki yerde olamaz ve Google
+ * SDK'si her iki kaba da bagimsiz birer buton cizebilir. Boylece acilista
+ * kartta, 401 sonrasi da overlay'de calisan bir buton bulunur.
+ */
+export function getInlineGoogleButtonSlot() {
+    return $('google-signin-button-inline');
+}
+
+/**
+ * Auth overlay'inin kapatma dugmesini baglar. Uygulama basinda BIR KEZ.
+ *
+ * <p>Overlay artik acilis KAPISI degil, 401 sonrasi yeniden giris istemidir:
+ * misafir oyuncu onu kapatip oynamaya devam edebilmelidir. Kapanista hata
+ * satiri da temizlenir, aksi halde overlay bir sonraki acilista eski mesajla
+ * gelirdi.
+ */
+export function initAuthOverlayClose() {
+    $('auth-close-btn')?.addEventListener('click', () => {
+        clearAuthError();
+        hideAuthOverlay();
+    });
+}
+
+/** Auth hata satırını temizler (yeniden giriş denemesinden önce). */
+export function clearAuthError() {
+    const el = $('auth-error');
+    if (!el) return;
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+// ── Servis durumu banner'ı ───────────────────────────────────────────────────
+// Proxy 503 döndürdüğünde (LootLocker Google Sign-In kapalı/arızalı) gösterilir.
+// Auth overlay'inin ÜSTÜNDE durur: 503 çoğunlukla tam da giriş anında oluşur ve
+// kullanıcının "buton çalışmıyor" sanmaması gerekir. Oyunu ENGELLEMEZ —
+// kapatılabilir, oynanış sürer, yalnızca hesaba bağlı özellikler beklemededir.
+
+let bannerRetryHandler = null;
+
+export function showServiceBanner(message, { onRetry } = {}) {
+    const banner = $('service-banner');
+    const text = $('service-banner-text');
+    if (!banner || !text) return;
+
+    text.textContent = message;
+    bannerRetryHandler = typeof onRetry === 'function' ? onRetry : null;
+
+    const retryBtn = $('service-banner-retry');
+    if (retryBtn) retryBtn.classList.toggle('hidden', !bannerRetryHandler);
+
+    banner.classList.remove('hidden');
+}
+
+export function hideServiceBanner() {
+    $('service-banner')?.classList.add('hidden');
+}
+
+/** Banner düğmelerini bağlar — uygulama başlarken bir kez çağrılır. */
+export function initServiceBanner() {
+    $('service-banner-retry')?.addEventListener('click', () => {
+        // Handler'ı kopyala: hideServiceBanner sırasında sıfırlanabilir.
+        const handler = bannerRetryHandler;
+        handler?.();
+    });
+    $('service-banner-close')?.addEventListener('click', hideServiceBanner);
+}
+
 // ── Connecting overlay ───────────────────────────────────────────────────────
 
 export function showConnectingOverlay(serverName, initialPingMs = null) {

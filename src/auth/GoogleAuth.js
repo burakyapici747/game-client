@@ -22,7 +22,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const GOOGLE_CLIENT_ID =
-    '902030391377-7g6fe410bnv8mp63bf8i2k2ktmo4bkg6.apps.googleusercontent.com';
+    '524694720631-60i4e161jjaqo59o9l9884r6k2t58gem.apps.googleusercontent.com';
 
 // SDK bloklanmış olabilir (adblock, offline, kurumsal proxy). Süresiz beklemek
 // yerine hata veriyoruz ki UI "Sign in" butonunu boş bir kutu olarak bırakmasın.
@@ -118,10 +118,17 @@ function handleCredentialResponse(response) {
     // Sonraki adım (LootLocker / game-server) global üzerinden okuyabilsin.
     window.googleIdToken = token;
 
-    // İstenen doğrulama çıktısı. ÜRETİMDE KALDIRIN: JWT bir taşıyıcı kimlik
-    // bilgisidir, konsol dökümü ekran görüntüsü/destek kaydıyla sızabilir.
-    console.log('[auth] Google ID Token (JWT):', token);
-    console.log('[auth] Oturum açan kullanıcı:', profile?.email, `(sub: ${profile?.sub})`);
+    // ── HAM TOKEN LOGLANMAZ ─────────────────────────────────────────────
+    // Bu JWT artık korumalı /api/** çağrılarında Bearer olarak kullanılıyor,
+    // yani tam yetkili bir taşıyıcı kimlik bilgisi. Konsola basılması ekran
+    // görüntüsü, destek kaydı ya da uzak log toplayıcı üzerinden sızdırır.
+    // Dev'de yalnızca ayırt edici bir parmak izi + kimlik bilgisi bırakılır.
+    if (import.meta.env?.DEV) {
+        console.log(
+            '[auth] Oturum açıldı:', profile?.email, `(sub: ${profile?.sub})`,
+            `token …${token.slice(-8)}`, `exp ${new Date((profile?.exp ?? 0) * 1000).toISOString()}`,
+        );
+    }
 
     for (const fn of listeners) {
         try {
@@ -210,6 +217,23 @@ export function onSignIn(handler) {
     listeners.add(handler);
     if (isSignedIn()) handler({ idToken, profile });
     return () => listeners.delete(handler);
+}
+
+/**
+ * Süresi dolmuş/reddedilmiş token sonrası yeniden giriş ister (401 yolu).
+ *
+ * <p>Önce yerel state düşürülür — aksi halde `getIdToken()` hâlâ ölü token'ı
+ * döndürür ve her istek 401'e koşar. Ardından One Tap istemi açılır; SDK
+ * hazır değilse sessizce no-op olur ve kullanıcı auth overlay'indeki resmî
+ * butonu kullanır (bkz. src/auth/SessionManager.js).
+ */
+export function promptReauth() {
+    signOut();
+    try {
+        window.google?.accounts?.id?.prompt();
+    } catch (err) {
+        console.warn('[auth] yeniden giriş istemi açılamadı:', err);
+    }
 }
 
 /**

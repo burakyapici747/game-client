@@ -2714,6 +2714,87 @@ html.pseudo-fullscreen #app {
    arkadaki hiçbir kontrol kullanılmamalı.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── Servis durumu banner'ı ────────────────────────────────────────────────
+   Proxy 503 ("Player link unavailable") döndüğünde üstte belirir. z-index 70
+   ile auth overlay'in (60) ÜSTÜNDEDİR: 503 çoğunlukla giriş anında oluşur ve
+   kullanıcı Google butonunun bozuk olduğunu sanmamalıdır. */
+.service-banner {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(560px, calc(100vw - 24px));
+    padding: 10px 12px 10px 14px;
+    font-size: 13.5px;
+    line-height: 1.4;
+    color: #ffd9a2;
+    background: #3a2410;
+    border: 1px solid rgba(255, 170, 60, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(10, 5, 20, 0.55);
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.25s ease, visibility 0.25s;
+}
+
+.service-banner.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.service-banner-icon {
+    flex: none;
+    font-size: 15px;
+}
+
+.service-banner-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.service-banner-retry {
+    flex: none;
+    padding: 5px 12px;
+    font: inherit;
+    font-weight: 700;
+    color: #2a1a08;
+    background: #ffc46b;
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+}
+
+.service-banner-retry:hover {
+    background: #ffd48f;
+}
+
+.service-banner-retry.hidden {
+    display: none;
+}
+
+.service-banner-close {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+    color: #ffd9a2;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.service-banner-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    opacity: 1;
+}
+
 .auth-overlay {
     position: absolute;
     inset: 0;
@@ -2735,6 +2816,10 @@ html.pseudo-fullscreen #app {
 }
 
 .auth-card {
+    /* Kapatma dugmesinin konumlanma baglami. Bu olmadan .auth-close-btn en
+       yakin konumlanmis ata olan .auth-overlay'e gore hizalanir ve ekranin
+       kosesine kacar. */
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -2807,4 +2892,936 @@ html.pseudo-fullscreen #app {
 
     .auth-logo { font-size: 44px; }
     .auth-title { font-size: 22px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOGIN CARD — AUTH MODE TABS (GUEST | SOCIAL LOGIN)
+   Davranış: src/ui/LoginTabs.js
+
+   Sekme şeridi, giriş kartının kendi dilini sürdürür: gömülü yüzey
+   (--menu-surface-lowest + inset gölge, tıpkı nickname input'u ve sunucu
+   göstergesi gibi), üzerinde neon-yeşil hareketli bir "thumb". Böylece
+   sekmeler kartta YENİ bir görsel dil açmaz — var olanı devam ettirir.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.auth-tabs {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    background: var(--menu-surface-lowest);
+    border-radius: 999px;
+    box-shadow: inset 0 3px 5px -1px rgba(0, 0, 0, 0.45);
+}
+
+/* Hareketli seçim göstergesi. İKİ sekmeye sabitlenmiştir: solda %4 padding
+   payı, genişlik satırın yarısı eksi padding. Sekme sayısı değişirse burası
+   ve grid-template-columns birlikte güncellenmelidir. */
+.auth-tabs-thumb {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: calc(50% - 6px);
+    height: calc(100% - 8px);
+    background: var(--menu-accent);
+    border-radius: 999px;
+    box-shadow: 0 2px 0 var(--menu-accent-shadow), 0 4px 12px rgba(183, 247, 0, 0.25);
+    transition: transform var(--transition-bounce);
+    pointer-events: none;
+}
+
+.auth-tabs[data-active="social"] .auth-tabs-thumb {
+    transform: translateX(calc(100% + 4px));
+}
+
+.auth-tab {
+    position: relative;
+    z-index: 1;                     /* thumb'ın üstünde kalsın */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 11px 8px;
+    font-family: 'Quicksand', var(--font-heading), sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--menu-text-muted);
+    background: transparent;
+    border-radius: 999px;
+    transition: color var(--transition-fast);
+}
+
+.auth-tab .auth-tab-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.auth-tab:hover:not(.is-active):not(:disabled) {
+    color: var(--menu-text);
+}
+
+/* Etkin sekme metni thumb'ın ÜZERİNDE okunur — bu yüzden koyu accent rengi. */
+.auth-tab.is-active {
+    color: var(--menu-accent-deep);
+}
+
+.auth-tab:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(183, 247, 0, 0.45);
+}
+
+/* Google oturumu açıkken GUEST sekmesi kilitlenir: hesaplı oyuncuyu tek tıkla
+   misafire düşürmek cüzdanını/skinlerini sessizce kaybettirirdi. */
+.auth-tab:disabled,
+.auth-tab.is-locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ── Sekme panelleri ── */
+.auth-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.auth-pane.hidden {
+    display: none;
+}
+
+.auth-pane-hint {
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    text-align: center;
+    color: var(--menu-text-muted);
+}
+
+/* ── Sosyal sağlayıcılar ── */
+.social-providers {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+}
+
+.social-providers.hidden {
+    display: none;
+}
+
+/* Google butonu kendi iframe'ini getirir; slot yalnızca ortalar ve yer açar.
+   min-height, iframe yüklenene kadar kartın zıplamasını önler. */
+#google-signin-button-inline {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+}
+
+/* Apple: Google butonunun ölçüsüne ve pill diline UYAR (görsel eşitlik), ama
+   bu kapsamda İŞLEVSİZ — disabled görünümü bunu açıkça söyler. */
+.social-btn {
+    width: 100%;
+    max-width: 320px;
+    padding: 12px 20px;
+    font-family: var(--font-body), sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--menu-text);
+    background: var(--menu-surface-high);
+    border: 1px solid var(--menu-bright);
+    border-radius: 999px;
+    transition: var(--transition-fast);
+}
+
+.social-btn .social-btn-icon {
+    flex-shrink: 0;
+}
+
+.social-btn:disabled,
+.social-btn[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.4);
+}
+
+.social-badge {
+    padding: 2px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--menu-surface-lowest);
+    background: var(--menu-text-muted);
+    border-radius: 999px;
+}
+
+/* ── "Zaten giriş yapıldı" satırı — sağlayıcı butonlarının yerini alır ── */
+.social-signed-in {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--menu-surface-lowest);
+    border: 1px solid rgba(183, 247, 0, 0.25);
+    border-radius: 18px;
+}
+
+.social-signed-in.hidden {
+    display: none;
+}
+
+.social-signed-in-tick {
+    flex-shrink: 0;
+    font-size: 26px;
+    color: var(--menu-accent);
+}
+
+.social-signed-in-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;                   /* uzun e-posta taşmasın, ellipsis alsın */
+}
+
+.social-signed-in-name {
+    font-family: 'Quicksand', var(--font-body), sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--menu-text);
+}
+
+.social-signed-in-email,
+.social-signed-in-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.social-signed-in-email {
+    font-size: 0.78rem;
+    color: var(--menu-text-muted);
+}
+
+/* ── Auth overlay kapatma düğmesi ──────────────────────────────────────────
+   Overlay artık açılış kapısı değil, 401 sonrası yeniden giriş istemi. */
+.auth-close-btn {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 36px;
+    height: 36px;
+    color: var(--text-muted);
+    background: transparent;
+    border-radius: 50%;
+    transition: var(--transition-fast);
+}
+
+.auth-close-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 480px) {
+    .auth-tab .auth-tab-label { font-size: 0.78rem; }
+    .auth-tab { padding: 10px 4px; gap: 5px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LEFT SIDE PANEL (post-login HUD) — src/ui/SidePanel.js
+
+   z-index 40: oyun HUD'unun üstünde ama servers (50) / settings (55) / auth
+   (60) modallerinin ALTINDA — bir modal açıkken çekmece onu kesmemeli.
+
+   Menü paleti burada YENİDEN tanımlanır: panel .ui-layer'ın DIŞINDA yaşar
+   (menü gizlendiğinde de var olabilmesi için) ve o yüzden oradaki scoped
+   token'ları miras alamaz.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.side-panel {
+    --menu-surface: #1a063b;
+    --menu-surface-container: #271448;
+    --menu-surface-high: #322053;
+    --menu-surface-highest: #3d2b5e;
+    --menu-surface-lowest: #150136;
+    --menu-bright: #412f63;
+    --menu-accent: #b7f700;
+    --menu-accent-deep: #506e00;
+    --menu-accent-shadow: #374e00;
+    --menu-text: #ebddff;
+    --menu-text-muted: #bfb3d6;
+
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    z-index: 40;
+    display: flex;
+    align-items: stretch;
+    pointer-events: none;           /* boşluk tıklamayı yutmasın */
+}
+
+.side-panel[hidden] {
+    display: none;
+}
+
+.side-panel-drawer {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    width: min(340px, 86vw);
+    height: 100%;
+    background: var(--menu-surface-container);
+    border-right: 1px solid var(--menu-bright);
+    box-shadow: 6px 0 28px rgba(10, 5, 20, 0.55);
+    transition: transform var(--transition-bounce);
+    /* Güvenli alan: çentikli cihazlarda panel başlığı çentiğin altında kalsın. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.side-panel.is-collapsed .side-panel-drawer {
+    transform: translateX(-100%);
+}
+
+.side-panel.is-expanded .side-panel-drawer {
+    transform: translateX(0);
+}
+
+/* ── Çekmece kolu ───────────────────────────────────────────────────────────
+   Çekmecenin YANINDA durur ve onunla birlikte kayar; kapalıyken ekranın sol
+   kenarında tek görünen parçadır. */
+.side-panel-toggle {
+    pointer-events: auto;
+    align-self: center;
+    width: 30px;
+    height: 68px;
+    padding: 0;
+    color: var(--menu-surface-lowest);
+    background: var(--menu-accent);
+    border-radius: 0 14px 14px 0;
+    box-shadow: 3px 0 12px rgba(10, 5, 20, 0.45);
+    transition: transform var(--transition-bounce), filter var(--transition-fast);
+}
+
+.side-panel.is-collapsed .side-panel-toggle {
+    transform: translateX(calc(-1 * min(340px, 86vw)));
+}
+
+.side-panel-toggle:hover {
+    filter: brightness(1.08);
+}
+
+.side-panel-toggle-icon {
+    font-size: 22px;
+    transition: transform var(--transition-bounce);
+}
+
+.side-panel.is-expanded .side-panel-toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* ── Profil başlığı ── */
+.side-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 16px;
+    background: var(--menu-surface-lowest);
+    border-bottom: 1px solid var(--menu-bright);
+}
+
+.sp-avatar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    overflow: hidden;
+    background: var(--menu-surface-high);
+    border: 2px solid var(--menu-accent);
+    border-radius: 50%;
+}
+
+.sp-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.sp-avatar-letter {
+    font-family: 'Quicksand', var(--font-heading), sans-serif;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--menu-accent);
+}
+
+.sp-identity {
+    flex: 1;
+    min-width: 0;                   /* uzun ad/e-posta ellipsis alsın */
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.sp-identity-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.sp-nickname {
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'Quicksand', var(--font-heading), sans-serif;
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: var(--menu-text);
+}
+
+.sp-mode-badge {
+    flex-shrink: 0;
+    padding: 2px 7px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--menu-surface-lowest);
+    background: var(--menu-text-muted);
+    border-radius: 999px;
+}
+
+/* Google oturumu accent ile ayrışır: kilitli modüllerin neden açık olduğunu
+   tek bakışta anlatır. */
+.sp-mode-badge[data-mode="google"] {
+    background: var(--menu-accent);
+    color: var(--menu-accent-deep);
+}
+
+.sp-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.76rem;
+    color: var(--menu-text-muted);
+}
+
+.sp-email.is-muted {
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.sp-icon-btn {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    color: var(--menu-text-muted);
+    background: transparent;
+    border-radius: 50%;
+    transition: var(--transition-fast);
+}
+
+.sp-icon-btn:hover {
+    color: var(--menu-text);
+    background: var(--menu-surface-high);
+}
+
+.sp-icon-btn-sm {
+    width: 28px;
+    height: 28px;
+}
+
+.sp-icon-btn-sm .material-symbols-outlined {
+    font-size: 17px;
+}
+
+/* ── Cüzdan bölümü ── */
+.sp-section {
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(65, 47, 99, 0.5);
+}
+
+.sp-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.sp-section-title,
+.sp-subhead {
+    margin: 0;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: var(--menu-accent);
+}
+
+.sp-subhead {
+    margin: 4px 0 10px;
+}
+
+.sp-subhead + .sp-inline-error + div,
+.sp-subhead + div {
+    margin-bottom: 16px;
+}
+
+.sp-wallet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+    gap: 8px;
+}
+
+.sp-balance {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 11px;
+    background: var(--menu-surface-lowest);
+    border: 1px solid var(--menu-bright);
+    border-radius: 14px;
+}
+
+.sp-balance-icon {
+    flex-shrink: 0;
+    font-size: 20px;
+    color: var(--menu-accent);
+}
+
+.sp-balance-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.sp-balance-amount {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--menu-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.sp-balance-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--menu-text-muted);
+}
+
+/* ── Alt menü seçici ── */
+.sp-menu {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 12px 16px;
+}
+
+.sp-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 10px 8px;
+    font-family: 'Quicksand', var(--font-heading), sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--menu-text-muted);
+    background: var(--menu-surface-lowest);
+    border-radius: 999px;
+    transition: var(--transition-fast);
+}
+
+.sp-menu-btn .material-symbols-outlined {
+    font-size: 18px;
+}
+
+.sp-menu-btn:hover:not(.is-active) {
+    color: var(--menu-text);
+    background: var(--menu-surface-high);
+}
+
+.sp-menu-btn.is-active {
+    color: var(--menu-accent-deep);
+    background: var(--menu-accent);
+    box-shadow: 0 2px 0 var(--menu-accent-shadow);
+}
+
+/* ── Alt menü gövdesi ── */
+.sp-body {
+    flex: 1;
+    min-height: 0;                  /* flex çocuğunun kaydırılabilmesi için şart */
+    overflow-y: auto;
+    padding: 0 16px 20px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--menu-surface-highest) var(--menu-surface-lowest);
+}
+
+.sp-body::-webkit-scrollbar { width: 6px; }
+.sp-body::-webkit-scrollbar-track { background: var(--menu-surface-lowest); border-radius: 8px; }
+.sp-body::-webkit-scrollbar-thumb { background: var(--menu-surface-highest); border-radius: 8px; }
+.sp-body::-webkit-scrollbar-thumb:hover { background: var(--menu-bright); }
+
+.sp-view.hidden {
+    display: none;
+}
+
+/* Katalog seçici çipleri — yalnızca birden fazla katalog varsa doldurulur. */
+.sp-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.sp-chip-row:empty {
+    display: none;                  /* boşken dikey boşluk bırakmasın */
+}
+
+.sp-chip {
+    padding: 6px 13px;
+    font-family: 'Quicksand', var(--font-body), sans-serif;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--menu-text-muted);
+    background: var(--menu-surface-lowest);
+    border: 1px solid var(--menu-bright);
+    border-radius: 999px;
+    transition: var(--transition-fast);
+}
+
+.sp-chip:hover:not(.is-active) {
+    color: var(--menu-text);
+}
+
+.sp-chip.is-active {
+    color: var(--menu-accent-deep);
+    background: var(--menu-accent);
+    border-color: var(--menu-accent);
+}
+
+/* ── Liste satırı (mağaza kalemi / envanter kalemi) ── */
+.sp-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sp-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px;
+    background: var(--menu-surface-lowest);
+    border: 1px solid rgba(65, 47, 99, 0.6);
+    border-radius: 16px;
+}
+
+.sp-thumb {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    overflow: hidden;
+    background: var(--menu-surface-high);
+    border-radius: 12px;
+}
+
+.sp-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.sp-thumb-icon {
+    font-size: 21px;
+    color: var(--menu-text-muted);
+}
+
+.sp-row-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sp-row-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: 'Quicksand', var(--font-body), sans-serif;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--menu-text);
+}
+
+.sp-row-sub {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.68rem;
+    text-transform: capitalize;
+    color: var(--menu-text-muted);
+}
+
+.sp-price-wrap {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.sp-price {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    background: var(--menu-surface-high);
+    border-radius: 999px;
+}
+
+.sp-price-icon {
+    font-size: 15px;
+    color: var(--menu-accent);
+}
+
+.sp-price-amount {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--menu-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.sp-price-empty {
+    font-size: 0.76rem;
+    color: var(--menu-text-muted);
+}
+
+.sp-qty {
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--menu-accent);
+}
+
+/* ── Skin kartları ── */
+.sp-skin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 8px;
+}
+
+.sp-skin {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 11px 8px;
+    background: var(--menu-surface-lowest);
+    border: 1px solid rgba(65, 47, 99, 0.6);
+    border-radius: 16px;
+    transition: var(--transition-fast);
+}
+
+.sp-skin:hover:not(:disabled) {
+    border-color: var(--menu-accent);
+    transform: translateY(-2px);
+}
+
+.sp-skin.is-active {
+    border-color: var(--menu-accent);
+    box-shadow: 0 0 0 1px var(--menu-accent), 0 4px 14px rgba(183, 247, 0, 0.18);
+    /* Takılı skin tıklanamaz (boş PUT üretirdi) ama SÖNÜK GÖRÜNMEZ — bu bir
+       hata durumu değil, seçili durumdur. */
+    opacity: 1;
+    cursor: default;
+}
+
+.sp-skin:disabled:not(.is-active) {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.sp-skin .sp-thumb {
+    width: 52px;
+    height: 52px;
+}
+
+.sp-skin-name {
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--menu-text);
+}
+
+.sp-skin-state {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    color: var(--menu-text-muted);
+}
+
+.sp-skin.is-active .sp-skin-state {
+    color: var(--menu-accent);
+}
+
+.sp-skin.is-busy .sp-skin-state {
+    animation: sp-pulse 1s ease-in-out infinite;
+}
+
+/* ── Durum satırları (yükleniyor / hata / boş / kilitli) ── */
+.sp-state {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 13px 14px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--menu-text-muted);
+    background: var(--menu-surface-lowest);
+    border: 1px dashed rgba(65, 47, 99, 0.8);
+    border-radius: 14px;
+}
+
+.sp-state-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.sp-state-icon {
+    flex-shrink: 0;
+    font-size: 19px;
+}
+
+.sp-state-error {
+    color: #ffb4ab;
+    border-color: rgba(255, 180, 171, 0.35);
+}
+
+.sp-state-locked .sp-state-icon {
+    color: var(--menu-accent);
+}
+
+.sp-state-btn {
+    flex-shrink: 0;
+    padding: 5px 12px;
+    font-family: 'Quicksand', var(--font-body), sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--menu-accent-deep);
+    background: var(--menu-accent);
+    border-radius: 999px;
+}
+
+.sp-state-btn:hover {
+    filter: brightness(1.08);
+}
+
+.sp-spinner {
+    flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    border: 2px solid var(--menu-surface-highest);
+    border-top-color: var(--menu-accent);
+    border-radius: 50%;
+    animation: sp-spin 0.8s linear infinite;
+}
+
+/* Yükleme iskeletleri: içerik gelince layout zıplamasın. */
+.sp-skeletons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.sp-skeleton {
+    height: 58px;
+    background: linear-gradient(
+        90deg,
+        var(--menu-surface-lowest) 0%,
+        var(--menu-surface-high) 50%,
+        var(--menu-surface-lowest) 100%
+    );
+    background-size: 200% 100%;
+    border-radius: 16px;
+    animation: sp-shimmer 1.4s ease-in-out infinite;
+}
+
+.sp-inline-error {
+    margin: 0 0 10px;
+    padding: 9px 12px;
+    font-size: 0.76rem;
+    line-height: 1.4;
+    color: #ffb4ab;
+    background: rgba(255, 80, 60, 0.1);
+    border: 1px solid rgba(255, 80, 60, 0.25);
+    border-radius: 12px;
+}
+
+.sp-inline-error.hidden {
+    display: none;
+}
+
+@keyframes sp-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes sp-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+@keyframes sp-pulse {
+    0%, 100% { opacity: 0.45; }
+    50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .side-panel-drawer,
+    .side-panel-toggle,
+    .side-panel-toggle-icon,
+    .auth-tabs-thumb {
+        transition: none;
+    }
+
+    .sp-spinner,
+    .sp-skeleton,
+    .sp-skin.is-busy .sp-skin-state {
+        animation: none;
+    }
+}
+
+/* Dar/kısa ekranlar: çekmece tam genişlik alır, dikey ritim sıkışır. */
+@media (max-width: 420px) {
+    .side-panel-drawer { width: min(320px, 88vw); }
+    .side-panel.is-collapsed .side-panel-toggle { transform: translateX(calc(-1 * min(320px, 88vw))); }
+    .side-panel-header { padding: 16px 14px; }
+    .sp-section { padding: 12px 14px; }
+    .sp-body { padding: 0 14px 16px; }
+}
+
+@media (max-height: 560px) {
+    .side-panel-header { padding: 12px 16px; }
+    .sp-section { padding: 10px 16px; }
+    .sp-menu { padding: 8px 16px; }
 }

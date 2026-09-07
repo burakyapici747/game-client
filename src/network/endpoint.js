@@ -1,5 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// WS ENDPOINT ÇÖZÜMLEME — tek sahiplik noktası
+// ENDPOINT ÇÖZÜMLEME — "backend nerede?" sorusunun tek sahiplik noktası
+//
+// İki adres üretir ve ikisi de AYNI mantıkla çözülür:
+//   resolveWsUrl()      → oyun sunucusunun WebSocket adresi
+//   resolveApiBaseUrl() → Java proxy'nin HTTP kökü (/api/** buraya gider)
 //
 // Sayfa HTTPS üzerinden servis edildiğinde tarayıcı ws:// bağlantısını mixed
 // content olarak bloklar; soket açılmadan 1006 ile kapanır. Bu yüzden şema
@@ -97,6 +101,74 @@ export function resolveWsUrl(explicitUrl) {
     if (isDevServer()) return enforceSecureScheme(fromEnv());
 
     return PROD_WS_URL;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP API KÖKÜ (Java proxy)
+//
+// Proxy, sayfayla AYNI nginx'in arkasında yaşar — tıpkı /ws gibi. Bu yüzden
+// uzak bir HTTPS origin'inden servis edilen build'de doğru cevap "aynı origin"
+// yani BOŞ STRING'tir: istekler `/api/me` şeklinde göreli gider, tarayıcı
+// cross-origin saymaz ve CORS preflight'i hiç devreye girmez.
+//
+// Mutlak bir adres YALNIZCA gerçekten başka bir origin'e gidildiğinde
+// üretilir (dev sunucusu → localhost:8080, native kabuk → üretim host'u).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Üretim HTTP kökü — WS endpoint'iyle aynı host'tan türetilir (tek kaynak). */
+function prodApiBaseUrl() {
+    try {
+        const url = new URL(PROD_WS_URL.replace(/^ws/, 'http'));
+        return `${url.protocol}//${url.host}`;
+    } catch (_) {
+        return 'https://seanakes.io';
+    }
+}
+
+/** Dev sunucusunda Java proxy'nin adresi — WS ile aynı host, HTTP şeması. */
+function devApiBaseUrl() {
+    const env = import.meta.env ?? {};
+    const host = bareHost(env.VITE_SERVER_URL) || '127.0.0.1';
+    const port = String(env.VITE_API_PORT || env.VITE_SERVER_PORT || '8080');
+    const scheme = (env.VITE_SERVER_SCHEME === 'wss') ? 'https' : 'http';
+    return `${scheme}://${host}:${port}`;
+}
+
+/**
+ * Java proxy'nin HTTP kökünü döndürür. Sondaki '/' YOKTUR.
+ *
+ * <p>Dönüş '' (boş string) ise adres AYNI ORIGIN demektir ve çağıran isteği
+ * göreli yol ile atar — bu, preflight'sız en hızlı ve en az kırılgan yoldur.
+ *
+ * <p>Çözüm sırası WS ile bilinçli olarak aynıdır:
+ *   1. config.json → apiBaseUrl (container start'ta enjekte edilir)
+ *   2. VITE_API_BASE_URL (build/dev override)
+ *   3. Uzak HTTPS origin → aynı origin ('')
+ *   4. Vite dev sunucusu → .env'deki Java portu (8080)
+ *   5. Native kabuk / diğer → üretim host'u
+ *
+ * Her çağrıda yeniden hesaplanır (önbelleğe ALINMAZ): window.gameConfig,
+ * ilk API isteğinden sonra da dolabilir (bkz. src/main.js → loadClientConfig).
+ */
+export function resolveApiBaseUrl() {
+    const fromConfig = window.gameConfig?.apiBaseUrl;
+    if (fromConfig) return String(fromConfig).replace(/\/+$/, '');
+
+    const fromEnvVar = import.meta.env?.VITE_API_BASE_URL;
+    if (fromEnvVar) return String(fromEnvVar).replace(/\/+$/, '');
+
+    // Sayfa gerçek bir HTTPS host'undan geliyorsa proxy aynı nginx'in ardında.
+    if (!isNativeShell() && window.location.protocol === 'https:') return '';
+
+    if (isDevServer()) return devApiBaseUrl();
+
+    return prodApiBaseUrl();
+}
+
+/** Göreli API yolunu tam adrese çevirir. '/api/me' → '<base>/api/me'. */
+export function apiUrl(path) {
+    const clean = path.startsWith('/') ? path : `/${path}`;
+    return `${resolveApiBaseUrl()}${clean}`;
 }
 
 /** config.json okunamadığında kullanılan tek sunuculu fallback girdisi. */

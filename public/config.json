@@ -9,6 +9,7 @@
         }
     ],
     "defaultServerId": "eu-central",
+    "apiBaseUrl": "",
     "ping": {
         "heartbeatIntervalMs": 2500,
         "calibration": {

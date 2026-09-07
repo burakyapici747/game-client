@@ -49,14 +49,70 @@
 
                 <!-- Login Card -->
                 <div class="login-card">
-                    <div class="login-input-wrap">
-                        <svg class="login-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                            <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                            <line x1="15" y1="9" x2="15.01" y2="9"></line>
-                        </svg>
-                        <input type="text" id="nickname-input" placeholder="Enter Nickname" maxlength="16" autocomplete="off" />
+                    <!-- ══════════════════════════════════════════════════════
+                         AUTH MODE TABS — GUEST | SOCIAL LOGIN
+                         Davranış: src/ui/LoginTabs.js. Sekme SEÇİMİ ile oturum
+                         KİPİ ayrı şeylerdir; kip SessionManager'da kurulur.
+                         ══════════════════════════════════════════════════════ -->
+                    <div class="auth-tabs" role="tablist" aria-label="Sign-in method" data-active="guest">
+                        <button id="auth-tab-guest" class="auth-tab is-active" type="button" role="tab"
+                                aria-selected="true" aria-controls="auth-pane-guest" data-tab="guest">
+                            <span class="material-symbols-outlined auth-tab-icon">person</span>
+                            <span class="auth-tab-label">GUEST</span>
+                        </button>
+                        <button id="auth-tab-social" class="auth-tab" type="button" role="tab"
+                                aria-selected="false" aria-controls="auth-pane-social" data-tab="social" tabindex="-1">
+                            <span class="material-symbols-outlined auth-tab-icon">public</span>
+                            <span class="auth-tab-label">SOCIAL LOGIN</span>
+                        </button>
+                        <span class="auth-tabs-thumb" aria-hidden="true"></span>
+                    </div>
+
+                    <!-- GUEST: yerel takma ad, sosyal sağlayıcı yok -->
+                    <div id="auth-pane-guest" class="auth-pane" role="tabpanel" aria-labelledby="auth-tab-guest">
+                        <div class="login-input-wrap">
+                            <svg class="login-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                                <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                                <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                            </svg>
+                            <input type="text" id="nickname-input" placeholder="Enter Nickname" maxlength="16" autocomplete="off" />
+                        </div>
+                        <p class="auth-pane-hint">Jump straight in. Progress stays on this device.</p>
+                    </div>
+
+                    <!-- SOCIAL: Google aktif, Apple görsel eşitlik için pasif -->
+                    <div id="auth-pane-social" class="auth-pane hidden" role="tabpanel" aria-labelledby="auth-tab-social">
+                        <!-- Giriş yapıldığında sağlayıcı butonlarının yerini alır. -->
+                        <div id="social-signed-in" class="social-signed-in hidden">
+                            <span class="material-symbols-outlined social-signed-in-tick">check_circle</span>
+                            <div class="social-signed-in-text">
+                                <span id="social-signed-in-name" class="social-signed-in-name"></span>
+                                <span id="social-signed-in-email" class="social-signed-in-email"></span>
+                            </div>
+                        </div>
+
+                        <div id="social-providers" class="social-providers">
+                            <!-- Resmî Google butonu buraya render edilir (renderSignInButton). -->
+                            <div id="google-signin-button-inline" class="auth-button-slot"></div>
+
+                            <button id="apple-signin-btn" class="social-btn social-btn-apple" type="button" disabled
+                                    aria-disabled="true" title="Apple Sign-In is not available yet">
+                                <svg class="social-btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                                    <path d="M16.36 12.78c-.02-2.4 1.96-3.55 2.05-3.61-1.12-1.64-2.86-1.86-3.48-1.89-1.48-.15-2.89.87-3.64.87-.75 0-1.91-.85-3.14-.83-1.61.02-3.1.94-3.93 2.38-1.68 2.91-.43 7.22 1.21 9.58.8 1.16 1.75 2.45 3 2.4 1.21-.05 1.67-.78 3.13-.78 1.46 0 1.87.78 3.14.75 1.3-.02 2.12-1.17 2.91-2.34.92-1.34 1.3-2.64 1.32-2.71-.03-.01-2.53-.97-2.57-3.82zM14.03 5.6c.66-.81 1.11-1.93.99-3.05-.95.04-2.11.64-2.8 1.44-.61.71-1.15 1.85-1.01 2.94 1.06.08 2.15-.54 2.82-1.33z"></path>
+                                </svg>
+                                <span>Sign in with Apple</span>
+                                <span class="social-badge">SOON</span>
+                            </button>
+                        </div>
+
+                        <!-- GSI SDK yuklenemezse (adblock/offline) kullanici bos
+                             bir kutuya bakmasin — hata BURADA gorunur, artik
+                             tam ekran overlay'de degil. -->
+                        <p id="social-error" class="sp-inline-error hidden" role="alert"></p>
+
+                        <p class="auth-pane-hint">Signing in unlocks your wallet, store and skins.</p>
                     </div>
 
                     <button id="play-btn" class="play-btn">
@@ -108,17 +164,109 @@
              src/game/ui/MobileControls.js — no DOM overlay needed here. -->
 
         <!-- ══════════════════════════════════════════════════════════════
+             LEFT SIDE PANEL (post-login HUD) — src/ui/SidePanel.js
+             Profil · Cüzdan · Mağaza · Envanter & Skinler.
+             Oturum kipi null iken `hidden`; 'guest'te mağaza açık, cüzdan ve
+             envanter kilitli; 'google'da hepsi açık.
+             ══════════════════════════════════════════════════════════════ -->
+        <aside id="side-panel" class="side-panel is-collapsed" hidden>
+            <div class="side-panel-drawer">
+                <!-- ── Profil ─────────────────────────────────────────────── -->
+                <header class="side-panel-header">
+                    <div id="sp-avatar" class="sp-avatar" aria-hidden="true"></div>
+                    <div class="sp-identity">
+                        <div class="sp-identity-top">
+                            <span id="sp-nickname" class="sp-nickname">Player</span>
+                            <span id="sp-mode-badge" class="sp-mode-badge">GUEST</span>
+                        </div>
+                        <span id="sp-email" class="sp-email is-muted">—</span>
+                    </div>
+                    <button id="sp-signout" class="sp-icon-btn" type="button" title="Sign out" aria-label="Sign out">
+                        <span class="material-symbols-outlined">logout</span>
+                    </button>
+                </header>
+
+                <!-- ── Cüzdan HUD ─────────────────────────────────────────── -->
+                <section class="sp-section sp-wallet-section">
+                    <div class="sp-section-head">
+                        <h3 class="sp-section-title">Wallet</h3>
+                        <button id="sp-wallet-refresh" class="sp-icon-btn sp-icon-btn-sm" type="button"
+                                title="Refresh balances" aria-label="Refresh balances">
+                            <span class="material-symbols-outlined">refresh</span>
+                        </button>
+                    </div>
+                    <div id="sp-wallet-body" class="sp-wallet-body"></div>
+                </section>
+
+                <!-- ── Alt menü seçici ────────────────────────────────────── -->
+                <nav class="sp-menu" role="tablist" aria-label="Panel section">
+                    <button class="sp-menu-btn is-active" type="button" role="tab" aria-selected="true" data-view="store">
+                        <span class="material-symbols-outlined">storefront</span>
+                        <span>Store</span>
+                    </button>
+                    <button class="sp-menu-btn" type="button" role="tab" aria-selected="false" data-view="inventory">
+                        <span class="material-symbols-outlined">backpack</span>
+                        <span>Inventory</span>
+                    </button>
+                </nav>
+
+                <!-- ── Alt menü gövdesi ───────────────────────────────────── -->
+                <div class="sp-body">
+                    <section id="sp-view-store" class="sp-view" role="tabpanel" aria-label="Store">
+                        <div id="sp-catalog-tabs" class="sp-chip-row"></div>
+                        <div id="sp-store-body"></div>
+                    </section>
+
+                    <section id="sp-view-inventory" class="sp-view hidden" role="tabpanel" aria-label="Inventory and skins">
+                        <h4 class="sp-subhead">Skins</h4>
+                        <p id="sp-skin-error" class="sp-inline-error hidden" role="alert"></p>
+                        <div id="sp-skins-body"></div>
+
+                        <h4 class="sp-subhead">Items</h4>
+                        <div id="sp-inventory-body"></div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Çekmece kolu — panel gövdesinin DIŞINDA kalır ki kapalıyken de
+                 tıklanabilsin ve ekranın solunda sabit bir tutamak olsun. -->
+            <button id="side-panel-toggle" class="side-panel-toggle" type="button"
+                    aria-expanded="false" aria-controls="side-panel" aria-label="Toggle player panel">
+                <span class="material-symbols-outlined side-panel-toggle-icon">chevron_right</span>
+            </button>
+        </aside>
+
+        <!-- ══════════════════════════════════════════════════════════════
              UNIFIED HTML/CSS OVERLAYS (managed by src/ui/overlays.js)
              Intermediate screens live OVER the canvas, not inside Phaser.
              ══════════════════════════════════════════════════════════════ -->
+
+        <!-- Servis durumu banner'ı — proxy 503 ("Player link unavailable") döndüğünde
+             gösterilir. Auth overlay'inin de ÜSTÜNDE (z-index 70): 503 tam giriş
+             anında oluşur ve kullanıcı sebebini görmelidir. Oyunu engellemez. -->
+        <div id="service-banner" class="service-banner hidden" role="status" aria-live="polite">
+            <span class="service-banner-icon" aria-hidden="true">&#9888;</span>
+            <span id="service-banner-text" class="service-banner-text"></span>
+            <button id="service-banner-retry" class="service-banner-retry" type="button">Retry</button>
+            <button id="service-banner-close" class="service-banner-close" type="button" aria-label="Dismiss">&#10005;</button>
+        </div>
 
         <!-- Google Sign-In Gate — canvas'ın ve menünün ÜSTÜNDE, en yüksek katman.
              Kimlik doğrulanana kadar açık kalır; GoogleAuth callback'i kapatır. -->
         <div id="auth-overlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="auth-title">
             <div class="auth-card">
+                <!-- Kapatilabilir: bu overlay artik acilis KAPISI degil, 401
+                     sonrasi yeniden giris istemidir. Misafir oyuncunun oyunu
+                     kilitlememesi gerekir (bkz. src/ui/LoginTabs.js). -->
+                <button id="auth-close-btn" class="auth-close-btn" type="button" aria-label="Dismiss">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
                 <div class="auth-logo">🐍</div>
-                <h2 id="auth-title" class="auth-title">Sign in to play</h2>
-                <p class="auth-subtitle">Your progress, score and skins are tied to your Google account.</p>
+                <h2 id="auth-title" class="auth-title">Sign in to continue</h2>
+                <p class="auth-subtitle">Your wallet, store and skins are tied to your Google account.</p>
 
                 <!-- Resmî Google butonu buraya render edilir (renderSignInButton). -->
                 <div id="google-signin-button" class="auth-button-slot"></div>
