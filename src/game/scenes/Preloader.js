@@ -1,13 +1,15 @@
 import Phaser from 'phaser';
 import * as SnakeSkin from '../render/SnakeSkin.js';
+import * as Terrain from '../render/Terrain.js';
 
-// Izgara dokusunun zemin rengi — TEK DOGRULUK KAYNAGI.
-// Hem 'grid32' dokusunu üreten makeNeonSquareGrid hem de ana kameranın arka
-// plan rengi (bkz. Game.js) bunu kullanır. Kamera artık harita sınırlarının
-// DIŞINA çıkabildiği için ikisinin aynı renk olması şart: aksi halde harita
-// kenarında, ızgara karosunun kaplamadığı her alt-piksel boşluk motorun
-// varsayılan gri zemini (#202020) olarak yanıp sönerdi.
-export const VOID_BACKGROUND_COLOR = 0x1a063b;
+// Kameranin zemin rengi — TEK DOGRULUK KAYNAGI.
+// Kamera artik harita sinirlarinin DISINA cikabildigi icin (bkz. Game.js →
+// removeBounds) zeminin altinda kalan rengin, zemin karolarinin kenar
+// tonuyla ayni olmasi sarttir: aksi halde karonun kaplayamadigi her
+// alt-piksel bosluk motorun varsayilan gri zemini (#202020) olarak
+// yanip sonerdi. Deger, 8 zemin dokusunun kenar pikselleri orneklenerek
+// bulunmustur (bkz. Terrain.TERRAIN_BASE_COLOR).
+export const VOID_BACKGROUND_COLOR = Terrain.TERRAIN_BASE_COLOR;
 
 export class Preloader extends Phaser.Scene {
   constructor() { super('Preloader'); }
@@ -17,6 +19,12 @@ export class Preloader extends Phaser.Scene {
     // kuyruga alinir; dondurme + olcek normalizasyonu dosyalar indikten sonra
     // create() icinde yapilir (bkz. SnakeSkin.build).
     SnakeSkin.preload(this);
+
+    // Zemin karolari: public/assets/terrain/1..8.png + 1x4.png + 2x4.png
+    // (10 varyant, her biri 2048x2048). Dosya listesinin TEK sahibi
+    // Terrain.SOURCE_IDS'tir — yeni bir zemin eklemek icin burasi degil,
+    // render/Terrain.js icindeki o dizi guncellenir.
+    Terrain.preload(this);
 
     // Bir varlik yuklenemezse oyun ACILMAYA DEVAM ETMELI: eksik doku
     // SnakeSkin tarafindan daire dokusuna geri dusurulur. Bu dinleyici olmadan
@@ -30,8 +38,6 @@ export class Preloader extends Phaser.Scene {
     makeSolid(this, 'px8', 8, 8, 0xffffff);
     makeSolid(this, 'px32', 32, 32, 0xffffff);
     makeSolid(this, 'px64', 64, 64, 0xffffff);
-
-    makeNeonSquareGrid(this, 'grid32', 256);
 
     generateCircleTexture(this, 'snake_body48', 48, 0xffffff, 0x111111, 2.0);
     generateCircleTexture(this, 'snake_head48', 48, 0xffffff, 0x111111, 2.0);
@@ -57,10 +63,11 @@ export class Preloader extends Phaser.Scene {
       this.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     });
 
-    // grid32 is rendered as a tileSprite and re-scaled every frame to match
-    // camera zoom (see Game.js). LINEAR filtering removes scaling artifacts
-    // on mobile devices where zoom is < 1.
-    this.textures.get('grid32').setFilter(Phaser.Textures.FilterMode.LINEAR);
+    // NOT: zemin dokularina (terrain_1..8, terrain_1x4, terrain_2x4)
+    // BILEREK setFilter() cagrilmaz.
+    // 2048x2048 POT olduklari icin Phaser bunlara game config'teki
+    // mipmapFilter'i uygular; setFilter min filter'i LINEAR'a dusurup mipmap
+    // zincirini devre disi birakirdi (bkz. render/Terrain.js → preload).
 
     this.scene.start('Game');
   }
@@ -72,42 +79,6 @@ function makeSolid(scene, key, w, h, color) {
   g.fillStyle(color, 1);
   g.fillRect(0, 0, w, h);
   g.generateTexture(key, w, h);
-  g.destroy();
-}
-
-function makeNeonSquareGrid(scene, key, size) {
-  const squareLineColor = 0xc2cad5;
-  const backgroundColor = VOID_BACKGROUND_COLOR;
-  const gridCellSize = 64; // 256x256 pixel squares
-  const strokeWidth = 1; // Thin lines
-  const lineOpacity = 0.2; // 40% opacity for rgba(194, 202, 173, 0.4)
-
-  const g = scene.make.graphics({ x: 0, y: 0, add: false });
-
-  // Dark background
-  g.fillStyle(backgroundColor, 1);
-  g.fillRect(0, 0, size, size);
-
-  // Purple grid lines with rgba opacity
-  g.lineStyle(strokeWidth, squareLineColor, lineOpacity);
-
-  // Vertical lines
-  for (let x = 0; x <= size; x += gridCellSize) {
-    g.beginPath();
-    g.moveTo(x, 0);
-    g.lineTo(x, size);
-    g.strokePath();
-  }
-
-  // Horizontal lines
-  for (let y = 0; y <= size; y += gridCellSize) {
-    g.beginPath();
-    g.moveTo(0, y);
-    g.lineTo(size, y);
-    g.strokePath();
-  }
-
-  g.generateTexture(key, size, size);
   g.destroy();
 }
 
