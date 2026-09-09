@@ -172,6 +172,12 @@ export class Snake {
         // minimumu ~1.28 iken yılanı yarı boyutta çizip boyut asimetrisi
         // yaratıyordu; sonraki paketler zaten sunucu scale'ini uygular.)
         this.scale = Snake.calculateScaleFromSegmentCount(this.sct);
+        // M01 — SUNUCUDAN gelen son kanonik olcek. NaN = "sunucu olcegi henuz
+        // alinmadi"; NaN !== NaN oldugu icin ilk gercek deger daima uygulanir.
+        // Yukaridaki this.scale yalnizca YEREL bir baslangic tahminidir ve
+        // buraya YAZILMAZ — aksi halde sunucunun ayni degeri gonderdigi ilk
+        // paket "degismedi" sayilip gorsel baglama hic kurulmazdi.
+        this._canonicalScale = NaN;
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
@@ -1825,13 +1831,40 @@ export class Snake {
         return { x: tail.x, y: tail.y, angle: this.head.rotation };
     }
 
+    /**
+     * M01 — ScaleGuard: otoriter olcegin TEK uygulama noktasi.
+     *
+     * DEGISMEMISSE HICBIR SEY YAPILMAZ. Bu bir mikro-optimizasyon degil,
+     * tasarimin GEREGIDIR: sunucu donen keyframe'de degismemis degerleri
+     * KASITLI olarak yeniden gonderir (kacirilmis gecersizlestirmeyi onarmak
+     * icin). Guard olmasaydi keyframe, M01'in ortadan kaldirmak icin var
+     * oldugu sprite-transform maliyetini geri getirirdi.
+     *
+     * KARSILASTIRMA `_canonicalScale` UZERINDEN, `this.scale` UZERINDEN DEGIL:
+     * this.scale'i baska yollar da yazar (kurucu, buyume, hardResync), oysa
+     * _canonicalScale yalnizca SUNUCUDAN gelen son degeri tutar. Karsilastirma
+     * TAM esitliktir — epsilon YOK: olcek adimlari ~1/106'dir ve bir epsilon,
+     * formul ileride daha ince adimlara ayarlanirsa mesru degisiklikleri
+     * gizlerdi.
+     *
+     * NOT: yalnizca AG kaynakli olcek gecisini eler. Buyume/cokus animasyonu
+     * (_updateSegmentLifecycle) ve yeni sprite baslatma (_acquireSegmentSprite)
+     * AYRI cagri noktalaridir ve kare kare calismaya DEVAM eder.
+     */
+    applyCanonicalScale(canonical) {
+        if (!Number.isFinite(canonical) || canonical <= 0) return;
+        if (canonical === this._canonicalScale) return;   // keyframe / tekrar
+        this._canonicalScale = canonical;
+        this.scale = canonical;
+        this._updateSegmentScaling();
+    }
+
     updateFromServerState(entityData) {
         if (this.isPlayerControlled) return;
 
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
         const rawAngle = Number(entityData?.angle);
-        const scaleVal = Number(entityData?.scale);
 
         if (Number.isFinite(x)) {
             this.networkTarget.x = x;
@@ -1842,10 +1875,10 @@ export class Snake {
         if (Number.isFinite(rawAngle)) {
             this.networkTarget.angle = this._decodeServerAngle(rawAngle);
         }
-        if (Number.isFinite(scaleVal) && scaleVal > 0) {
-            this.scale = scaleVal;
-            this._updateSegmentScaling();
-        }
+        // M01: olcek ARTIK BURADA UYGULANMAZ — seyrek kanaldan gelir ve
+        // applyCanonicalScale (ScaleGuard) uzerinden gecer. Eski kod, sunucu
+        // olcegi her tick kosulsuz gonderdigi icin uzak yilan basina TUM cizili
+        // segment sprite'larinin transformunu 60 Hz'de yeniden yaziyordu.
 
         // ── Ring buffer besleme ─────────────────────────────────────────
         // Paket doğrudan sprite'a UYGULANMAZ; damgalanıp tampona yazılır.
@@ -2025,13 +2058,12 @@ export class Snake {
     updateSelfPositionFromServer(entityData) {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
-        const scaleVal = Number(entityData?.scale);
         const serverSeqId = Number(entityData?.lastProcessedSequenceId ?? entityData?.last_processed_sequence_id);
 
-        if (Number.isFinite(scaleVal) && scaleVal > 0) {
-            this.scale = scaleVal;
-            this._updateSegmentScaling();
-        }
+        // M01: olcek ARTIK BURADA UYGULANMAZ. SelfPosition.scale `optional`
+        // oldugu icin varlik kontrolu cagiranda yapilir ve deger tek kapidan
+        // (Game.applyAuthoritativeScale -> applyCanonicalScale) gecer.
+        // Eski kod her tick kosulsuz _updateSegmentScaling() cagiriyordu.
 
         // ── İLK OTORİTER KARE: LERP YOK, IŞINLA ─────────────────────────────
         // Baseline kurulup çıkılır; bu karede hata ÖLÇÜLMEZ (ölçecek geçmiş

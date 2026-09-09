@@ -1175,6 +1175,109 @@ export namespace server {
         public static getTypeUrl(typeUrlPrefix?: string): string;
     }
 
+    /** Properties of a ScaleUpdates. */
+    interface IScaleUpdates {
+
+        /** ScaleUpdates entityIds */
+        entityIds?: (number[]|null);
+
+        /** ScaleUpdates scales */
+        scales?: (number[]|null);
+    }
+
+    /** Represents a ScaleUpdates. */
+    class ScaleUpdates implements IScaleUpdates {
+
+        /**
+         * Constructs a new ScaleUpdates.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.IScaleUpdates);
+
+        /** ScaleUpdates entityIds. */
+        public entityIds: number[];
+
+        /** ScaleUpdates scales. */
+        public scales: number[];
+
+        /**
+         * Creates a new ScaleUpdates instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns ScaleUpdates instance
+         */
+        public static create(properties?: server.IScaleUpdates): server.ScaleUpdates;
+
+        /**
+         * Encodes the specified ScaleUpdates message. Does not implicitly {@link server.ScaleUpdates.verify|verify} messages.
+         * @param message ScaleUpdates message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.IScaleUpdates, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified ScaleUpdates message, length delimited. Does not implicitly {@link server.ScaleUpdates.verify|verify} messages.
+         * @param message ScaleUpdates message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.IScaleUpdates, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a ScaleUpdates message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns ScaleUpdates
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.ScaleUpdates;
+
+        /**
+         * Decodes a ScaleUpdates message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns ScaleUpdates
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.ScaleUpdates;
+
+        /**
+         * Verifies a ScaleUpdates message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a ScaleUpdates message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns ScaleUpdates
+         */
+        public static fromObject(object: { [k: string]: any }): server.ScaleUpdates;
+
+        /**
+         * Creates a plain object from a ScaleUpdates message. Also converts values to other types if specified.
+         * @param message ScaleUpdates
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.ScaleUpdates, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this ScaleUpdates to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for ScaleUpdates
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
     /** Properties of an EntityCollection. */
     interface IEntityCollection {
 
@@ -1204,6 +1307,9 @@ export namespace server {
 
         /** EntityCollection invulnerableEntityIds */
         invulnerableEntityIds?: (number[]|null);
+
+        /** EntityCollection scaleUpdates */
+        scaleUpdates?: (server.IScaleUpdates|null);
     }
 
     /** Represents an EntityCollection. */
@@ -1241,6 +1347,9 @@ export namespace server {
 
         /** EntityCollection invulnerableEntityIds. */
         public invulnerableEntityIds: number[];
+
+        /** EntityCollection scaleUpdates. */
+        public scaleUpdates?: (server.IScaleUpdates|null);
 
         /**
          * Creates a new EntityCollection instance using the specified properties.
@@ -1485,7 +1594,7 @@ export namespace server {
         public y: number;
 
         /** SelfPosition scale. */
-        public scale: number;
+        public scale?: (number|null);
 
         /** SelfPosition lastProcessedSequenceId. */
         public lastProcessedSequenceId: number;
@@ -1495,6 +1604,9 @@ export namespace server {
 
         /** SelfPosition invulnerable. */
         public invulnerable: boolean;
+
+        /** SelfPosition _scale. */
+        public _scale?: "scale";
 
         /**
          * Creates a new SelfPosition instance using the specified properties.

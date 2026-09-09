@@ -3014,6 +3014,283 @@ export const server = $root.server = (() => {
         return UpdateEntity;
     })();
 
+    server.ScaleUpdates = (function() {
+
+        /**
+         * Properties of a ScaleUpdates.
+         * @memberof server
+         * @interface IScaleUpdates
+         * @property {Array.<number>|null} [entityIds] ScaleUpdates entityIds
+         * @property {Array.<number>|null} [scales] ScaleUpdates scales
+         */
+
+        /**
+         * Constructs a new ScaleUpdates.
+         * @memberof server
+         * @classdesc Represents a ScaleUpdates.
+         * @implements IScaleUpdates
+         * @constructor
+         * @param {server.IScaleUpdates=} [properties] Properties to set
+         */
+        function ScaleUpdates(properties) {
+            this.entityIds = [];
+            this.scales = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * ScaleUpdates entityIds.
+         * @member {Array.<number>} entityIds
+         * @memberof server.ScaleUpdates
+         * @instance
+         */
+        ScaleUpdates.prototype.entityIds = $util.emptyArray;
+
+        /**
+         * ScaleUpdates scales.
+         * @member {Array.<number>} scales
+         * @memberof server.ScaleUpdates
+         * @instance
+         */
+        ScaleUpdates.prototype.scales = $util.emptyArray;
+
+        /**
+         * Creates a new ScaleUpdates instance using the specified properties.
+         * @function create
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {server.IScaleUpdates=} [properties] Properties to set
+         * @returns {server.ScaleUpdates} ScaleUpdates instance
+         */
+        ScaleUpdates.create = function create(properties) {
+            return new ScaleUpdates(properties);
+        };
+
+        /**
+         * Encodes the specified ScaleUpdates message. Does not implicitly {@link server.ScaleUpdates.verify|verify} messages.
+         * @function encode
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {server.IScaleUpdates} message ScaleUpdates message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        ScaleUpdates.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.entityIds != null && message.entityIds.length) {
+                writer.uint32(/* id 1, wireType 2 =*/10).fork();
+                for (let i = 0; i < message.entityIds.length; ++i)
+                    writer.uint32(message.entityIds[i]);
+                writer.ldelim();
+            }
+            if (message.scales != null && message.scales.length) {
+                writer.uint32(/* id 2, wireType 2 =*/18).fork();
+                for (let i = 0; i < message.scales.length; ++i)
+                    writer.float(message.scales[i]);
+                writer.ldelim();
+            }
+            return writer;
+        };
+
+        /**
+         * Encodes the specified ScaleUpdates message, length delimited. Does not implicitly {@link server.ScaleUpdates.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {server.IScaleUpdates} message ScaleUpdates message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        ScaleUpdates.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a ScaleUpdates message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.ScaleUpdates} ScaleUpdates
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        ScaleUpdates.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.ScaleUpdates();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        if (!(message.entityIds && message.entityIds.length))
+                            message.entityIds = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.entityIds.push(reader.uint32());
+                        } else
+                            message.entityIds.push(reader.uint32());
+                        break;
+                    }
+                case 2: {
+                        if (!(message.scales && message.scales.length))
+                            message.scales = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.scales.push(reader.float());
+                        } else
+                            message.scales.push(reader.float());
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a ScaleUpdates message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.ScaleUpdates} ScaleUpdates
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        ScaleUpdates.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a ScaleUpdates message.
+         * @function verify
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        ScaleUpdates.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.entityIds != null && message.hasOwnProperty("entityIds")) {
+                if (!Array.isArray(message.entityIds))
+                    return "entityIds: array expected";
+                for (let i = 0; i < message.entityIds.length; ++i)
+                    if (!$util.isInteger(message.entityIds[i]))
+                        return "entityIds: integer[] expected";
+            }
+            if (message.scales != null && message.hasOwnProperty("scales")) {
+                if (!Array.isArray(message.scales))
+                    return "scales: array expected";
+                for (let i = 0; i < message.scales.length; ++i)
+                    if (typeof message.scales[i] !== "number")
+                        return "scales: number[] expected";
+            }
+            return null;
+        };
+
+        /**
+         * Creates a ScaleUpdates message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.ScaleUpdates} ScaleUpdates
+         */
+        ScaleUpdates.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.ScaleUpdates)
+                return object;
+            let message = new $root.server.ScaleUpdates();
+            if (object.entityIds) {
+                if (!Array.isArray(object.entityIds))
+                    throw TypeError(".server.ScaleUpdates.entityIds: array expected");
+                message.entityIds = [];
+                for (let i = 0; i < object.entityIds.length; ++i)
+                    message.entityIds[i] = object.entityIds[i] >>> 0;
+            }
+            if (object.scales) {
+                if (!Array.isArray(object.scales))
+                    throw TypeError(".server.ScaleUpdates.scales: array expected");
+                message.scales = [];
+                for (let i = 0; i < object.scales.length; ++i)
+                    message.scales[i] = Number(object.scales[i]);
+            }
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a ScaleUpdates message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {server.ScaleUpdates} message ScaleUpdates
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        ScaleUpdates.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.arrays || options.defaults) {
+                object.entityIds = [];
+                object.scales = [];
+            }
+            if (message.entityIds && message.entityIds.length) {
+                object.entityIds = [];
+                for (let j = 0; j < message.entityIds.length; ++j)
+                    object.entityIds[j] = message.entityIds[j];
+            }
+            if (message.scales && message.scales.length) {
+                object.scales = [];
+                for (let j = 0; j < message.scales.length; ++j)
+                    object.scales[j] = options.json && !isFinite(message.scales[j]) ? String(message.scales[j]) : message.scales[j];
+            }
+            return object;
+        };
+
+        /**
+         * Converts this ScaleUpdates to JSON.
+         * @function toJSON
+         * @memberof server.ScaleUpdates
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        ScaleUpdates.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for ScaleUpdates
+         * @function getTypeUrl
+         * @memberof server.ScaleUpdates
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        ScaleUpdates.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.ScaleUpdates";
+        };
+
+        return ScaleUpdates;
+    })();
+
     server.EntityCollection = (function() {
 
         /**
@@ -3029,6 +3306,7 @@ export const server = $root.server = (() => {
          * @property {Array.<number>|null} [scales] EntityCollection scales
          * @property {Array.<string>|null} [fullyDataNicknames] EntityCollection fullyDataNicknames
          * @property {Array.<number>|null} [invulnerableEntityIds] EntityCollection invulnerableEntityIds
+         * @property {server.IScaleUpdates|null} [scaleUpdates] EntityCollection scaleUpdates
          */
 
         /**
@@ -3128,6 +3406,14 @@ export const server = $root.server = (() => {
         EntityCollection.prototype.invulnerableEntityIds = $util.emptyArray;
 
         /**
+         * EntityCollection scaleUpdates.
+         * @member {server.IScaleUpdates|null|undefined} scaleUpdates
+         * @memberof server.EntityCollection
+         * @instance
+         */
+        EntityCollection.prototype.scaleUpdates = null;
+
+        /**
          * Creates a new EntityCollection instance using the specified properties.
          * @function create
          * @memberof server.EntityCollection
@@ -3202,6 +3488,8 @@ export const server = $root.server = (() => {
                     writer.uint32(message.invulnerableEntityIds[i]);
                 writer.ldelim();
             }
+            if (message.scaleUpdates != null && Object.hasOwnProperty.call(message, "scaleUpdates"))
+                $root.server.ScaleUpdates.encode(message.scaleUpdates, writer.uint32(/* id 10, wireType 2 =*/82).fork()).ldelim();
             return writer;
         };
 
@@ -3332,6 +3620,10 @@ export const server = $root.server = (() => {
                             message.invulnerableEntityIds.push(reader.uint32());
                         break;
                     }
+                case 10: {
+                        message.scaleUpdates = $root.server.ScaleUpdates.decode(reader, reader.uint32());
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -3430,6 +3722,11 @@ export const server = $root.server = (() => {
                     if (!$util.isInteger(message.invulnerableEntityIds[i]))
                         return "invulnerableEntityIds: integer[] expected";
             }
+            if (message.scaleUpdates != null && message.hasOwnProperty("scaleUpdates")) {
+                let error = $root.server.ScaleUpdates.verify(message.scaleUpdates);
+                if (error)
+                    return "scaleUpdates." + error;
+            }
             return null;
         };
 
@@ -3508,6 +3805,11 @@ export const server = $root.server = (() => {
                 for (let i = 0; i < object.invulnerableEntityIds.length; ++i)
                     message.invulnerableEntityIds[i] = object.invulnerableEntityIds[i] >>> 0;
             }
+            if (object.scaleUpdates != null) {
+                if (typeof object.scaleUpdates !== "object")
+                    throw TypeError(".server.EntityCollection.scaleUpdates: object expected");
+                message.scaleUpdates = $root.server.ScaleUpdates.fromObject(object.scaleUpdates);
+            }
             return message;
         };
 
@@ -3535,6 +3837,8 @@ export const server = $root.server = (() => {
                 object.fullyDataNicknames = [];
                 object.invulnerableEntityIds = [];
             }
+            if (options.defaults)
+                object.scaleUpdates = null;
             if (message.entityIds && message.entityIds.length) {
                 object.entityIds = [];
                 for (let j = 0; j < message.entityIds.length; ++j)
@@ -3580,6 +3884,8 @@ export const server = $root.server = (() => {
                 for (let j = 0; j < message.invulnerableEntityIds.length; ++j)
                     object.invulnerableEntityIds[j] = message.invulnerableEntityIds[j];
             }
+            if (message.scaleUpdates != null && message.hasOwnProperty("scaleUpdates"))
+                object.scaleUpdates = $root.server.ScaleUpdates.toObject(message.scaleUpdates, options);
             return object;
         };
 
@@ -3966,11 +4272,11 @@ export const server = $root.server = (() => {
 
         /**
          * SelfPosition scale.
-         * @member {number} scale
+         * @member {number|null|undefined} scale
          * @memberof server.SelfPosition
          * @instance
          */
-        SelfPosition.prototype.scale = 0;
+        SelfPosition.prototype.scale = null;
 
         /**
          * SelfPosition lastProcessedSequenceId.
@@ -3995,6 +4301,20 @@ export const server = $root.server = (() => {
          * @instance
          */
         SelfPosition.prototype.invulnerable = false;
+
+        // OneOf field names bound to virtual getters and setters
+        let $oneOfFields;
+
+        /**
+         * SelfPosition _scale.
+         * @member {"scale"|undefined} _scale
+         * @memberof server.SelfPosition
+         * @instance
+         */
+        Object.defineProperty(SelfPosition.prototype, "_scale", {
+            get: $util.oneOfGetter($oneOfFields = ["scale"]),
+            set: $util.oneOfSetter($oneOfFields)
+        });
 
         /**
          * Creates a new SelfPosition instance using the specified properties.
@@ -4133,6 +4453,7 @@ export const server = $root.server = (() => {
         SelfPosition.verify = function verify(message) {
             if (typeof message !== "object" || message === null)
                 return "object expected";
+            let properties = {};
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 if (!$util.isInteger(message.entityId))
                     return "entityId: integer expected";
@@ -4142,9 +4463,11 @@ export const server = $root.server = (() => {
             if (message.y != null && message.hasOwnProperty("y"))
                 if (typeof message.y !== "number")
                     return "y: number expected";
-            if (message.scale != null && message.hasOwnProperty("scale"))
+            if (message.scale != null && message.hasOwnProperty("scale")) {
+                properties._scale = 1;
                 if (typeof message.scale !== "number")
                     return "scale: number expected";
+            }
             if (message.lastProcessedSequenceId != null && message.hasOwnProperty("lastProcessedSequenceId"))
                 if (!$util.isInteger(message.lastProcessedSequenceId))
                     return "lastProcessedSequenceId: integer expected";
@@ -4203,7 +4526,6 @@ export const server = $root.server = (() => {
                 object.entityId = 0;
                 object.x = 0;
                 object.y = 0;
-                object.scale = 0;
                 object.lastProcessedSequenceId = 0;
                 object.totalScore = 0;
                 object.invulnerable = false;
@@ -4214,8 +4536,11 @@ export const server = $root.server = (() => {
                 object.x = options.json && !isFinite(message.x) ? String(message.x) : message.x;
             if (message.y != null && message.hasOwnProperty("y"))
                 object.y = options.json && !isFinite(message.y) ? String(message.y) : message.y;
-            if (message.scale != null && message.hasOwnProperty("scale"))
+            if (message.scale != null && message.hasOwnProperty("scale")) {
                 object.scale = options.json && !isFinite(message.scale) ? String(message.scale) : message.scale;
+                if (options.oneofs)
+                    object._scale = "scale";
+            }
             if (message.lastProcessedSequenceId != null && message.hasOwnProperty("lastProcessedSequenceId"))
                 object.lastProcessedSequenceId = message.lastProcessedSequenceId;
             if (message.totalScore != null && message.hasOwnProperty("totalScore"))
