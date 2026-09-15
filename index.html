@@ -459,103 +459,96 @@
             <!-- Minimap is rendered by Phaser (Game.js drawMinimap) — no DOM element. -->
         </div>
 
-        <!-- Settings Modal -->
-        <div id="settings-modal" class="settings-modal hidden">
+        <!-- ══════════════════════════════════════════════════════════════
+             SETTINGS MODAL — reference: LOGIN SCREEN/settings.html
+             Behaviour: src/main.js. The element ids, .settings-group-btn
+             [data-side] and .settings-modal-backdrop are its hooks. Every
+             control persists on change; Save closes, Reset restores defaults.
+             ══════════════════════════════════════════════════════════════ -->
+        <div id="settings-modal" class="settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <div class="settings-modal-backdrop"></div>
-            <div class="settings-card">
-                <!-- Header -->
-                <div class="settings-header">
-                    <div class="settings-header-title">
-                        <span class="material-symbols-outlined">tune</span>
-                        <h2>GAME SETTINGS</h2>
-                    </div>
-                    <button id="settings-modal-close-btn" class="settings-close-btn" aria-label="Close">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
-                </div>
+            <section class="settings-card">
+                <button id="settings-modal-close-btn" class="settings-close-btn" type="button" aria-label="Close settings">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+
+                <header class="settings-header">
+                    <h2 id="settings-title" class="settings-title">Settings</h2>
+                </header>
 
                 <!-- Scrollable Body -->
                 <div class="settings-body">
-                    <!-- DISPLAY Section -->
-                    <section>
-                        <h3 class="settings-section-title">Display Settings</h3>
-                        <div class="settings-options">
-                            <div class="settings-option">
-                                <div class="settings-option-label">Show FPS</div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="show-fps-toggle" />
-                                    <span class="settings-slider"></span>
-                                </label>
-                            </div>
-                            <div class="settings-option">
-                                <div class="settings-option-label">Show Ping</div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="show-ping-toggle" />
-                                    <span class="settings-slider"></span>
-                                </label>
-                            </div>
-                        </div>
-                    </section>
+                    <!-- DISPLAY -->
+                    <fieldset class="settings-group">
+                        <legend class="settings-section-title">Display Settings</legend>
 
-                    <!-- AUDIO Section -->
-                    <section>
-                        <h3 class="settings-section-title">Audio Settings</h3>
-                        <div class="settings-options">
-                            <div class="settings-slider-group">
-                                <div class="settings-slider-header">
-                                    <span>Master Volume</span>
-                                    <span id="master-volume-display" class="settings-value">85%</span>
-                                </div>
-                                <input id="master-volume-slider" class="settings-range" type="range" min="0" max="100" value="85" />
-                            </div>
-                            <div class="settings-slider-group">
-                                <div class="settings-slider-header">
-                                    <span>SFX Volume</span>
-                                    <span id="sfx-volume-display" class="settings-value">60%</span>
-                                </div>
-                                <input id="sfx-volume-slider" class="settings-range" type="range" min="0" max="100" value="60" />
-                            </div>
+                        <div class="settings-row">
+                            <span id="show-fps-label" class="settings-row-label">Show FPS</span>
+                            <label class="settings-switch">
+                                <input type="checkbox" id="show-fps-toggle" role="switch" aria-labelledby="show-fps-label" />
+                                <span class="settings-switch-track" aria-hidden="true"></span>
+                            </label>
                         </div>
-                    </section>
 
-                    <!-- MOBILE CONTROLS Section -->
-                    <section>
-                        <h3 class="settings-section-title">Mobile Controls</h3>
-                        <div class="settings-options">
-                            <div class="settings-joystick">
-                                <div class="settings-option-label">Joystick Side</div>
-                                <div class="settings-button-group">
-                                    <button class="settings-group-btn active" data-side="left">Left</button>
-                                    <button class="settings-group-btn" data-side="right">Right</button>
-                                </div>
-                            </div>
-                            <div class="settings-slider-group">
-                                <div class="settings-slider-header">
-                                    <span>Control Size</span>
-                                    <span id="control-size-display" class="settings-value">110%</span>
-                                </div>
-                                <input id="control-size-slider" class="settings-range" type="range" min="50" max="150" value="110" />
-                            </div>
-                            <div class="settings-slider-group">
-                                <div class="settings-slider-header">
-                                    <span>Opacity</span>
-                                    <span id="opacity-display" class="settings-value">75%</span>
-                                </div>
-                                <input id="opacity-slider" class="settings-range" type="range" min="10" max="100" value="75" />
+                        <div class="settings-row">
+                            <span id="show-ping-label" class="settings-row-label">Show Ping</span>
+                            <label class="settings-switch">
+                                <input type="checkbox" id="show-ping-toggle" role="switch" aria-labelledby="show-ping-label" />
+                                <span class="settings-switch-track" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <!-- AUDIO -->
+                    <fieldset class="settings-group">
+                        <legend class="settings-section-title">Audio Settings</legend>
+
+                        <div class="settings-row settings-row-range">
+                            <label class="settings-row-label" for="master-volume-slider">Master Volume</label>
+                            <input id="master-volume-slider" class="settings-range" type="range" min="0" max="100" value="85" style="--fill: 85%" />
+                            <span id="master-volume-display" class="settings-value" aria-hidden="true">85%</span>
+                        </div>
+
+                        <div class="settings-row settings-row-range">
+                            <label class="settings-row-label" for="sfx-volume-slider">SFX Volume</label>
+                            <input id="sfx-volume-slider" class="settings-range" type="range" min="0" max="100" value="60" style="--fill: 60%" />
+                            <span id="sfx-volume-display" class="settings-value" aria-hidden="true">60%</span>
+                        </div>
+                    </fieldset>
+
+                    <!-- MOBILE CONTROLS -->
+                    <fieldset class="settings-group">
+                        <legend class="settings-section-title">Mobile Controls</legend>
+
+                        <div class="settings-row">
+                            <span id="joystick-side-label" class="settings-row-label">Joystick Side</span>
+                            <div class="settings-button-group" role="group" aria-labelledby="joystick-side-label">
+                                <button class="settings-group-btn active" type="button" data-side="left">Left</button>
+                                <button class="settings-group-btn" type="button" data-side="right">Right</button>
                             </div>
                         </div>
-                    </section>
+
+                        <div class="settings-row settings-row-range">
+                            <label class="settings-row-label" for="control-size-slider">Control Size</label>
+                            <input id="control-size-slider" class="settings-range" type="range" min="50" max="150" value="110" style="--fill: 60%" />
+                            <span id="control-size-display" class="settings-value" aria-hidden="true">110%</span>
+                        </div>
+
+                        <div class="settings-row settings-row-range">
+                            <label class="settings-row-label" for="opacity-slider">Opacity</label>
+                            <input id="opacity-slider" class="settings-range" type="range" min="10" max="100" value="75" style="--fill: 72.2%" />
+                            <span id="opacity-display" class="settings-value" aria-hidden="true">75%</span>
+                        </div>
+                    </fieldset>
                 </div>
 
-                <!-- Footer -->
-                <div class="settings-footer">
-                    <button id="settings-save-btn" class="settings-save-btn">Save Changes</button>
-                    <button id="settings-reset-btn" class="settings-reset-btn">Reset</button>
-                </div>
-            </div>
+                <footer class="settings-footer">
+                    <button id="settings-save-btn" class="settings-save-btn" type="button">Save Changes</button>
+                    <button id="settings-reset-btn" class="settings-reset-btn" type="button">Reset</button>
+                </footer>
+            </section>
         </div>
     </div>
     <script type="module" src="src/main.js"></script>

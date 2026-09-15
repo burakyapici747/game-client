@@ -321,6 +321,7 @@ button {
 .ui-layer button,
 .side-panel button,
 .servers-modal button,
+.settings-modal button,
 .auth-overlay button {
     font-family: var(--font-menu);
 }
@@ -1673,7 +1674,8 @@ button {
 }
 
 /* ═══════════════════════════════════════════════
-   SETTINGS MODAL (reference: settings.html)
+   SETTINGS MODAL (reference: LOGIN SCREEN/settings.html)
+   Behaviour: src/main.js. Palette: :root --menu-* / --play-* / --ping-*.
    ═══════════════════════════════════════════════ */
 
 .settings-modal {
@@ -1683,7 +1685,9 @@ button {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: clamp(12px, 3vw, 24px);
+    font-family: var(--font-menu);
+    color: var(--menu-text);
     visibility: visible;
     opacity: 1;
     transition: var(--transition-fast);
@@ -1698,325 +1702,534 @@ button {
 .settings-modal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(26, 6, 59, 0.8);
-    backdrop-filter: blur(4px);
+    background: rgba(8, 51, 103, 0.45);         /* --sea-dark */
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
 }
 
 .settings-card {
     position: relative;
     width: 100%;
-    max-width: 500px;
+    max-width: 490px;
+    /* Header and footer stay put; only the body scrolls on short screens. */
+    max-height: calc(100vh - 2 * clamp(12px, 3vw, 24px));
+    max-height: calc(100dvh - 2 * clamp(12px, 3vw, 24px));
     display: flex;
     flex-direction: column;
-    background: #271448;
-    border: 1px solid rgba(61, 43, 94, 0.5);
-    border-radius: 28px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 32px rgba(26, 15, 46, 0.6);
-    overflow: hidden;
+    padding: 24px clamp(20px, 4vw, 28px) clamp(20px, 4vw, 28px);
+    background: linear-gradient(180deg, var(--sea-light) 0%, var(--menu-surface-highest) 28%, var(--menu-surface-high) 72%, var(--menu-surface) 100%);
+    border: 2.5px solid rgba(255, 255, 255, 0.6);
+    border-radius: 38px;
+    box-shadow:
+        0 25px 50px -12px rgba(8, 51, 103, 0.75),
+        inset 0 3px 6px rgba(255, 255, 255, 0.7),
+        inset 0 -8px 16px rgba(8, 51, 103, 0.6);
+    transition: transform 0.2s ease;
+}
+
+.settings-modal.hidden .settings-card {
+    transform: scale(0.96);
+}
+
+/* Glossy inner highlight along the top edge. */
+.settings-card::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 32px;
+    right: 32px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.4);
+    filter: blur(1px);
+    pointer-events: none;
+}
+
+/* Red 3D close button hanging off the top-right corner. */
+.settings-close-btn {
+    position: absolute;
+    top: -14px;
+    right: -14px;
+    z-index: 2;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    color: var(--menu-text);
+    background: var(--ping-bad);
+    border: 2px solid var(--menu-text);
+    border-radius: 50%;
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 6px 10px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.45);
+    transition: transform 0.12s ease, filter 0.15s ease, box-shadow 0.12s ease;
+}
+
+.settings-close-btn svg {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+.settings-close-btn:hover {
+    filter: brightness(1.1);
+}
+
+.settings-close-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 3px 5px rgba(0, 0, 0, 0.3);
 }
 
 .settings-header {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 24px;
-    background: rgba(50, 32, 83, 0.5);
-    border-bottom: 1px solid rgba(61, 43, 94, 0.3);
+    flex-shrink: 0;
+    margin: 4px 0 20px;
+    text-align: center;
 }
 
-.settings-header-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.settings-header-title .material-symbols-outlined {
-    color: #b7f700;
-    font-size: 24px;
-}
-
-.settings-header-title h2 {
+.settings-title {
     margin: 0;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #ebddff;
-    letter-spacing: 1px;
+    font-size: clamp(1.9rem, 1vw + 1.5rem, 2.125rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--menu-text);
+    text-shadow: 0 3px 2px rgba(8, 51, 103, 0.85);
 }
 
-.settings-close-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: transparent;
-    color: #c2b8d9;
-    border: none;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.settings-close-btn:hover {
-    background: #322053;
-    color: #ebddff;
+/* White underline bar beneath the title. */
+.settings-title::after {
+    content: '';
+    display: block;
+    width: 112px;
+    height: 6px;
+    margin: 6px auto 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.25);
 }
 
 .settings-body {
-    padding: 24px;
-    max-height: 60vh;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-}
-
-.settings-body::-webkit-scrollbar {
-    width: 6px;
-}
-
-.settings-body::-webkit-scrollbar-track {
-    background: #150136;
-    border-radius: 8px;
-}
-
-.settings-body::-webkit-scrollbar-thumb {
-    background: #3d2b5e;
-    border-radius: 8px;
-}
-
-.settings-body::-webkit-scrollbar-thumb:hover {
-    background: #412f63;
-}
-
-.settings-section-title {
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #b7f700;
-    margin: 0 0 16px 0;
-}
-
-.settings-options {
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    /* Room for the rows' inset shadows and focus rings at the scroll edge. */
+    margin: 0 -6px;
+    padding: 2px 6px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
 }
 
-.settings-option {
+.settings-body::-webkit-scrollbar { width: 6px; }
+.settings-body::-webkit-scrollbar-track { background: transparent; }
+.settings-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.45); border-radius: 8px; }
+
+.settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.settings-section-title {
+    margin: 0 0 8px;
+    padding: 0 0 0 4px;
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--menu-text-soft);
+    text-shadow: 0 1px 1px rgba(8, 51, 103, 0.6);
+}
+
+/* One dark inset pill per control (reference row). */
+.settings-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    min-height: 48px;
+    padding: 4px 8px 4px 18px;
+    background: rgba(14, 46, 82, 0.72);         /* --menu-surface-lowest */
+    border: 1px solid rgba(54, 136, 208, 0.5);  /* --menu-bright */
+    border-radius: 999px;
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(255, 255, 255, 0.2);
+    transition: background 0.15s ease;
 }
 
-.settings-option-label {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: #ebddff;
+.settings-row:hover {
+    background: rgba(14, 46, 82, 0.85);
 }
 
-/* Toggle Switch */
+.settings-row-label {
+    padding-top: 2px;                           /* Baloo 2 sits high in its line box */
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    color: var(--menu-text);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+.settings-row-range {
+    padding-right: 18px;
+}
+
+.settings-row-range .settings-row-label {
+    flex: 0 0 auto;
+    min-width: 7.25rem;
+}
+
+/* ── Toggle switch — native checkbox kept for main.js 'change' + a11y ── */
 .settings-switch {
     position: relative;
+    flex-shrink: 0;
     display: inline-block;
-    width: 52px;
+    width: 56px;
     height: 28px;
+    margin-right: 6px;
+    cursor: pointer;
+}
+
+/* Invisible hit area: the 28px switch still gets a 44px touch target. */
+.settings-switch::after {
+    content: '';
+    position: absolute;
+    inset: -8px -6px;
 }
 
 .settings-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.settings-slider {
     position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #322053;
-    transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 34px;
-}
-
-.settings-slider:before {
-    position: absolute;
-    content: "";
-    height: 20px;
-    width: 20px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 50%;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-input:checked + .settings-slider {
-    background-color: #b7f700;
-}
-
-input:checked + .settings-slider:before {
-    transform: translateX(24px);
-    background-color: #506e00;
-}
-
-/* Range Slider */
-.settings-slider-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.settings-slider-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.95rem;
-}
-
-.settings-slider-header span:first-child {
-    color: #ebddff;
-    font-weight: 600;
-}
-
-.settings-value {
-    color: #b7f700;
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-}
-
-.settings-range {
+    inset: 0;
+    z-index: 1;
     width: 100%;
-    height: 4px;
-    border-radius: 2px;
-    background: #150136;
-    outline: none;
-    accent-color: #b7f700;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
     cursor: pointer;
+}
+
+.settings-switch-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: var(--ping-offline);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    transition: background 0.2s ease;
+}
+
+.settings-switch-track::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, var(--menu-text) 0%, var(--menu-text-soft) 100%);
+    border: 1px solid var(--menu-text);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease-in-out;
+}
+
+.settings-switch input:checked + .settings-switch-track {
+    background: var(--play-mid);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.settings-switch input:checked + .settings-switch-track::before {
+    transform: translateX(28px);
+}
+
+.settings-switch input:focus-visible + .settings-switch-track {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
+}
+
+/* ── Range slider — the filled part comes from --fill (set in main.js) ── */
+.settings-range {
+    --fill: 50%;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 28px;
+    margin: 0;
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+
+.settings-range:focus {
+    outline: none;
+}
+
+.settings-range::-webkit-slider-runnable-track {
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--play-mid) 0%, var(--menu-accent) var(--fill), var(--ping-offline) var(--fill));
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.settings-range::-moz-range-track {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--ping-offline);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.settings-range::-moz-range-progress {
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--play-mid), var(--menu-accent));
 }
 
 .settings-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
     appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
+    margin-top: -5px;
     border-radius: 50%;
-    background: #b7f700;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(183, 247, 0, 0.3);
+    background: linear-gradient(180deg, var(--menu-text) 0%, var(--menu-text-soft) 100%);
+    border: 2px solid var(--menu-text-muted);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+    transition: transform 0.1s ease;
 }
 
 .settings-range::-moz-range-thumb {
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #b7f700;
-    cursor: pointer;
-    border: none;
-    box-shadow: 0 2px 8px rgba(183, 247, 0, 0.3);
+    background: linear-gradient(180deg, var(--menu-text) 0%, var(--menu-text-soft) 100%);
+    border: 2px solid var(--menu-text-muted);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
 }
 
-/* Button Group */
-.settings-joystick {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+.settings-range:hover::-webkit-slider-thumb,
+.settings-range:active::-webkit-slider-thumb {
+    transform: scale(1.15);
 }
 
+.settings-range:focus-visible::-webkit-slider-thumb {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
+}
+
+.settings-range:focus-visible::-moz-range-thumb {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
+}
+
+.settings-value {
+    flex: 0 0 3.25rem;
+    padding-top: 2px;
+    text-align: right;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-text);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Segmented LEFT / RIGHT selector ── */
 .settings-button-group {
     display: flex;
-    gap: 8px;
-    background: #150136;
-    border-radius: 999px;
-    padding: 4px;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 6px;
 }
 
 .settings-group-btn {
-    flex: 1;
-    padding: 8px 16px;
-    border-radius: 999px;
-    border: none;
+    min-width: 64px;
+    height: 34px;
+    padding: 2px 14px 0;
     font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    color: #c2b8d9;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--menu-text-soft);
     background: transparent;
-}
-
-.settings-group-btn.active {
-    background: #b7f700;
-    color: #506e00;
-    box-shadow: 0 2px 8px rgba(183, 247, 0, 0.2);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .settings-group-btn:hover:not(.active) {
-    color: #ebddff;
+    color: var(--menu-text);
+    background: rgba(255, 255, 255, 0.08);
 }
 
-/* Footer */
+.settings-group-btn.active {
+    font-weight: 800;
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 100%);
+    border-color: rgba(184, 255, 75, 0.6);      /* --play-border */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.settings-group-btn:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
+}
+
+/* ── Footer: 3D SAVE CHANGES + RESET ── */
 .settings-footer {
     display: flex;
-    gap: 12px;
-    padding: 16px 24px;
-    border-top: 1px solid rgba(61, 43, 94, 0.3);
-    background: #150136;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 14px;
+    margin-top: 24px;
+}
+
+.settings-save-btn,
+.settings-reset-btn {
+    height: 50px;
+    padding: 3px 16px 0;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--menu-text);
+    border-radius: 999px;
+    transition: transform 0.1s ease, filter 0.15s ease, box-shadow 0.1s ease;
 }
 
 .settings-save-btn {
-    flex: 1;
-    padding: 12px 24px;
-    background: #b7f700;
-    color: #506e00;
-    border: none;
-    border-radius: 999px;
-    font-weight: 700;
-    font-size: 0.9rem;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.12s ease;
-    box-shadow: 0 4px 12px rgba(183, 247, 0, 0.2);
-}
-
-.settings-save-btn:hover {
-    filter: brightness(1.1);
-    transform: scale(1.02);
-    box-shadow: 0 6px 16px rgba(183, 247, 0, 0.3);
-}
-
-.settings-save-btn:active {
-    transform: translateY(1px) scale(0.98);
+    flex: 1 1 auto;
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
+    box-shadow: 0 6px 0 var(--menu-accent-deep), 0 10px 14px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.6);
 }
 
 .settings-reset-btn {
-    padding: 12px 24px;
-    background: transparent;
-    color: #c2b8d9;
-    border: 1px solid #3d2b5e;
-    border-radius: 999px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.15s ease;
+    flex: 0 0 auto;
+    min-width: 7.5rem;
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, var(--menu-surface-lowest) 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
+    box-shadow: 0 6px 0 var(--sea-dark), 0 10px 14px rgba(0, 0, 0, 0.35);
 }
 
+.settings-save-btn:hover,
 .settings-reset-btn:hover {
-    background: #322053;
-    color: #ebddff;
-    border-color: #412f63;
+    filter: brightness(1.08);
 }
 
-/* ─── Responsive: keep panel on-screen on narrow viewports ─── */
-@media (max-width: 380px) {
-    .settings-panel {
-        width: calc(100vw - 48px);
-        right: -8px;
+.settings-save-btn:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 var(--menu-accent-deep), 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.settings-reset-btn:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 var(--sea-dark), 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.settings-save-btn:focus-visible,
+.settings-reset-btn:focus-visible,
+.settings-close-btn:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 3px;
+}
+
+/* ── Mobile (≤768px): full-screen sheet with ≥44px touch targets ── */
+@media (max-width: 768px) {
+    /* Full-screen sheet sits above the fixed fullscreen toggle (55), which
+       would otherwise cover SAVE CHANGES; auth gate (60) stays on top. */
+    .settings-modal {
+        z-index: 56;
+        padding: 0;
+        align-items: stretch;
+    }
+
+    .settings-card {
+        max-width: none;
+        height: 100%;
+        max-height: none;
+        padding:
+            calc(env(safe-area-inset-top, 0px) + 20px)
+            16px
+            calc(env(safe-area-inset-bottom, 0px) + 20px);
+        border: none;
+        border-radius: 0;
+    }
+
+    .settings-card::before { display: none; }
+
+    .settings-close-btn {
+        top: calc(env(safe-area-inset-top, 0px) + 12px);
+        right: 12px;
+    }
+
+    .settings-header { margin-bottom: 16px; }
+    .settings-body { gap: 20px; }
+    .settings-row { min-height: 56px; }
+    .settings-group-btn { height: 44px; min-width: 72px; }
+    .settings-range { height: 44px; }
+    .settings-footer { margin-top: 16px; }
+
+    .settings-save-btn,
+    .settings-reset-btn { height: 52px; }
+}
+
+/* Narrow phones: slider rows stack — label + value on top, full-width track below. */
+@media (max-width: 420px) {
+    .settings-row { padding-left: 16px; }
+
+    .settings-row-range {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "label  value"
+            "slider slider";
+        row-gap: 0;
+        padding: 10px 18px 2px;
+        border-radius: 24px;
+    }
+
+    .settings-row-range .settings-row-label { grid-area: label; min-width: 0; }
+    .settings-row-range .settings-value { grid-area: value; }
+    .settings-row-range .settings-range { grid-area: slider; width: 100%; }
+}
+
+/* Short landscape phones (wider than 768px, so no full-screen sheet):
+   tighten the vertical rhythm — the body scrolls. */
+@media (max-height: 500px) and (min-width: 769px) {
+    .settings-modal { padding: 8px; }
+
+    .settings-card {
+        max-height: calc(100vh - 16px);
+        max-height: calc(100dvh - 16px);
+        padding: 14px 24px 18px;
+        border-radius: 28px;
+    }
+
+    .settings-close-btn { top: 6px; right: 6px; }
+    .settings-header { margin: 0 0 10px; }
+    .settings-title { font-size: 1.5rem; }
+    .settings-title::after { height: 4px; margin-top: 3px; }
+    .settings-body { gap: 10px; }
+    .settings-row { min-height: 44px; }
+    .settings-footer { margin-top: 14px; }
+
+    .settings-save-btn,
+    .settings-reset-btn { height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .settings-card,
+    .settings-switch-track,
+    .settings-switch-track::before,
+    .settings-range::-webkit-slider-thumb {
+        transition: none;
     }
 }
 

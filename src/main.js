@@ -279,6 +279,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     const joystickBtns = document.querySelectorAll('.settings-group-btn');
     const settingsSaveBtn = document.getElementById('settings-save-btn');
     const settingsResetBtn = document.getElementById('settings-reset-btn');
+    const rangeSliders = [masterVolumeSlider, sfxVolumeSlider, controlSizeSlider, opacitySlider];
+
+    // The filled part of each slider track is painted by CSS from --fill.
+    // It's computed against min/max: Control Size (50–150) and Opacity
+    // (10–100) don't start at 0, so the raw value isn't a track percentage.
+    const syncRangeFill = (slider) => {
+        const min = Number(slider.min) || 0;
+        const max = Number(slider.max) || 100;
+        const pct = ((Number(slider.value) - min) / (max - min)) * 100;
+        slider.style.setProperty('--fill', `${pct}%`);
+    };
 
     // Load persisted settings
     const loadSettings = () => {
@@ -292,6 +303,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         controlSizeDisplay.textContent = controlSizeSlider.value + '%';
         opacitySlider.value = localStorage.getItem('mc_opacity') || '75';
         opacityDisplay.textContent = opacitySlider.value + '%';
+        rangeSliders.forEach(syncRangeFill);
 
         const joystickSide = localStorage.getItem('mc_joystickSide') || 'left';
         joystickBtns.forEach(btn => {
@@ -302,6 +314,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadSettings();
     // Apply opacity CSS variable immediately so controls are correct from first frame
     document.documentElement.style.setProperty('--mc-opacity', (localStorage.getItem('mc_opacity') || '75') / 100);
+
+    rangeSliders.forEach(slider => slider.addEventListener('input', () => syncRangeFill(slider)));
 
     // Save settings on change
     showFpsToggle.addEventListener('change', () => {
