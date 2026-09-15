@@ -7,7 +7,7 @@ import * as Terrain from '../render/Terrain.js';
 // removeBounds) zeminin altinda kalan rengin, zemin karolarinin kenar
 // tonuyla ayni olmasi sarttir: aksi halde karonun kaplayamadigi her
 // alt-piksel bosluk motorun varsayilan gri zemini (#202020) olarak
-// yanip sonerdi. Deger, 8 zemin dokusunun kenar pikselleri orneklenerek
+// yanip sonerdi. Deger, terrain.png'nin kenar pikselleri orneklenerek
 // bulunmustur (bkz. Terrain.TERRAIN_BASE_COLOR).
 export const VOID_BACKGROUND_COLOR = Terrain.TERRAIN_BASE_COLOR;
 
@@ -20,10 +20,8 @@ export class Preloader extends Phaser.Scene {
     // create() icinde yapilir (bkz. SnakeSkin.build).
     SnakeSkin.preload(this);
 
-    // Zemin karolari: public/assets/terrain/1..8.png + 1x4.png + 2x4.png
-    // (10 varyant, her biri 2048x2048). Dosya listesinin TEK sahibi
-    // Terrain.SOURCE_IDS'tir — yeni bir zemin eklemek icin burasi degil,
-    // render/Terrain.js icindeki o dizi guncellenir.
+    // Zemin: public/assets/terrain/terrain.png — tek, 2048x2048, kenarlari
+    // sarilan desen. Dosya yolunun TEK sahibi render/Terrain.js'tir.
     Terrain.preload(this);
 
     // Bir varlik yuklenemezse oyun ACILMAYA DEVAM ETMELI: eksik doku
@@ -63,9 +61,8 @@ export class Preloader extends Phaser.Scene {
       this.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     });
 
-    // NOT: zemin dokularina (terrain_1..8, terrain_1x4, terrain_2x4)
-    // BILEREK setFilter() cagrilmaz.
-    // 2048x2048 POT olduklari icin Phaser bunlara game config'teki
+    // NOT: zemin dokusuna ('terrain') BILEREK setFilter() cagrilmaz.
+    // 2048x2048 POT oldugu icin Phaser ona game config'teki
     // mipmapFilter'i uygular; setFilter min filter'i LINEAR'a dusurup mipmap
     // zincirini devre disi birakirdi (bkz. render/Terrain.js → preload).
 
