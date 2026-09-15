@@ -11,6 +11,9 @@ import * as Terrain from '../render/Terrain.js';
 // bulunmustur (bkz. Terrain.TERRAIN_BASE_COLOR).
 export const VOID_BACKGROUND_COLOR = Terrain.TERRAIN_BASE_COLOR;
 
+// Minimap arka plan dokusu — Game.drawMinimap okur.
+export const MINIMAP_TEXTURE_KEY = 'minimap_terrain';
+
 export class Preloader extends Phaser.Scene {
   constructor() { super('Preloader'); }
 
@@ -23,6 +26,10 @@ export class Preloader extends Phaser.Scene {
     // Zemin: public/assets/terrain/terrain.png — tek, 2048x2048, kenarlari
     // sarilan desen. Dosya yolunun TEK sahibi render/Terrain.js'tir.
     Terrain.preload(this);
+
+    // Minimap zemini (255x256, dairesel cerceve + izgara). Yuklenemezse
+    // Game.drawMinimap duz daire cizimine geri duser.
+    this.load.image(MINIMAP_TEXTURE_KEY, 'assets/mini-map/mini_map_terrain.png');
 
     // Bir varlik yuklenemezse oyun ACILMAYA DEVAM ETMELI: eksik doku
     // SnakeSkin tarafindan daire dokusuna geri dusurulur. Bu dinleyici olmadan

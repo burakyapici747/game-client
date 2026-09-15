@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Snake } from './Snake';
-import { VOID_BACKGROUND_COLOR } from './Preloader';
+import { VOID_BACKGROUND_COLOR, MINIMAP_TEXTURE_KEY } from './Preloader';
 import { TerrainRenderer } from './../render/Terrain';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
@@ -178,6 +178,11 @@ const AOIDebugConfig = {
 // yumuşatmak. Girdi tam da bu süre dolduğunda açılır (bkz. _revealGameplay).
 const REVEAL_FADE_MS = 250;
 
+// mini_map_terrain.png'nin IC diskinin (isaretlerin cizildigi alan) yaricapi,
+// dokunun yari genisligine oranla. Olcum: 255px dokuda ic disk x=17..238
+// → 110.5 / 127.5 = 0.867; 0.85 noktalarin kalin halkaya tasmamasi icin pay.
+const MINIMAP_INNER_RATIO = 0.85;
+
 export class Game extends Phaser.Scene {
     constructor() {
         super('Game');
@@ -202,6 +207,7 @@ export class Game extends Phaser.Scene {
         this.fpsText = null;
         this.terrain = null;
         this.minimapGraphics = null;
+        this.minimapFrame = null;
         this.worldRadius = 0;
 
         // Client-side score tracking: yenen yemin sunucudan gelen value'suna göre puan
@@ -461,6 +467,15 @@ export class Game extends Phaser.Scene {
         // Legacy FPS text removed — HUD now uses HTML/CSS overlay
         // this.fpsText = this.add.text(4, 4, 'FPS: 0', { ... }).setScrollFactor(0).setDepth(1000);
         this.fpsText = null;
+
+        // Minimap zemini (mini_map_terrain.png) isaretlerin ALTINDA durur.
+        // Doku yuklenemediyse null kalir; drawMinimap duz daire cizer.
+        // (registerHUD argumanlarini DIZI olarak dondurur — nesne ayri tutulur.)
+        this.minimapFrame = this.textures.exists(MINIMAP_TEXTURE_KEY)
+            ? this.add.image(0, 0, MINIMAP_TEXTURE_KEY).setScrollFactor(0).setDepth(1999)
+            : null;
+        if (this.minimapFrame) this.registerHUD(this.minimapFrame);
+        this._minimapLayout = '';
 
         this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(2000);
 
@@ -2233,19 +2248,36 @@ export class Game extends Phaser.Scene {
         const g = this.minimapGraphics;
         g.clear();
 
-        // Minimap border and background (matching reference design colors)
-        g.fillStyle(0x150136, 1); // surface-container-lowest
-        g.fillCircle(cx, cy, size / 2);
-        g.lineStyle(4, 0x322053, 1); // surface-container-high
-        g.strokeCircle(cx, cy, size / 2);
+        // Zemin: mini_map_terrain.png. Konum/boyut yalnizca metrikler
+        // degistiginde (resize, yon degisimi) yazilir — her kare degil.
+        const frame = this.minimapFrame;
+        if (frame) {
+            const layout = `${cx}|${cy}|${size}`;
+            if (layout !== this._minimapLayout) {
+                this._minimapLayout = layout;
+                frame.setPosition(cx, cy).setDisplaySize(size, size);
+            }
+        } else {
+            g.fillStyle(0x12345b, 0.88); // --menu-surface-container
+            g.fillCircle(cx, cy, size / 2);
+            g.lineStyle(3, 0x3688d0, 1); // --menu-bright
+            g.strokeCircle(cx, cy, size / 2);
+        }
 
         if (!this.worldRadius) return;
-        
-        // Calculate scale from world to minimap
-        const mapScale = (size / 2) / this.worldRadius;
 
-        // Draw foods as tiny dots
-        g.fillStyle(0xc2caad, 0.5); // on-surface-variant
+        // Dunya dairesi, cercevenin halkalarina degil IC diske eslenir:
+        // olculen ic disk yaricapi dokunun yari genisliginin %86.7'si
+        // (255px'te 110.5px). Kucuk pay, noktalarin halkaya tasmamasi icin.
+        const innerRadius = (size / 2) * MINIMAP_INNER_RATIO;
+        const mapScale = innerRadius / this.worldRadius;
+
+        // Yemler: koyu lacivert ama DUSUK opaklik. Harita binlerce yem tasir;
+        // yuksek opaklikta ust uste binip zemin gorselini tamamen kapatiyordu.
+        // Ayni yem sayisi kucuk (mobil ~90 px) diske alanla ters orantili daha
+        // sik duser, bu yuzden opaklik alanla olceklenir: 160 px'te 0.28.
+        const foodAlpha = 0.28 * Math.min(1, (size / 160) ** 2);
+        g.fillStyle(0x083367, foodAlpha); // --sea-dark
         for (const food of this.foods.values()) {
             const bob = food.bob;
             if (!bob) continue;
@@ -2259,7 +2291,7 @@ export class Game extends Phaser.Scene {
             // Distances check to keep them inside the minimap circle
             const distSq = wx * wx + wy * wy;
             if (distSq <= this.worldRadius * this.worldRadius) {
-                g.fillRect(mx, my, 1.5, 1.5);
+                g.fillRect(mx, my, 1.2, 1.2);
             }
         }
 
@@ -2274,8 +2306,13 @@ export class Game extends Phaser.Scene {
 
             const distSq = wx * wx + wy * wy;
             if (distSq <= this.worldRadius * this.worldRadius) {
-                g.fillStyle(0xb7f700, 1.0); // primary-container
-                g.fillCircle(mx, my, 3);
+                // Beyaz halka + yesil cekirdek: acik zeminde de, lacivert yem
+                // noktalarinin ustunde de ayirt edilir.
+                const r = size >= 140 ? 4 : 3;
+                g.fillStyle(0xffffff, 1.0);
+                g.fillCircle(mx, my, r + 1.5);
+                g.fillStyle(0x59e81b, 1.0); // --ping-good
+                g.fillCircle(mx, my, r);
             }
         }
     }

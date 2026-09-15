@@ -2457,7 +2457,10 @@ html.pseudo-fullscreen #app {
 }
 
 /* ═══════════════════════════════════════════════
-   GAME HUD — In-game Overlay (Match reference design exactly)
+   GAME HUD — reference: game screen/in-game.html
+   Telemetry pill (top-left) · score capsule (top-centre) · leaderboard
+   card (top-right). The minimap is drawn by Phaser (Game.js drawMinimap).
+   Palette: :root --menu-* / --play-* / --ping-*.
    ═══════════════════════════════════════════════ */
 
 .game-hud {
@@ -2468,285 +2471,289 @@ html.pseudo-fullscreen #app {
     height: 100%;
     z-index: 5;
     pointer-events: none;
-    padding: 24px;
+    padding: 16px;
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    font-family: 'Quicksand', sans-serif;
+    font-family: var(--font-menu);
+    color: var(--menu-text);
 }
 
 .game-hud.hidden {
     display: none;
 }
 
-/* Color system matching reference */
-:root {
-    --hud-surface: #1a063b;
-    --hud-surface-container-high: #322053;
-    --hud-surface-container-highest: #3d2b5e;
-    --hud-surface-container-lowest: #150136;
-    --hud-primary: #ffffff;
-    --hud-primary-container: #b7f700;
-    --hud-secondary-container: #fdd400;
-    --hud-on-surface: #ebddff;
-    --hud-on-surface-variant: #c2caad;
-}
-
-/* Bubbly panel base */
+/* Reference .hud-panel: dark navy glass over the bright seabed. */
 .hud-bubbly-panel {
-    background-color: rgba(50, 32, 83, 0.85);
-    backdrop-filter: blur(8px);
-    border-top: 1px solid rgba(235, 221, 255, 0.1);
-    box-shadow: 0 4px 20px rgba(26, 15, 46, 0.4);
+    background: rgba(18, 52, 91, 0.88);         /* --menu-surface-container */
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 15px rgba(8, 51, 103, 0.3);
     pointer-events: auto;
 }
 
-/* Top HUD Row */
 .hud-top-row {
+    position: relative;                         /* score capsule centres on the full row */
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 12px;
     width: 100%;
-    gap: 24px;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
 }
 
-/* Stats Panel - Rounded pill shape */
+.hud-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* ── Telemetry pill ── */
 .hud-stats-panel {
     display: flex;
     align-items: center;
-    gap: 24px;
-    padding: 8px 16px;
+    gap: 14px;
+    max-width: 100%;
+    padding: 5px 16px 3px;                      /* Baloo 2 sits high in its line box */
+    border: 1px solid rgba(54, 136, 208, 0.5);  /* --menu-bright */
     border-radius: 999px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 16px;
-}
-
-.hud-stats-panel.hud-bubbly-panel {
-    background-color: rgba(50, 32, 83, 0.85);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 18px;
+    letter-spacing: 0.02em;
 }
 
 .stat-item {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 4px;
+    white-space: nowrap;
 }
 
 .stat-label {
-    color: var(--hud-on-surface-variant);
-    font-weight: 700;
+    color: var(--menu-text);
 }
 
+/* No layout shift while numbers tick: tabular digits plus a min-width that
+   reserves the widest expected value, so the pill never changes width. */
 .stat-value {
-    color: var(--hud-primary-container);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--ping-good);
+    font-variant-numeric: tabular-nums;
 }
 
-/* Score Pod */
+#hud-fps   { min-width: 3ch; color: var(--menu-placeholder); }
+#hud-ping  { min-width: 5ch; }
+#hud-coord { min-width: 12ch; }
+
+/* ── Score capsule ── */
 .hud-score-pod {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 8px;
-    border-radius: 16px;
-    font-family: 'Quicksand', sans-serif;
-    font-weight: 700;
-}
-
-.hud-score-pod.hud-bubbly-panel {
-    background-color: rgba(50, 32, 83, 0.85);
-}
-
-.score-icon-wrapper {
-    background-color: var(--hud-surface-container-lowest);
-    border-radius: 999px;
-    width: 32px;
-    height: 32px;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    gap: 8px;
+    min-width: 96px;
+    padding: 3px 16px 1px;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    border-radius: 999px;
 }
 
-.score-icon {
-    color: var(--hud-primary-container);
-    font-size: 24px;
-    font-variation-settings: 'FILL' 1;
+/* Glossy food orb (reference .orb-icon). */
+.score-orb {
+    position: relative;
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--play-top) 0%, var(--play-mid) 55%, var(--menu-accent-deep) 100%);
+    box-shadow: 0 0 6px rgba(118, 219, 23, 0.6), inset -1px -2px 3px rgba(0, 0, 0, 0.3);
+}
+
+.score-orb::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.8);
 }
 
 .score-value {
-    font-size: 32px;
-    line-height: 40px;
-    color: var(--hud-primary);
-    font-family: 'Quicksand', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 26px;
+    letter-spacing: 0.05em;
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-text);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
-/* Leaderboard Pod */
+/* ── Leaderboard card ── */
 .hud-leaderboard-pod {
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    padding: 10px 12px;
-    border-radius: 14px;
-    width: 220px;
-    font-family: 'Quicksand', sans-serif;
+    flex-shrink: 0;
+    width: 224px;
+    padding: 10px 12px 4px;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    border-radius: 16px;
 }
 
 .hud-leaderboard-pod.hud-bubbly-panel {
-    background-color: rgba(39, 20, 72, 0.55);
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid rgba(235, 221, 255, 0.08);
-    box-shadow: 0 2px 12px rgba(26, 15, 46, 0.3);
+    box-shadow: 0 10px 25px rgba(8, 51, 103, 0.4);
 }
 
 .leaderboard-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 4px;
+    justify-content: center;
 }
 
 .leaderboard-title {
-    font-family: 'Quicksand', sans-serif;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 800;
     line-height: 18px;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--hud-primary);
-}
-
-.leaderboard-icon {
-    color: var(--hud-secondary-container);
-    font-size: 16px;
-    font-variation-settings: 'FILL' 1;
+    color: var(--menu-text);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .leaderboard-info {
-    font-size: 10px;
+    padding-bottom: 6px;
+    text-align: center;
+    font-size: 11px;
     font-weight: 700;
     line-height: 14px;
-    color: var(--hud-on-surface-variant);
-    margin-bottom: 4px;
+    color: var(--menu-text-muted);
 }
 
 #hud-players {
-    color: var(--hud-primary-container);
+    color: var(--ping-good);
+    font-variant-numeric: tabular-nums;
 }
 
-/* Leaderboard entries */
 .leaderboard-entries {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 18px;
 }
 
 .leaderboard-entry {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 4px 6px;
-    border-radius: 6px;
+    gap: 8px;
+    padding: 0 4px;
+}
+
+/* Rank + name cell (built by overlays.js): let the name truncate. */
+.leaderboard-entry > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Local player pinned below the top ranks — separated like the reference. */
+.leaderboard-entry.rank-pinned {
+    margin-top: 3px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.rank-number {
+    flex-shrink: 0;
+    min-width: 20px;
     font-size: 11px;
-    line-height: 15px;
-}
-
-.leaderboard-entry.rank-1 {
-    background-color: rgba(21, 1, 54, 0.5);
-}
-
-.leaderboard-entry.rank-you {
-    border-top: 1px solid var(--hud-surface-container-highest);
-    padding-top: 8px;
-    margin-top: 4px;
-}
-
-.rank-number, .rank-crown {
-    min-width: 14px;
-    text-align: center;
-    color: var(--hud-on-surface-variant);
     font-weight: 700;
-    line-height: 15px;
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-text-muted);
 }
 
+/* Rank 1: victory cup (overlays.js leaves the span empty). */
 .rank-crown {
-    font-size: 13px;
+    flex-shrink: 0;
+    display: inline-block;
+    width: 16px;
+    height: 15px;
+    margin-right: 4px;
+    background: url('/assets/leaderboard/victory_cup.png') center / contain no-repeat;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
 
 .player-name {
-    flex: 1;
-    margin-left: 6px;
-    color: var(--hud-on-surface);
-    font-weight: 500;
+    flex: 1 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.leaderboard-entry.rank-1 .player-name {
-    color: var(--hud-primary);
-    font-weight: 700;
+    color: var(--menu-text-soft);
 }
 
 .leaderboard-entry.rank-you .player-name {
-    color: var(--hud-primary);
-    font-weight: 700;
+    color: var(--ping-good);
+    letter-spacing: 0.04em;
 }
 
 .player-score {
-    color: var(--hud-on-surface-variant);
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-}
-
-.leaderboard-entry.rank-1 .player-score,
-.leaderboard-entry.rank-you .player-score {
-    color: var(--hud-primary-container);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--ping-good);
 }
 
 /* Boş durum: sıralama paketi henüz gelmedi ya da haritada sıralanacak oyuncu
    yok. Sahte oyuncu satırlarının yerini alan tek, nötr mesaj satırı. */
 .leaderboard-empty {
     padding: 4px;
-    font-size: 10px;
-    line-height: 14px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 15px;
     text-align: center;
-    color: var(--hud-on-surface-variant);
-    opacity: 0.7;
+    color: var(--menu-text-muted);
+    opacity: 0.8;
 }
 
-/* Leaderboard expand/collapse toggle */
+/* Expand/collapse chevron (Top 3 ↔ Top 5) */
 .leaderboard-toggle {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    height: 20px;
+    height: 22px;
     margin-top: 2px;
     padding: 0;
     background: transparent;
     border: none;
-    border-radius: 0 0 8px 8px;
-    color: var(--hud-on-surface-variant);
+    border-radius: 0 0 10px 10px;
+    color: var(--menu-placeholder);
     cursor: pointer;
     pointer-events: auto;
-    transition: color 0.15s ease, background 0.15s ease;
+    transition: color 0.15s ease;
 }
 
 .leaderboard-toggle:hover {
-    color: var(--hud-primary-container);
-    background: rgba(21, 1, 54, 0.4);
+    color: var(--menu-text);
+}
+
+.leaderboard-toggle:focus-visible {
+    outline: 2px solid var(--sea-light);
+    outline-offset: -2px;
 }
 
 .leaderboard-toggle-icon {
-    font-size: 18px;
+    font-size: 20px;
     line-height: 1;
-    transition: transform 0.2s ease;
+    font-variation-settings: 'wght' 700;
 }
-
-/* Minimap: Phaser tarafında çizilir (Game.js drawMinimap) — DOM elemanı yok. */
 
 /* ═══════════════════════════════════════════════
    RESPONSIVE — In-game HUD on mobile
@@ -2755,92 +2762,67 @@ html.pseudo-fullscreen #app {
 @media (max-width: 768px), (max-height: 500px) {
     .game-hud {
         padding: 10px 12px;
+        padding-top: max(10px, env(safe-area-inset-top, 0px));
     }
 
-    .hud-top-row {
-        gap: 10px;
-    }
+    .hud-top-row { gap: 8px; }
 
-    /* Stats pill: smaller type, tighter spacing */
     .hud-stats-panel {
-        gap: 12px;
-        padding: 5px 12px;
-        font-size: 10px;
-        line-height: 14px;
+        gap: 10px;
+        padding: 3px 12px 2px;
+        font-size: 11px;
+        line-height: 15px;
     }
 
-    /* Score pod: was blocking the view — roughly half size */
-    .hud-score-pod {
-        gap: 8px;
-        padding: 5px 10px 5px 5px;
+    .score-orb { width: 12px; height: 12px; }
+
+    .score-value {
+        font-size: 16px;
+        line-height: 22px;
+    }
+
+    .hud-leaderboard-pod {
+        width: 164px;
+        padding: 7px 8px 3px;
         border-radius: 12px;
     }
 
-    .score-icon-wrapper {
-        width: 24px;
-        height: 24px;
-    }
-
-    .score-icon {
-        font-size: 16px;
-    }
-
-    .score-value {
-        font-size: 20px;
-        line-height: 24px;
-    }
-
-    /* Leaderboard: compact for mobile field-of-view */
-    .hud-leaderboard-pod {
-        width: 148px;
-        padding: 7px 8px;
-        gap: 3px;
-        border-radius: 10px;
-    }
-
-    .leaderboard-header {
-        margin-bottom: 1px;
-    }
-
-    .leaderboard-title {
-        font-size: 10px;
-        line-height: 14px;
-        letter-spacing: 1px;
-    }
-
-    .leaderboard-icon {
-        font-size: 12px;
-    }
-
-    .leaderboard-info {
-        font-size: 9px;
-        line-height: 12px;
-        margin-bottom: 1px;
-    }
+    .leaderboard-title { font-size: 11px; line-height: 15px; }
+    .leaderboard-info { font-size: 10px; line-height: 13px; padding-bottom: 4px; }
 
     .leaderboard-entries {
         gap: 2px;
+        font-size: 11px;
+        line-height: 15px;
     }
 
-    .leaderboard-entry {
-        padding: 2px 4px;
-        font-size: 9px;
-        line-height: 13px;
+    .rank-number { min-width: 17px; font-size: 10px; }
+    .rank-crown { width: 13px; height: 12px; }
+    .leaderboard-entry.rank-pinned { margin-top: 2px; padding-top: 4px; }
+    .leaderboard-toggle { height: 18px; }
+    .leaderboard-toggle-icon { font-size: 16px; }
+}
+
+/* Portrait phones: telemetry, score and leaderboard don't fit side by side,
+   so the score capsule leaves the centre and stacks under the telemetry pill,
+   and the pill may wrap its items onto two lines. */
+@media (max-width: 768px) {
+    .hud-left { flex: 1 1 auto; }
+
+    .hud-score-pod {
+        position: static;
+        transform: none;
+        min-width: 72px;
+        padding: 2px 12px 0;
     }
 
-    .leaderboard-entry.rank-you {
-        padding-top: 5px;
-        margin-top: 2px;
+    .hud-stats-panel {
+        flex-wrap: wrap;
+        row-gap: 0;
+        border-radius: 14px;
     }
 
-    .leaderboard-toggle {
-        height: 16px;
-        margin-top: 1px;
-    }
-
-    .leaderboard-toggle-icon {
-        font-size: 14px;
-    }
+    #hud-coord { min-width: 11ch; }
 }
 
 /* ═══════════════════════════════════════════════

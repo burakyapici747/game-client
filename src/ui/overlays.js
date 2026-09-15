@@ -189,19 +189,20 @@ export function hideGameHUD() {
     $('game-hud')?.classList.add('hidden');
 }
 
+// Yalnizca DEGISEN metni yazar. Ayni degeri yeniden atamak da bir DOM
+// mutasyonudur: metin ayni kalsa bile stil/layout gecersizlesir ve repaint
+// tetiklenir. FPS/ping cogu 100 ms'lik tikte degismez.
+function setText(el, text) {
+    if (el && el.textContent !== text) el.textContent = text;
+}
+
 export function updateHUDStats(fps, ping, coordX, coordY) {
-    const fpsEl = $('hud-fps');
-    if (fpsEl) fpsEl.textContent = String(fps ?? 0);
+    setText($('hud-fps'), String(fps ?? 0));
+    setText($('hud-ping'), (ping === null || ping === undefined) ? '--ms' : `${ping}ms`);
 
-    const pingEl = $('hud-ping');
-    if (pingEl) pingEl.textContent = (ping === null || ping === undefined) ? '--ms' : `${ping}ms`;
-
-    const coordEl = $('hud-coord');
-    if (coordEl) {
-        const x = Math.round(coordX ?? 0);
-        const y = Math.round(coordY ?? 0);
-        coordEl.textContent = `${x}, ${y}`;
-    }
+    const x = Math.round(coordX ?? 0);
+    const y = Math.round(coordY ?? 0);
+    setText($('hud-coord'), `${x}, ${y}`);
 }
 
 // ── SKOR BİÇİMLENDİRME — TEK KAYNAK ─────────────────────────────────────────
@@ -329,11 +330,16 @@ function paintLeaderboardRow(row, { rank, name, score, isTop1, isSelf, pinned })
     const nameEl = left.lastElementChild;
     const scoreEl = row.lastElementChild;
 
-    // 1. sıra tacı ile diğer sıraların numarası AYNI span'i kullanır — yapı
+    // 1. sıra kupası ile diğer sıraların numarası AYNI span'i kullanır — yapı
     // değişmez, yalnızca sınıf/metin değişir (düğüm ekleme/çıkarma yok).
+    // Kupa victory_cup.png'dir ve .rank-crown'un CSS arka planı olarak çizilir;
+    // span metinsiz kalır, sıra bilgisi title'da taşınır.
     const wantRankClass = isTop1 ? 'rank-crown' : 'rank-number';
-    const wantRankText = isTop1 ? '👑' : (pinned ? `#${rank}` : String(rank));
-    if (rankEl.className !== wantRankClass) rankEl.className = wantRankClass;
+    const wantRankText = isTop1 ? '' : `#${rank}`;
+    if (rankEl.className !== wantRankClass) {
+        rankEl.className = wantRankClass;
+        rankEl.title = isTop1 ? '#1' : '';
+    }
     if (rankEl.textContent !== wantRankText) rankEl.textContent = wantRankText;
 
     const wantName = name || 'Unknown';
@@ -351,8 +357,11 @@ function paintLeaderboardRow(row, { rank, name, score, isTop1, isSelf, pinned })
 
     let wantRowClass = 'leaderboard-entry';
     if (isTop1) wantRowClass += ' rank-1';
-    // rank-you: hem Top-5 içi vurgu hem de alttaki sabit satırın ayraç stili.
+    // rank-you: oyuncunun kendi satırı (yeşil ad) — Top-N içinde ya da altta.
+    // rank-pinned: yalnızca Top-N DIŞINDAYKEN alta sabitlenen satır; üstündeki
+    // ayraç çizgisi bundandır (Top-N içindeki kendi satırında ayraç olmaz).
     if (isSelf) wantRowClass += ' rank-you';
+    if (pinned) wantRowClass += ' rank-pinned';
     if (row.className !== wantRowClass) row.className = wantRowClass;
 }
 

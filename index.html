@@ -412,51 +412,52 @@
             </div>
         </div>
 
-        <!-- Game HUD Overlay -->
+        <!-- ══════════════════════════════════════════════════════════════
+             GAME HUD — reference: game screen/in-game.html
+             Values are written by src/ui/overlays.js (the ids are its hooks).
+             The minimap is drawn by Phaser (Game.js drawMinimap).
+             ══════════════════════════════════════════════════════════════ -->
         <div id="game-hud" class="game-hud hidden">
-            <!-- Top HUD Row -->
             <div class="hud-top-row">
-                <!-- Stats Panel -->
-                <div class="hud-stats-panel hud-bubbly-panel">
-                    <div class="stat-item">
-                        <span class="stat-label">FPS:</span>
-                        <span id="hud-fps" class="stat-value">60</span>
+                <div class="hud-left">
+                    <!-- Telemetry pill (top-left) -->
+                    <div class="hud-stats-panel hud-bubbly-panel">
+                        <div class="stat-item">
+                            <span class="stat-label">FPS:</span>
+                            <span id="hud-fps" class="stat-value">60</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Ping:</span>
+                            <span id="hud-ping" class="stat-value">--ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Coord:</span>
+                            <span id="hud-coord" class="stat-value">0, 0</span>
+                        </div>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Ping:</span>
-                        <span id="hud-ping" class="stat-value">--ms</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Coord:</span>
-                        <span id="hud-coord" class="stat-value">0, 0</span>
+
+                    <!-- Score capsule: top-centre on desktop, under the
+                         telemetry pill on phones (see style.css). -->
+                    <div class="hud-score-pod hud-bubbly-panel">
+                        <span class="score-orb" aria-hidden="true"></span>
+                        <div id="hud-score" class="score-value">0</div>
                     </div>
                 </div>
 
-                <!-- Score Pod -->
-                <div class="hud-score-pod hud-bubbly-panel">
-                    <div class="score-icon-wrapper">
-                        <span class="material-symbols-outlined score-icon">toll</span>
-                    </div>
-                    <div id="hud-score" class="score-value">0</div>
-                </div>
-
-                <!-- Leaderboard Pod -->
+                <!-- Leaderboard card (top-right) -->
                 <div class="hud-leaderboard-pod hud-bubbly-panel">
                     <div class="leaderboard-header">
-                        <span class="leaderboard-title">LEADERBOARD</span>
-                        <span class="material-symbols-outlined leaderboard-icon">emoji_events</span>
+                        <span class="leaderboard-title">Leaderboard</span>
                     </div>
                     <div class="leaderboard-info">Players: <span id="hud-players">0</span></div>
                     <div id="hud-leaderboard-list" class="leaderboard-entries">
                         <!-- Entries populated by JS -->
                     </div>
-                    <button id="hud-leaderboard-toggle" class="leaderboard-toggle" title="Show more">
+                    <button id="hud-leaderboard-toggle" class="leaderboard-toggle" type="button" title="Show more">
                         <span class="material-symbols-outlined leaderboard-toggle-icon">expand_more</span>
                     </button>
                 </div>
             </div>
-
-            <!-- Minimap is rendered by Phaser (Game.js drawMinimap) — no DOM element. -->
         </div>
 
         <!-- ══════════════════════════════════════════════════════════════
