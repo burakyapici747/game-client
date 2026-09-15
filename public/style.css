@@ -1,4 +1,79 @@
+/* ── Baloo 2 — self-hosted menu/account typeface (public/assets/font/baloo2) ── */
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-ExtraBold.ttf') format('truetype');
+    font-weight: 800;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
+    /* ── Menu palette — "sea" theme (reference: LOGIN SCREEN/index.html) ──
+       The ONE definition shared by the login screen, side panel, servers
+       modal and auth gate. It used to be copied into .ui-layer and
+       .side-panel separately. Token names stay --menu-* so every existing
+       component rule reskins from here. */
+    --sea-light: #28b9e6;
+    --sea-dark: #083367;
+
+    --menu-surface: #083367;            /* sea-dark */
+    --menu-surface-container: #12345b;  /* server list panel (18,52,91) */
+    --menu-surface-high: #1d558a;       /* pill input, top */
+    --menu-surface-highest: #3086ce;    /* dropdown header, bottom */
+    --menu-surface-lowest: #0e2e52;     /* status chip (14,46,82) */
+    --menu-bright: #3688d0;             /* panel border */
+    --menu-accent: #a2ee38;             /* play.top — actions, selection */
+    --menu-accent-deep: #3c8209;        /* play 3D base / text on accent */
+    --menu-accent-shadow: #49930a;      /* play.shadow */
+    --menu-text: #ffffff;
+    --menu-text-soft: #e0f2fe;          /* sky-100 */
+    --menu-text-muted: #bae6fd;         /* sky-200 */
+    --menu-placeholder: #7dd3fc;        /* sky-300 */
+
+    --play-top: #b2f63f;
+    --play-mid: #76db17;
+    --play-bottom: #62bd10;
+    --play-border: #b8ff4b;
+
+    --ping-good: #59e81b;
+    --ping-ok: #a2ee38;
+    --ping-bad: #ff5722;
+    --ping-offline: #94a3b8;
+
+    --font-menu: 'Baloo 2', 'Quicksand', system-ui, sans-serif;
+
     --primary-color: #00ffcc;
     --primary-glow: rgba(0, 255, 204, 0.6);
     --secondary-color: #ff00cc;
@@ -51,19 +126,6 @@ body {
    Palette & layout matched to reference_login_page.html
    ═══════════════════════════════════════════════ */
 .ui-layer {
-    /* Login screen design tokens (scoped — in-game overlays keep the cyan set) */
-    --menu-surface: #1a063b;
-    --menu-surface-container: #271448;
-    --menu-surface-high: #322053;
-    --menu-surface-highest: #3d2b5e;
-    --menu-surface-lowest: #150136;
-    --menu-bright: #412f63;
-    --menu-accent: #b7f700;          /* neon green — actions, focus, selection */
-    --menu-accent-deep: #506e00;     /* 3D button base / text on accent */
-    --menu-accent-shadow: #374e00;
-    --menu-text: #ebddff;
-    --menu-text-muted: #bfb3d6;
-
     position: absolute;
     top: 0;
     left: 0;
@@ -72,29 +134,17 @@ body {
     z-index: 10;
     display: flex;
     flex-direction: column;
+    font-family: var(--font-menu);
+    color: var(--menu-text);
     background-color: var(--menu-surface);
-    background-image:
-        radial-gradient(circle at 20% 30%, var(--menu-surface-highest) 0%, transparent 20%),
-        radial-gradient(circle at 80% 70%, var(--menu-surface-highest) 0%, transparent 20%);
+    background-image: url('/assets/background/main-menu-background.png');
+    background-size: cover;
+    /* The seabed carries the detail; anchoring the bottom keeps it in frame on
+       tall portrait screens where cover crops the sides. */
+    background-position: center bottom;
+    background-repeat: no-repeat;
     transition: opacity 0.5s ease, visibility 0.5s;
     overflow: hidden;
-}
-
-/* Slithering track pattern over the whole screen (reference: .snake-track) */
-.ui-layer::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.05;
-    background-image: url('data:image/svg+xml;utf8,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><path d="M10,50 Q30,10 50,50 T90,50" stroke="%23ecdcff" stroke-width="4" fill="none"/></svg>');
-    background-repeat: repeat;
-    animation: slideTrack 15s linear infinite;
-}
-
-@keyframes slideTrack {
-    from { background-position: 0 0; }
-    to { background-position: -100px 100px; }
 }
 
 .ui-layer.hidden {
@@ -106,31 +156,40 @@ body {
 /* Top Bar */
 .top-bar {
     width: 100%;
-    padding: 24px 32px;
+    padding: clamp(12px, 2.5vh, 20px) clamp(16px, 3vw, 24px);
     display: flex;
     justify-content: flex-end;
 }
 
+/* Reference: a bare white gear with a soft drop shadow — no chip behind it. */
 .icon-btn {
-    background: var(--bg-glass);
-    border: 1px solid var(--border-glass);
+    background: transparent;
+    border: none;
     border-radius: 50%;
-    width: 48px;
-    height: 48px;
+    width: clamp(40px, 5vmin, 48px);
+    height: clamp(40px, 5vmin, 48px);
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-main);
+    color: var(--menu-text);
     cursor: pointer;
-    transition: var(--transition-bounce);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+    transition: transform 0.3s ease;
+}
+
+.icon-btn svg {
+    width: 80%;
+    height: 80%;
 }
 
 .icon-btn:hover {
-    background: var(--bg-glass-hover);
-    transform: scale(1.1) rotate(15deg);
-    border-color: var(--primary-color);
-    box-shadow: 0 0 15px var(--primary-glow);
+    transform: rotate(45deg);
+}
+
+.icon-btn:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
 }
 
 /* Main Content */
@@ -144,7 +203,10 @@ body {
        than the viewport (flex centering + overflow bug) */
     justify-content: safe center;
     width: 100%;
-    padding: 0 20px 10vh; /* side padding keeps card/logo off the edges */
+    /* Avatar size is shared by the badge and the card's top padding, which
+       must leave room for the part of the badge that overlaps it. */
+    --logo-size: clamp(104px, 15vmin, 140px);
+    padding: 0 clamp(16px, 4vw, 40px) clamp(16px, 6vh, 72px); /* side padding keeps card/logo off the edges */
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;   /* never allow horizontal scroll */
@@ -163,7 +225,10 @@ body {
     align-items: center;
     width: 100%;
     max-width: 100%;
-    z-index: 1;
+    position: relative;
+    z-index: 2;
+    /* The avatar badge overlaps the top of the card (reference: mb-[-54px]). */
+    margin-bottom: calc(var(--logo-size) * -0.42);
 }
 
 .float-anim {
@@ -175,18 +240,16 @@ body {
     50% { transform: translateY(-10px); }
 }
 
+/* Avatar badge — reference: white → cyan-100 → sky-300 gradient ring. */
 .brand-logo-ring {
-    /* Fluid: scales with viewport, never larger than 176px, never overflows */
-    width: clamp(96px, 38vw, 176px);
+    width: var(--logo-size);
     max-width: 100%;
     aspect-ratio: 1 / 1;
     height: auto;
+    padding: 4px;
     border-radius: 50%;
-    overflow: hidden;
-    border: 8px solid var(--menu-surface-highest);
-    box-shadow: 0 10px 30px rgba(26, 15, 46, 0.6);
-    margin-bottom: -34px;
-    z-index: 2;
+    background: linear-gradient(180deg, #ffffff 0%, #cffafe 50%, var(--menu-placeholder) 100%);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
 .brand-logo-ring img {
@@ -194,41 +257,50 @@ body {
     height: 100%;
     object-fit: cover;
     display: block;
+    border-radius: 50%;
 }
 
 .brand-title {
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
+    font-family: var(--font-menu);
     /* Fluid type: shrinks with viewport so the nowrap title always fits */
-    font-size: clamp(1.4rem, 6.5vw, 2.6rem);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--menu-accent);
-    filter: drop-shadow(0 4px 0 var(--menu-accent-shadow));
-    background: var(--menu-surface-high);
-    border-top: 2px solid var(--menu-bright);
-    border-radius: 24px;
-    padding: 14px clamp(20px, 5vw, 40px);
-    margin: 0;
+    font-size: clamp(1.8rem, 2.5vw + 1rem, 3rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.04em;
+    color: var(--menu-text);
+    text-shadow: 0 3px 0 var(--sea-dark), 0 6px 16px rgba(0, 0, 0, 0.35);
+    margin: 0 0 clamp(8px, 1.5vh, 14px);
     max-width: 100%;
-    box-shadow: 0 8px 20px rgba(26, 15, 46, 0.5);
     white-space: nowrap;
-    z-index: 3;
 }
 
-/* ── Login Card ── */
+/* ── Login Card — reference .ocean-sphere ── */
 .login-card {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    align-items: center;
+    gap: clamp(10px, 1.5vh, 14px);
     width: 100%;
-    max-width: 400px;
-    margin-top: 34px;
-    padding: 26px 24px;
-    background: rgba(39, 20, 72, 0.92);   /* --menu-surface-container, hafif şeffaf */
-    border-top: 1px solid var(--menu-bright);
-    border-radius: 28px;
-    box-shadow: 0 10px 25px rgba(26, 15, 46, 0.5);
+    max-width: clamp(360px, 28vw, 420px);
+    padding:
+        calc(var(--logo-size) * 0.42 + clamp(14px, 2.5vh, 22px))
+        clamp(18px, 2vw, 28px)
+        clamp(20px, 3vh, 32px);
+    background: radial-gradient(circle at 50% 38%, rgba(68, 178, 237, 0.55) 0%, rgba(17, 102, 185, 0.75) 75%, rgba(6, 68, 142, 0.88) 100%);
+    border: 2.5px solid rgba(255, 255, 255, 0.55);
+    border-radius: clamp(36px, 4vw, 52px);
+    box-shadow: 0 0 35px rgba(45, 170, 240, 0.45), inset 0 0 20px rgba(255, 255, 255, 0.25);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     z-index: 1;
+}
+
+/* Reference: controls sit in a narrower column than the sphere itself.
+   Individual rules below narrow further (servers 220px) or shrink-wrap
+   (the status chip). */
+.login-card > * {
+    width: 100%;
+    max-width: 300px;
 }
 
 button {
@@ -244,6 +316,15 @@ button {
     gap: 8px;
 }
 
+/* Menu, account panel, servers modal and auth gate buttons use Baloo 2;
+   in-game overlays keep the global heading font above. */
+.ui-layer button,
+.side-panel button,
+.servers-modal button,
+.auth-overlay button {
+    font-family: var(--font-menu);
+}
+
 /* Nickname input */
 .login-input-wrap {
     position: relative;
@@ -253,50 +334,58 @@ button {
 
 .login-input-icon {
     position: absolute;
-    left: 18px;
+    left: 16px;
     color: var(--menu-text-muted);
     pointer-events: none;
 }
 
+/* Reference .pill-input */
 #nickname-input {
     width: 100%;
-    padding: 15px 48px;
-    font-size: 1.1rem;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-weight: 600;
+    height: 48px;
+    padding: 2px 44px 0;
+    font-size: 1.125rem;
+    font-family: var(--font-menu);
+    font-weight: 700;
+    letter-spacing: 0.02em;
     text-align: center;
     color: var(--menu-text);
-    background: var(--menu-surface-lowest);
-    border: none;
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, #174270 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
     border-radius: 999px;
     outline: none;
-    box-shadow: inset 0 4px 6px -1px rgba(0, 0, 0, 0.5), inset 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.2);
     transition: var(--transition-fast);
 }
 
 #nickname-input::placeholder {
-    color: var(--menu-text-muted);
-    font-weight: 500;
+    color: var(--menu-placeholder);
+    font-weight: 600;
 }
 
 #nickname-input:focus {
+    border-color: var(--sea-light);
     box-shadow:
-        inset 0 4px 6px -1px rgba(0, 0, 0, 0.5),
-        0 0 0 4px rgba(183, 247, 0, 0.35);
+        inset 0 3px 6px rgba(0, 0, 0, 0.35),
+        0 0 0 3px rgba(40, 185, 230, 0.35);
 }
 
-/* ── Servers button (login card — reference: yellow secondary action) ── */
+/* ── Servers button — reference .server-dropdown-header (opens the modal) ── */
 .servers-btn {
     width: 100%;
-    padding: 12px 24px;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: #6f5c00;                 /* on-secondary-container */
-    background: #fdd400;            /* secondary-container */
-    border-radius: 999px;
-    border-bottom: 6px solid #6f5c00;
-    transition: all 0.1s;
+    max-width: 220px;
+    height: 40px;
+    padding: 2px 14px 0;
+    font-family: var(--font-menu);
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    color: var(--menu-text);
+    background: linear-gradient(180deg, #4fa5ea 0%, var(--menu-surface-highest) 100%);
+    border-radius: 16px;
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 3px 6px rgba(0, 0, 0, 0.25);
+    transition: filter 0.1s, transform 0.1s;
 }
 
 .servers-btn:hover {
@@ -304,8 +393,7 @@ button {
 }
 
 .servers-btn:active {
-    transform: translateY(4px);
-    border-bottom-width: 2px;
+    transform: translateY(2px);
 }
 
 /* ── Auto-selected server readout (login card) ─────────────────────────────
@@ -320,13 +408,17 @@ button {
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px 18px;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
+    gap: 6px;
+    width: auto;                    /* reference .status-chip shrink-wraps */
+    max-width: 100%;
+    padding: 5px 20px 4px;
+    font-family: var(--font-menu);
     font-size: 0.9rem;
-    background: var(--menu-surface-lowest);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: rgba(14, 46, 82, 0.85);     /* --menu-surface-lowest */
     border-radius: 999px;
-    box-shadow: inset 0 3px 5px -1px rgba(0, 0, 0, 0.45);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
     /* Ping degeri degistiginde renk gecisi yumusak olsun. */
     transition: color var(--transition-fast);
 }
@@ -338,8 +430,8 @@ button {
 }
 
 .server-indicator-label {
-    color: var(--menu-text-muted);
-    font-weight: 500;
+    color: var(--menu-text-soft);
+    font-weight: 600;
 }
 
 .server-indicator-name {
@@ -364,11 +456,11 @@ button {
 /* Latency tier renkleri — .server-item[data-tier] ile BIREBIR ayni palet.
    Renk .server-indicator uzerinde tanimlanir; globe ikonu, ayirici nokta ve
    ping degeri currentColor uzerinden bunu miras alir. */
-.server-indicator[data-tier="good"]      { color: #b7f700; }  /* primary-container */
-.server-indicator[data-tier="ok"]        { color: #a0d800; }  /* primary-fixed-dim */
-.server-indicator[data-tier="high"]      { color: #fdd400; }  /* secondary-container */
-.server-indicator[data-tier="bad"]       { color: #ffb4ab; }  /* error */
-.server-indicator[data-tier="offline"]   { color: #ffb4ab; }
+.server-indicator[data-tier="good"]      { color: var(--ping-good); }
+.server-indicator[data-tier="ok"]        { color: var(--ping-ok); }
+.server-indicator[data-tier="high"]      { color: var(--ping-bad); }
+.server-indicator[data-tier="bad"]       { color: var(--ping-bad); }
+.server-indicator[data-tier="offline"]   { color: var(--ping-offline); }
 .server-indicator[data-tier="measuring"] { color: var(--menu-text-muted); }
 
 /* Olcum surerken hafif nabiz — "calisiyor" hissi, dikkat dagitmadan. */
@@ -412,7 +504,7 @@ button {
 .servers-modal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(26, 6, 59, 0.8);   /* background/80 */
+    background: rgba(8, 51, 103, 0.7);  /* --sea-dark */
     backdrop-filter: blur(4px);
 }
 
@@ -424,11 +516,11 @@ button {
     flex-direction: column;
     gap: 16px;
     padding: 24px;
-    background: #271448;                            /* surface-container */
-    border: 1px solid rgba(61, 43, 94, 0.5);        /* surface-variant/50 */
+    background: rgba(18, 52, 91, 0.94);             /* reference .server-list-panel */
+    border: 2px solid var(--menu-bright);
     border-radius: 28px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 32px rgba(26, 15, 46, 0.6);
-    font-family: 'Quicksand', sans-serif;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4), 0 0 35px rgba(45, 170, 240, 0.3);
+    font-family: var(--font-menu);
 }
 
 .servers-card-header {
@@ -440,24 +532,24 @@ button {
 .servers-card-header h2 {
     margin: 0;
     font-size: 1.7rem;
-    font-weight: 700;
-    color: #b7f700;
-    filter: drop-shadow(0 2px 0 #374e00);
+    font-weight: 800;
+    color: var(--menu-text);
+    text-shadow: 0 2px 0 var(--sea-dark);
 }
 
 .servers-close-btn {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: #322053;                /* surface-container-high */
-    color: #c2b8d9;
-    border-bottom: 4px solid rgba(0, 0, 0, 0.2);
+    background: var(--menu-surface-high);
+    color: var(--menu-text-muted);
+    border-bottom: 3px solid rgba(0, 0, 0, 0.25);
     transition: transform 0.1s, border-bottom-width 0.1s, background 0.15s, color 0.15s;
 }
 
 .servers-close-btn:hover {
-    background: #412f63;
-    color: #ebddff;
+    background: var(--menu-surface-highest);
+    color: var(--menu-text);
 }
 
 .servers-close-btn:active {
@@ -478,28 +570,28 @@ button {
 }
 
 .servers-cards-list::-webkit-scrollbar { width: 6px; }
-.servers-cards-list::-webkit-scrollbar-track { background: #150136; border-radius: 8px; }
-.servers-cards-list::-webkit-scrollbar-thumb { background: #3d2b5e; border-radius: 8px; }
-.servers-cards-list::-webkit-scrollbar-thumb:hover { background: #412f63; }
+.servers-cards-list::-webkit-scrollbar-track { background: var(--menu-surface-lowest); border-radius: 8px; }
+.servers-cards-list::-webkit-scrollbar-thumb { background: var(--menu-surface-high); border-radius: 8px; }
+.servers-cards-list::-webkit-scrollbar-thumb:hover { background: var(--menu-bright); }
 
 .server-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 16px;
-    background: #322053;                /* surface-container-high */
+    padding: 14px 16px;
+    background: rgba(14, 46, 82, 0.7);  /* --menu-surface-lowest */
     border: 2px solid transparent;
     border-bottom: 4px solid rgba(0, 0, 0, 0.2);
-    border-radius: 20px;
+    border-radius: 16px;
     cursor: pointer;
     transition: transform 0.12s, background 0.15s, border-color 0.15s;
 }
 
 .server-item:hover {
-    background: #412f63;                /* surface-bright */
+    background: var(--menu-surface-high);
     transform: scale(1.02);
-    border-color: rgba(183, 247, 0, 0.3);
+    border-color: rgba(135, 206, 250, 0.5);
 }
 
 .server-item:active {
@@ -507,8 +599,8 @@ button {
 }
 
 .server-item.selected {
-    border-color: #b7f700;
-    background: rgba(183, 247, 0, 0.08);
+    border-color: var(--menu-accent);
+    background: rgba(162, 238, 56, 0.1);
 }
 
 .server-card-left {
@@ -521,19 +613,19 @@ button {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: #231043;                /* surface-container-low */
+    background: var(--menu-surface-lowest);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #c2b8d9;
+    color: var(--menu-text-muted);
     flex-shrink: 0;
     transition: var(--transition-fast);
 }
 
 .server-item:hover .server-globe,
 .server-item.selected .server-globe {
-    background: rgba(183, 247, 0, 0.2);
-    color: #b7f700;
+    background: rgba(162, 238, 56, 0.2);
+    color: var(--menu-accent);
 }
 
 .server-info {
@@ -545,20 +637,20 @@ button {
 
 .server-region {
     font-size: 1.15rem;
-    font-weight: 600;
-    color: #ebddff;
+    font-weight: 700;
+    color: var(--menu-text);
     transition: var(--transition-fast);
 }
 
 .server-item:hover .server-region,
 .server-item.selected .server-region {
-    color: #b7f700;
+    color: var(--menu-accent);
 }
 
 .server-status {
     font-size: 0.82rem;
-    font-weight: 500;
-    color: #c2b8d9;
+    font-weight: 600;
+    color: var(--menu-text-muted);
 }
 
 /* ── Ping + signal, latency-tier colored (set via data-tier in main.js) ── */
@@ -566,7 +658,7 @@ button {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #c2b8d9;
+    color: var(--menu-text-muted);
     flex-shrink: 0;
 }
 
@@ -576,11 +668,11 @@ button {
     font-variant-numeric: tabular-nums;
 }
 
-.server-item[data-tier="good"]    .server-ping-wrap { color: #b7f700; }  /* primary-container */
-.server-item[data-tier="ok"]      .server-ping-wrap { color: #a0d800; }  /* primary-fixed-dim */
-.server-item[data-tier="high"]    .server-ping-wrap { color: #fdd400; }  /* secondary-container */
-.server-item[data-tier="bad"]     .server-ping-wrap { color: #ffb4ab; }  /* error */
-.server-item[data-tier="offline"] .server-ping-wrap { color: #ffb4ab; }
+.server-item[data-tier="good"]    .server-ping-wrap { color: var(--ping-good); }
+.server-item[data-tier="ok"]      .server-ping-wrap { color: var(--ping-ok); }
+.server-item[data-tier="high"]    .server-ping-wrap { color: var(--ping-bad); }
+.server-item[data-tier="bad"]     .server-ping-wrap { color: var(--ping-bad); }
+.server-item[data-tier="offline"] .server-ping-wrap { color: var(--ping-offline); }
 .server-item[data-tier="offline"] { opacity: 0.7; }
 
 /* ── Footer ── */
@@ -588,100 +680,118 @@ button {
     display: flex;
     justify-content: flex-end;
     padding-top: 16px;
-    border-top: 1px solid rgba(61, 43, 94, 0.3);
+    border-top: 1px solid rgba(54, 136, 208, 0.35);   /* --menu-bright */
 }
 
+/* Same 3D language as PLAY, one size down. */
 .servers-confirm-btn {
-    padding: 14px 32px;
-    font-family: 'Quicksand', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: #506e00;                 /* on-primary-container */
-    background: #b7f700;            /* primary-container */
+    padding: 11px 32px 9px;
+    font-family: var(--font-menu);
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
     border-radius: 999px;
-    border-bottom: 4px solid rgba(0, 0, 0, 0.2);
-    transition: transform 0.12s, filter 0.15s, border-bottom-width 0.1s;
+    box-shadow: 0 4px 0 var(--menu-accent-deep), inset 0 2px 3px rgba(255, 255, 255, 0.6);
+    transition: transform 0.1s, filter 0.15s, box-shadow 0.1s;
 }
 
 .servers-confirm-btn:hover {
-    filter: brightness(1.08);
-    transform: scale(1.05);
+    filter: brightness(1.05);
+    transform: translateY(-1px);
 }
 
 .servers-confirm-btn:active {
-    transform: scale(0.95) translateY(2px);
-    border-bottom-width: 2px;
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 var(--menu-accent-deep);
 }
 
-/* ── PLAY button (3D style from reference) ── */
+/* ── PLAY button — reference .btn-play-3d ── */
 .play-btn {
     width: 100%;
-    padding: 16px 32px;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.6rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    color: var(--menu-accent-deep);
-    background: var(--menu-accent);
-    border-radius: 999px;
-    border-bottom: 6px solid var(--menu-accent-deep);
-    transition: all 0.1s;
+    max-width: 295px;
+    height: clamp(52px, 7vh, 64px);
+    padding: 4px 24px 0;             /* Baloo 2 sits high; nudge it to centre */
+    margin-bottom: 8px;              /* room for the 8px 3D base */
+    font-family: var(--font-menu);
+    font-size: clamp(1.75rem, 1.2vw + 1.3rem, 2.25rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    color: var(--menu-text);
+    text-shadow: 0 2px 0 rgba(255, 255, 255, 0.45), 0 -1.5px 0 rgba(0, 0, 0, 0.15);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 3px solid var(--play-border);
+    border-radius: 28px;
+    box-shadow: 0 8px 0 var(--menu-accent-deep), 0 14px 18px rgba(0, 0, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.7);
+    transition: all 0.1s ease-in-out;
 }
 
 .play-btn:hover {
-    filter: brightness(1.1);
+    filter: brightness(1.05);
+    transform: translateY(-1px);
 }
 
 .play-btn:active {
-    transform: translateY(4px);
-    border-bottom-width: 2px;
+    transform: translateY(6px);
+    box-shadow: 0 2px 0 var(--menu-accent-deep), 0 5px 8px rgba(0, 0, 0, 0.35);
 }
 
-/* ── Footer ── */
+/* ── Footer — reference: centred brand on a translucent sea-blue bar ── */
 .menu-footer {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 14px 24px;
-    background: var(--menu-surface-lowest);
-    border-top: 4px solid var(--menu-surface-high);
-    z-index: 1;
+    gap: 2px;
+    /* Symmetric 56px side insets clear the fixed fullscreen button
+       (bottom-left) while keeping the centred content centred. */
+    padding: clamp(8px, 1.4vh, 14px) 56px;
+    padding-bottom: max(clamp(8px, 1.4vh, 14px), env(safe-area-inset-bottom, 0px));
+    text-align: center;
+    background: rgba(23, 59, 106, 0.8);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    border-top: 1px solid rgba(56, 189, 248, 0.4);
 }
 
 .menu-footer-brand {
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: var(--menu-accent);
-    filter: drop-shadow(0 2px 0 var(--menu-accent-shadow));
+    font-family: var(--font-menu);
+    font-size: clamp(0.9rem, 0.4vw + 0.8rem, 1.05rem);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: var(--menu-text-muted);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .menu-footer-links {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 16px;
+    gap: 0 16px;
 }
 
 .menu-footer-links a {
     font-size: 0.72rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--menu-text-muted);
+    opacity: 0.8;
     text-decoration: none;
     transition: var(--transition-fast);
 }
 
 .menu-footer-links a:hover {
-    color: var(--menu-accent);
+    color: var(--menu-text);
+    opacity: 1;
     text-decoration: underline;
 }
 
 .menu-footer-copy {
-    font-size: 0.78rem;
+    font-size: 0.68rem;
     color: var(--menu-text-muted);
+    opacity: 0.65;
 }
 
 /* Modals */
@@ -1915,76 +2025,33 @@ input:checked + .settings-slider:before {
    (tablets & phones held vertically, ≤768px wide)
    ═══════════════════════════════════════════════ */
 @media (max-width: 768px) {
-    .top-bar {
-        padding: 16px 20px;
-    }
-
-    .icon-btn {
-        width: 42px;
-        height: 42px;
-    }
-
+    /* Stacked phone/tablet-portrait layout. Most sizing is already fluid
+       (clamp) — this block only restructures what can't scale: the avatar
+       sizes from width instead of vmin and the sphere takes the full column. */
     .main-menu-content {
-        padding: 0 16px 6vh;
+        --logo-size: clamp(96px, 26vw, 124px);
+        padding: 0 16px 3vh;
     }
 
     .login-card {
-        max-width: min(400px, 100%);
-        gap: 14px;
-        padding: 20px 18px;
-    }
-
-    #nickname-input {
-        padding: 13px 44px;
-        font-size: 1rem;
-    }
-
-    .play-btn {
-        padding: 14px 24px;
-        font-size: 1.4rem;
-    }
-
-    /* Footer: stack vertically and center on narrow screens */
-    .menu-footer {
-        flex-direction: column;
-        justify-content: center;
-        text-align: center;
-        gap: 8px;
-        padding: 12px 16px;
-    }
-
-    .menu-footer-brand {
-        font-size: 1.1rem;
+        max-width: min(420px, 100%);
+        border-radius: 40px;
     }
 }
 
 /* Very small phones (≤400px wide) */
 @media (max-width: 400px) {
-    .brand-logo-ring {
-        border-width: 5px;
-        margin-bottom: -24px;
-    }
-
     .login-card {
-        margin-top: 26px;
-        padding: 18px 14px;
-        border-radius: 22px;
-    }
-
-    .play-btn {
-        font-size: 1.25rem;
-    }
-
-    .servers-btn {
-        font-size: 0.95rem;
+        padding-left: 14px;
+        padding-right: 14px;
+        border-radius: 32px;
     }
 
     /* Dar ekranda "Connected to" etiketi satiri kirar; sadece bolge + ping
        kalsin — bilgi yogunlugu korunur, satir tek satirda kalir. */
     .server-indicator {
         font-size: 0.82rem;
-        padding: 9px 14px;
-        gap: 6px;
+        padding: 4px 14px 3px;
     }
 
     .server-indicator-label {
@@ -1992,8 +2059,18 @@ input:checked + .settings-slider:before {
     }
 
     .menu-footer-links {
-        gap: 10px 14px;
+        gap: 0 12px;
     }
+}
+
+/* Ultra-wide / 4K: the clamps above cap for 1080p–1440p; lift the caps so the
+   menu doesn't shrink into a postage stamp in the middle of the screen. */
+@media (min-width: 2200px) and (min-height: 1200px) {
+    .main-menu-content { --logo-size: 180px; }
+    .brand-title { font-size: 3.8rem; }
+    .login-card { max-width: 500px; }
+    .login-card > * { max-width: 360px; }
+    .side-panel { --sp-width: 440px; }
 }
 
 /* ═══════════════════════════════════════════════
@@ -2022,9 +2099,16 @@ input:checked + .settings-slider:before {
         padding: 0 16px;
     }
 
+    /* Side by side, the badge can't overlap the card — it sits above the
+       title column instead, so the card drops its reserved top padding. */
+    .main-menu-content {
+        --logo-size: 84px;
+    }
+
     .brand {
         width: auto;
         flex-shrink: 0;
+        margin-bottom: 0;
     }
 
     /* Disable the ±10px float so the logo can't bob out of a tight viewport */
@@ -2032,42 +2116,30 @@ input:checked + .settings-slider:before {
         animation: none;
     }
 
-    .brand-logo-ring {
-        width: 96px;
-        border-width: 4px;
-        margin-bottom: -18px;
-    }
-
     .brand-title {
-        font-size: clamp(1.1rem, 3.2vw, 1.5rem);
-        padding: 8px 20px;
-        border-radius: 14px;
+        font-size: clamp(1.2rem, 3vw, 1.6rem);
     }
 
     .login-card {
-        gap: 10px;
-        max-width: min(340px, 48vw);
-        margin-top: 0;
-        padding: 16px;
-        border-radius: 20px;
+        gap: 8px;
+        max-width: min(340px, 50vw);
+        padding: 16px 18px;
+        border-radius: 32px;
     }
 
     #nickname-input {
-        padding: 9px 40px;
-        font-size: 0.95rem;
+        height: 40px;
+        font-size: 1rem;
     }
 
     .servers-btn {
-        padding: 8px 20px;
-        font-size: 0.9rem;
-        border-bottom-width: 4px;
+        height: 34px;
     }
 
     /* Landscape mobilde dikey alan kritik — satiri sikistir ve etiketi gizle. */
     .server-indicator {
-        padding: 7px 14px;
+        padding: 3px 14px 2px;
         font-size: 0.8rem;
-        gap: 6px;
     }
 
     .server-indicator-label {
@@ -2075,9 +2147,10 @@ input:checked + .settings-slider:before {
     }
 
     .play-btn {
-        padding: 9px 24px;
-        font-size: 1.15rem;
-        border-bottom-width: 4px;
+        height: 46px;
+        margin-bottom: 5px;
+        font-size: 1.5rem;
+        box-shadow: 0 5px 0 var(--menu-accent-deep), 0 8px 12px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.7);
     }
 
     .menu-footer {
@@ -2802,8 +2875,15 @@ html.pseudo-fullscreen #app {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
-    background: radial-gradient(circle at 50% 0%, #2a1052 0%, #1a063b 60%, #12042a 100%);
+    padding: clamp(16px, 4vw, 24px);
+    font-family: var(--font-menu);
+    color: var(--menu-text);
+    /* Same seabed as the menu, tinted sea-dark: this is a blocking prompt and
+       should read as sitting on top of the menu. */
+    background:
+        linear-gradient(rgba(8, 51, 103, 0.55), rgba(8, 51, 103, 0.55)),
+        url('/assets/background/main-menu-background.png') center bottom / cover no-repeat,
+        var(--menu-surface);
     opacity: 1;
     visibility: visible;
     transition: opacity 0.3s ease, visibility 0.3s;
@@ -2823,36 +2903,45 @@ html.pseudo-fullscreen #app {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 18px;
+    gap: clamp(12px, 2vh, 18px);
     width: 100%;
-    max-width: 420px;
-    padding: 48px 32px;
-    background: #271448;
-    border: 1px solid #322053;
-    border-radius: 28px;
-    box-shadow: 0 8px 30px rgba(26, 15, 46, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+    max-width: min(420px, 100%);
+    padding: clamp(32px, 6vh, 48px) clamp(20px, 4vw, 32px);
+    /* Reference .ocean-sphere */
+    background: radial-gradient(circle at 50% 38%, rgba(68, 178, 237, 0.55) 0%, rgba(17, 102, 185, 0.75) 75%, rgba(6, 68, 142, 0.88) 100%);
+    border: 2.5px solid rgba(255, 255, 255, 0.55);
+    border-radius: clamp(36px, 5vw, 52px);
+    box-shadow: 0 0 35px rgba(45, 170, 240, 0.45), inset 0 0 20px rgba(255, 255, 255, 0.25);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     text-align: center;
 }
 
+/* Same gradient ring as the menu's avatar badge. */
 .auth-logo {
-    font-size: 56px;
-    line-height: 1;
-    filter: drop-shadow(0 4px 12px var(--primary-glow));
+    width: clamp(80px, 12vmin, 104px);
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    padding: 4px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #ffffff 0%, #cffafe 50%, var(--menu-placeholder) 100%);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
 .auth-title {
-    font-family: var(--font-heading);
-    font-size: 26px;
+    font-family: var(--font-menu);
+    font-size: clamp(1.4rem, 1.5vw + 1rem, 1.8rem);
     font-weight: 800;
-    letter-spacing: -0.01em;
-    color: var(--text-main);
+    line-height: 1.15;
+    color: var(--menu-text);
+    text-shadow: 0 3px 0 var(--sea-dark);
 }
 
 .auth-subtitle {
     max-width: 30ch;
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--text-muted);
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: var(--menu-text-soft);
 }
 
 /* Google butonu kendi iframe'ini getirir; slot yalnızca ortalar ve yer açar. */
@@ -2868,7 +2957,7 @@ html.pseudo-fullscreen #app {
     padding: 10px 14px;
     font-size: 13px;
     line-height: 1.45;
-    color: #ffb4a2;
+    color: #ffb4ab;                             /* error — same as .sp-inline-error */
     background: rgba(255, 80, 60, 0.1);
     border: 1px solid rgba(255, 80, 60, 0.25);
     border-radius: 12px;
@@ -2879,19 +2968,9 @@ html.pseudo-fullscreen #app {
 }
 
 .auth-legal {
-    font-size: 11.5px;
-    color: rgba(160, 160, 176, 0.75);
-}
-
-@media (max-width: 480px) {
-    .auth-card {
-        gap: 14px;
-        padding: 36px 22px;
-        border-radius: 22px;
-    }
-
-    .auth-logo { font-size: 44px; }
-    .auth-title { font-size: 22px; }
+    font-size: 0.75rem;
+    color: var(--menu-text-muted);
+    opacity: 0.8;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2909,9 +2988,11 @@ html.pseudo-fullscreen #app {
     grid-template-columns: 1fr 1fr;
     gap: 4px;
     padding: 4px;
-    background: var(--menu-surface-lowest);
+    /* Reference .pill-input — the strip reads as part of the input family. */
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, #174270 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
     border-radius: 999px;
-    box-shadow: inset 0 3px 5px -1px rgba(0, 0, 0, 0.45);
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* Hareketli seçim göstergesi. İKİ sekmeye sabitlenmiştir: solda %4 padding
@@ -2923,9 +3004,9 @@ html.pseudo-fullscreen #app {
     left: 4px;
     width: calc(50% - 6px);
     height: calc(100% - 8px);
-    background: var(--menu-accent);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
     border-radius: 999px;
-    box-shadow: 0 2px 0 var(--menu-accent-shadow), 0 4px 12px rgba(183, 247, 0, 0.25);
+    box-shadow: 0 2px 0 var(--menu-accent-deep), inset 0 1px 2px rgba(255, 255, 255, 0.6);
     transition: transform var(--transition-bounce);
     pointer-events: none;
 }
@@ -2941,15 +3022,20 @@ html.pseudo-fullscreen #app {
     align-items: center;
     justify-content: center;
     gap: 7px;
-    padding: 11px 8px;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.6px;
+    padding: 8px 6px 6px;
+    font-family: var(--font-menu);
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.04em;
     color: var(--menu-text-muted);
     background: transparent;
     border-radius: 999px;
     transition: color var(--transition-fast);
+}
+
+.auth-tab .auth-tab-label {
+    white-space: nowrap;
 }
 
 .auth-tab .auth-tab-icon {
@@ -2963,12 +3049,13 @@ html.pseudo-fullscreen #app {
 
 /* Etkin sekme metni thumb'ın ÜZERİNDE okunur — bu yüzden koyu accent rengi. */
 .auth-tab.is-active {
-    color: var(--menu-accent-deep);
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
 .auth-tab:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(183, 247, 0, 0.45);
+    box-shadow: 0 0 0 3px rgba(40, 185, 230, 0.6);
 }
 
 /* Google oturumu açıkken GUEST sekmesi kilitlenir: hesaplı oyuncuyu tek tıkla
@@ -3024,13 +3111,14 @@ html.pseudo-fullscreen #app {
 .social-btn {
     width: 100%;
     max-width: 320px;
-    padding: 12px 20px;
-    font-family: var(--font-body), sans-serif;
-    font-size: 0.95rem;
-    font-weight: 600;
+    height: 44px;
+    padding: 2px 20px 0;
+    font-family: var(--font-menu);
+    font-size: 1rem;
+    font-weight: 700;
     color: var(--menu-text);
-    background: var(--menu-surface-high);
-    border: 1px solid var(--menu-bright);
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, #174270 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
     border-radius: 999px;
     transition: var(--transition-fast);
 }
@@ -3047,13 +3135,14 @@ html.pseudo-fullscreen #app {
 }
 
 .social-badge {
-    padding: 2px 8px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.6rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: var(--menu-surface-lowest);
-    background: var(--menu-text-muted);
+    padding: 1px 8px 0;
+    font-family: var(--font-menu);
+    font-size: 0.66rem;
+    font-weight: 800;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    color: var(--sea-dark);
+    background: var(--menu-placeholder);
     border-radius: 999px;
 }
 
@@ -3063,8 +3152,8 @@ html.pseudo-fullscreen #app {
     align-items: center;
     gap: 12px;
     padding: 14px 16px;
-    background: var(--menu-surface-lowest);
-    border: 1px solid rgba(183, 247, 0, 0.25);
+    background: rgba(14, 46, 82, 0.85);     /* reference .status-chip */
+    border: 2px solid rgba(89, 232, 27, 0.45);  /* --ping-good */
     border-radius: 18px;
 }
 
@@ -3075,7 +3164,7 @@ html.pseudo-fullscreen #app {
 .social-signed-in-tick {
     flex-shrink: 0;
     font-size: 26px;
-    color: var(--menu-accent);
+    color: var(--ping-good);
 }
 
 .social-signed-in-text {
@@ -3086,8 +3175,8 @@ html.pseudo-fullscreen #app {
 }
 
 .social-signed-in-name {
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.95rem;
+    font-family: var(--font-menu);
+    font-size: 1rem;
     font-weight: 700;
     color: var(--menu-text);
 }
@@ -3112,15 +3201,15 @@ html.pseudo-fullscreen #app {
     right: 14px;
     width: 36px;
     height: 36px;
-    color: var(--text-muted);
+    color: var(--menu-text-muted);
     background: transparent;
     border-radius: 50%;
     transition: var(--transition-fast);
 }
 
 .auth-close-btn:hover {
-    color: var(--text-main);
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--menu-text);
+    background: rgba(255, 255, 255, 0.15);
 }
 
 @media (max-width: 480px) {
@@ -3134,22 +3223,13 @@ html.pseudo-fullscreen #app {
    z-index 40: oyun HUD'unun üstünde ama servers (50) / settings (55) / auth
    (60) modallerinin ALTINDA — bir modal açıkken çekmece onu kesmemeli.
 
-   Menü paleti burada YENİDEN tanımlanır: panel .ui-layer'ın DIŞINDA yaşar
-   (menü gizlendiğinde de var olabilmesi için) ve o yüzden oradaki scoped
-   token'ları miras alamaz.
+   Menü paleti :root'ta tanımlı; panel .ui-layer'ın DIŞINDA yaşasa da
+   token'lara erişir.
    ═══════════════════════════════════════════════════════════════════════════ */
 .side-panel {
-    --menu-surface: #1a063b;
-    --menu-surface-container: #271448;
-    --menu-surface-high: #322053;
-    --menu-surface-highest: #3d2b5e;
-    --menu-surface-lowest: #150136;
-    --menu-bright: #412f63;
-    --menu-accent: #b7f700;
-    --menu-accent-deep: #506e00;
-    --menu-accent-shadow: #374e00;
-    --menu-text: #ebddff;
-    --menu-text-muted: #bfb3d6;
+    /* Drawer width lives in ONE token: the drawer and the collapsed handle's
+       offset must always agree, and both change at each breakpoint. */
+    --sp-width: clamp(300px, 24vw, 380px);
 
     position: absolute;
     top: 0;
@@ -3159,6 +3239,8 @@ html.pseudo-fullscreen #app {
     display: flex;
     align-items: stretch;
     pointer-events: none;           /* boşluk tıklamayı yutmasın */
+    font-family: var(--font-menu);
+    color: var(--menu-text);
 }
 
 .side-panel[hidden] {
@@ -3169,11 +3251,14 @@ html.pseudo-fullscreen #app {
     pointer-events: auto;
     display: flex;
     flex-direction: column;
-    width: min(340px, 86vw);
+    width: var(--sp-width);
     height: 100%;
-    background: var(--menu-surface-container);
-    border-right: 1px solid var(--menu-bright);
-    box-shadow: 6px 0 28px rgba(10, 5, 20, 0.55);
+    /* Reference .server-list-panel fading into sea-dark. */
+    background: linear-gradient(180deg, rgba(18, 52, 91, 0.97) 0%, rgba(8, 51, 103, 0.97) 100%);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    border-right: 2px solid rgba(135, 206, 250, 0.6);
+    box-shadow: 0 0 35px rgba(45, 170, 240, 0.35);
     transition: transform var(--transition-bounce);
     /* Güvenli alan: çentikli cihazlarda panel başlığı çentiğin altında kalsın. */
     padding-top: env(safe-area-inset-top, 0px);
@@ -3194,18 +3279,21 @@ html.pseudo-fullscreen #app {
 .side-panel-toggle {
     pointer-events: auto;
     align-self: center;
-    width: 30px;
-    height: 68px;
+    width: 32px;
+    height: 72px;
     padding: 0;
-    color: var(--menu-surface-lowest);
-    background: var(--menu-accent);
-    border-radius: 0 14px 14px 0;
-    box-shadow: 3px 0 12px rgba(10, 5, 20, 0.45);
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
+    border-left: none;
+    border-radius: 0 18px 18px 0;
+    box-shadow: 0 4px 0 var(--menu-accent-deep), 6px 0 16px rgba(0, 0, 0, 0.3);
     transition: transform var(--transition-bounce), filter var(--transition-fast);
 }
 
 .side-panel.is-collapsed .side-panel-toggle {
-    transform: translateX(calc(-1 * min(340px, 86vw)));
+    transform: translateX(calc(-1 * var(--sp-width)));
 }
 
 .side-panel-toggle:hover {
@@ -3240,8 +3328,9 @@ html.pseudo-fullscreen #app {
     height: 46px;
     overflow: hidden;
     background: var(--menu-surface-high);
-    border: 2px solid var(--menu-accent);
+    border: 3px solid #cffafe;              /* avatar-badge ring, cyan-100 */
     border-radius: 50%;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
 }
 
 .sp-avatar-img {
@@ -3251,10 +3340,11 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-avatar-letter {
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--menu-accent);
+    font-family: var(--font-menu);
+    font-size: 1.4rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--menu-text);
 }
 
 .sp-identity {
@@ -3277,21 +3367,23 @@ html.pseudo-fullscreen #app {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.02rem;
-    font-weight: 700;
+    font-family: var(--font-menu);
+    font-size: 1.12rem;
+    font-weight: 800;
+    line-height: 1.2;
     color: var(--menu-text);
 }
 
 .sp-mode-badge {
     flex-shrink: 0;
-    padding: 2px 7px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.55rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: var(--menu-surface-lowest);
-    background: var(--menu-text-muted);
+    padding: 1px 8px 0;
+    font-family: var(--font-menu);
+    font-size: 0.64rem;
+    font-weight: 800;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    color: var(--sea-dark);
+    background: var(--menu-placeholder);
     border-radius: 999px;
 }
 
@@ -3342,7 +3434,7 @@ html.pseudo-fullscreen #app {
 /* ── Cüzdan bölümü ── */
 .sp-section {
     padding: 14px 16px;
-    border-bottom: 1px solid rgba(65, 47, 99, 0.5);
+    border-bottom: 1px solid rgba(54, 136, 208, 0.45);   /* --menu-bright */
 }
 
 .sp-section-head {
@@ -3352,14 +3444,16 @@ html.pseudo-fullscreen #app {
     margin-bottom: 10px;
 }
 
+/* Reference footer label: sky-200, extra-bold, wide tracking. */
 .sp-section-title,
 .sp-subhead {
     margin: 0;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 1.6px;
+    font-family: var(--font-menu);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--menu-accent);
+    color: var(--menu-text-muted);
 }
 
 .sp-subhead {
@@ -3400,9 +3494,10 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-balance-amount {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem;
-    font-weight: 600;
+    font-family: var(--font-menu);
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1.15;
     color: var(--menu-text);
     font-variant-numeric: tabular-nums;
 }
@@ -3430,9 +3525,10 @@ html.pseudo-fullscreen #app {
     align-items: center;
     justify-content: center;
     gap: 7px;
-    padding: 10px 8px;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 0.85rem;
+    padding: 9px 8px 7px;
+    font-family: var(--font-menu);
+    font-size: 0.95rem;
+    line-height: 1.2;
     font-weight: 700;
     color: var(--menu-text-muted);
     background: var(--menu-surface-lowest);
@@ -3450,9 +3546,10 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-menu-btn.is-active {
-    color: var(--menu-accent-deep);
-    background: var(--menu-accent);
-    box-shadow: 0 2px 0 var(--menu-accent-shadow);
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    box-shadow: 0 3px 0 var(--menu-accent-deep), inset 0 1px 2px rgba(255, 255, 255, 0.6);
 }
 
 /* ── Alt menü gövdesi ── */
@@ -3487,9 +3584,9 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-chip {
-    padding: 6px 13px;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.76rem;
+    padding: 5px 13px 3px;
+    font-family: var(--font-menu);
+    font-size: 0.82rem;
     font-weight: 600;
     color: var(--menu-text-muted);
     background: var(--menu-surface-lowest);
@@ -3521,7 +3618,7 @@ html.pseudo-fullscreen #app {
     gap: 11px;
     padding: 10px;
     background: var(--menu-surface-lowest);
-    border: 1px solid rgba(65, 47, 99, 0.6);
+    border: 1px solid rgba(54, 136, 208, 0.55);   /* --menu-bright */
     border-radius: 16px;
 }
 
@@ -3560,8 +3657,9 @@ html.pseudo-fullscreen #app {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.88rem;
+    font-family: var(--font-menu);
+    font-size: 0.95rem;
+    line-height: 1.25;
     font-weight: 600;
     color: var(--menu-text);
 }
@@ -3598,9 +3696,10 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-price-amount {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.76rem;
-    font-weight: 600;
+    font-family: var(--font-menu);
+    font-size: 0.85rem;
+    font-weight: 800;
+    line-height: 1.3;
     color: var(--menu-text);
     font-variant-numeric: tabular-nums;
 }
@@ -3612,9 +3711,10 @@ html.pseudo-fullscreen #app {
 
 .sp-qty {
     flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    font-weight: 600;
+    font-family: var(--font-menu);
+    font-size: 0.9rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
     color: var(--menu-accent);
 }
 
@@ -3632,7 +3732,7 @@ html.pseudo-fullscreen #app {
     gap: 6px;
     padding: 11px 8px;
     background: var(--menu-surface-lowest);
-    border: 1px solid rgba(65, 47, 99, 0.6);
+    border: 1px solid rgba(54, 136, 208, 0.55);   /* --menu-bright */
     border-radius: 16px;
     transition: var(--transition-fast);
 }
@@ -3644,7 +3744,7 @@ html.pseudo-fullscreen #app {
 
 .sp-skin.is-active {
     border-color: var(--menu-accent);
-    box-shadow: 0 0 0 1px var(--menu-accent), 0 4px 14px rgba(183, 247, 0, 0.18);
+    box-shadow: 0 0 0 1px var(--menu-accent), 0 4px 14px rgba(162, 238, 56, 0.25);
     /* Takılı skin tıklanamaz (boş PUT üretirdi) ama SÖNÜK GÖRÜNMEZ — bu bir
        hata durumu değil, seçili durumdur. */
     opacity: 1;
@@ -3673,10 +3773,11 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-skin-state {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.55rem;
-    font-weight: 600;
-    letter-spacing: 0.4px;
+    font-family: var(--font-menu);
+    font-size: 0.66rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.06em;
     color: var(--menu-text-muted);
 }
 
@@ -3698,7 +3799,7 @@ html.pseudo-fullscreen #app {
     line-height: 1.4;
     color: var(--menu-text-muted);
     background: var(--menu-surface-lowest);
-    border: 1px dashed rgba(65, 47, 99, 0.8);
+    border: 1px dashed rgba(54, 136, 208, 0.7);   /* --menu-bright */
     border-radius: 14px;
 }
 
@@ -3723,9 +3824,9 @@ html.pseudo-fullscreen #app {
 
 .sp-state-btn {
     flex-shrink: 0;
-    padding: 5px 12px;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.72rem;
+    padding: 4px 12px 2px;
+    font-family: var(--font-menu);
+    font-size: 0.8rem;
     font-weight: 700;
     color: var(--menu-accent-deep);
     background: var(--menu-accent);
@@ -3811,13 +3912,38 @@ html.pseudo-fullscreen #app {
     }
 }
 
-/* Dar/kısa ekranlar: çekmece tam genişlik alır, dikey ritim sıkışır. */
-@media (max-width: 420px) {
-    .side-panel-drawer { width: min(320px, 88vw); }
-    .side-panel.is-collapsed .side-panel-toggle { transform: translateX(calc(-1 * min(320px, 88vw))); }
-    .side-panel-header { padding: 16px 14px; }
-    .sp-section { padding: 12px 14px; }
-    .sp-body { padding: 0 14px 16px; }
+/* ── Mobile (≤768px): the drawer becomes a full-screen sheet ──
+   A ~340px drawer on a 390px phone left a useless sliver of menu behind it.
+   As a sheet the handle can't sit beside the drawer (it would be off-screen),
+   so while open it docks inside the sheet's top-right corner as a close
+   button; collapsed, it stays a tab on the left edge. */
+@media (max-width: 768px) {
+    .side-panel { --sp-width: 100vw; }
+
+    .side-panel-drawer {
+        border-right: none;
+        box-shadow: none;
+    }
+
+    .side-panel.is-expanded .side-panel-toggle {
+        position: fixed;
+        top: calc(env(safe-area-inset-top, 0px) + 14px);
+        right: 12px;
+        width: 40px;
+        height: 40px;
+        border-left: 2px solid var(--play-border);
+        border-radius: 50%;
+        box-shadow: 0 3px 0 var(--menu-accent-deep);
+        transform: none;
+    }
+
+    /* Right inset leaves room for the docked close handle. */
+    .side-panel-header { padding: 16px 64px 16px 16px; }
+    .sp-section { padding: 12px 16px; }
+    .sp-menu { padding: 10px 16px; }
+    /* Bottom inset clears the fixed fullscreen button (bottom-left). */
+    .sp-body { padding: 0 16px calc(56px + env(safe-area-inset-bottom, 0px)); }
+    .sp-skin-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 }
 
 @media (max-height: 560px) {

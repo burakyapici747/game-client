@@ -7,6 +7,9 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Baloo 2 is self-hosted (public/assets/font/baloo2); preload the weight the
+         title and PLAY button render with so they don't flash a fallback. -->
+    <link rel="preload" href="/assets/font/baloo2/Baloo2-ExtraBold.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="stylesheet" href="/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&family=Quicksand:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet">
@@ -14,7 +17,7 @@
          bloklamaz, hazır olduğunda src/auth/GoogleAuth.js tarafından beklenir. -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-    <title>TABUMU GAME</title>
+    <title>SEANAKES.IO</title>
 </head>
 
 <body>
@@ -39,12 +42,13 @@
             </div>
             
             <main class="main-menu-content">
-                <!-- Logo & Branding -->
+                <!-- Logo & Branding — the avatar badge overlaps the top of the
+                     sphere card below (reference: LOGIN SCREEN/index.html). -->
                 <div class="brand float-anim">
+                    <h1 class="brand-title">SEANAKES.IO</h1>
                     <div class="brand-logo-ring">
-                        <img src="/assets/logo_image.jpeg" alt="TABUMU GAME mascot logo" />
+                        <img src="/assets/logo/logo-1.png" alt="SEANAKES.IO logo" />
                     </div>
-                    <h1 class="brand-title">TABUMU GAME</h1>
                 </div>
 
                 <!-- Login Card -->
@@ -71,11 +75,8 @@
                     <!-- GUEST: yerel takma ad, sosyal sağlayıcı yok -->
                     <div id="auth-pane-guest" class="auth-pane" role="tabpanel" aria-labelledby="auth-tab-guest">
                         <div class="login-input-wrap">
-                            <svg class="login-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                                <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                                <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                            <svg class="login-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                                <path d="M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4z"></path>
                             </svg>
                             <input type="text" id="nickname-input" placeholder="Enter Nickname" maxlength="16" autocomplete="off" />
                         </div>
@@ -115,12 +116,7 @@
                         <p class="auth-pane-hint">Signing in unlocks your wallet, store and skins.</p>
                     </div>
 
-                    <button id="play-btn" class="play-btn">
-                        <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"></path>
-                        </svg>
-                        PLAY
-                    </button>
+                    <button id="play-btn" class="play-btn">PLAY !</button>
 
                     <!-- Auto-selected server readout. Populated by
                          src/main.js -> updateServerIndicator(); the data-tier
@@ -141,21 +137,21 @@
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                             <path d="M4 5h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM4 13h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"></path>
                         </svg>
-                        Servers
+                        SERVERS
                     </button>
                 </div>
             </main>
 
             <!-- Footer -->
             <footer class="menu-footer">
-                <div class="menu-footer-brand">TABUMU GAME</div>
+                <div class="menu-footer-brand">SEANAKES.IO</div>
                 <nav class="menu-footer-links">
                     <a href="#">Privacy Policy</a>
                     <a href="#">Terms of Service</a>
                     <a href="#">Help Center</a>
                     <a href="#">Community Guidelines</a>
                 </nav>
-                <div class="menu-footer-copy">© 2026 TABUMU GAME. Stay Slithery!</div>
+                <div class="menu-footer-copy">© 2026 SEANAKES.IO. Stay Slithery!</div>
             </footer>
         </div>
 
@@ -264,7 +260,7 @@
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                 </button>
-                <div class="auth-logo">🐍</div>
+                <img class="auth-logo" src="/assets/logo/logo-1.png" alt="SEANAKES.IO logo" />
                 <h2 id="auth-title" class="auth-title">Sign in to continue</h2>
                 <p class="auth-subtitle">Your wallet, store and skins are tied to your Google account.</p>
 
