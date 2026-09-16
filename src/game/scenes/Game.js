@@ -71,6 +71,11 @@ const FOOD_EAT_DESTROY_DIST = 6;    // px — kafa merkezine bu kadar yaklaşın
 // (bkz. update() içindeki ayrıntılı not).
 const FOOD_PREDICTION_TIMEOUT_MS = 1000;
 
+// M01 — SUNUCU ILE BIREBIR: SnakeDynamicsSystem.calculateScale doyum noktasi
+// (min(6.0, ...)). Bu esigin uzerindeki bir olcek bozuk paket demektir ve
+// uygulanmaz; mevcut olcek korunur.
+const SCALE_MAX = 6.0;
+
 // ── GİRDİ AÇI SLEW-RATE LIMITER (client ⇄ server hedef-açı sözleşmesi) ──────
 //
 // KÖK NEDEN — GİRDİ AKIŞI ALIASING'İ, "istemci snap'liyor sunucu snap'lemiyor"
@@ -794,7 +799,30 @@ export class Game extends Phaser.Scene {
 
     onEntityCollection(entityCollection) {
         const entityIds = entityCollection?.entityIds ?? [];
-        if (entityIds.length === 0) return;
+
+        // ── M01: SEYREK OLCEK KANALI ────────────────────────────────────────
+        // Konumsal eslesme: suIds[k] <-> suScales[k]. Uzunluklar uyusmuyorsa
+        // batch'in TAMAMI atilir — kismi uygulama, olcekleri yanlis entity'lere
+        // kaydirmaktan daha kotudur.
+        const su = entityCollection?.scaleUpdates ?? entityCollection?.scale_updates ?? null;
+        let suIds = su?.entityIds ?? su?.entity_ids ?? null;
+        let suScales = su?.scales ?? null;
+        if (suIds && suScales && suIds.length !== suScales.length) {
+            this._warnOnce('scaleUpdatesLengthMismatch',
+                `[M01] scale_updates uzunluk uyusmazligi: ${suIds.length} id / ${suScales.length} olcek — batch atildi.`);
+            suIds = null;
+            suScales = null;
+        }
+        const hasScaleBatch = !!(suIds && suScales && suIds.length > 0);
+
+        // KRITIK (F4): burada eskiden kosulsuz bir erken cikis vardi. Seyrek
+        // kanalla birlikte, YALNIZCA olcek tasiyan (pozisyon dizileri bos)
+        // gecerli bir zarf o cikista SESSIZCE DUSERDI. Bu dalda entity'ler
+        // zaten mevcuttur, dolayisiyla dogrudan uygulanabilir.
+        if (entityIds.length === 0) {
+            if (hasScaleBatch) this._applyScaleUpdates(suIds, suScales);
+            return;
+        }
 
         this.initialDataFlags.entities = true;
         this.checkInitialDataComplete();
@@ -852,7 +880,20 @@ export class Game extends Phaser.Scene {
             const initialX = Number(xs[i]);
             const initialY = Number(ys[i]);
             const angle = Number(angles[i]);
-            const scale = (scales && scales.length > i) ? Number(scales[i]) : 1.0;
+            // ── M01 (F5): 1.0 VARSAYILANI KALDIRILDI ────────────────────────
+            // Yeni sozlesmede olcek YOKLUGU "degismedi" demektir, "1.0" DEGIL.
+            // Eski `: 1.0` yedegi birakilsaydi, buyuk bir yilan seyrek batch'te
+            // yer almadigi HER tick'te asgari boyuta sicrardi.
+            //
+            // Oncelik: seyrek kanal > yogun dizi (geri donus yolu, alan 7) >
+            // hicbir sey. undefined => olcege HIC dokunma.
+            let scale;
+            if (hasScaleBatch) {
+                scale = this._lookupSparseScale(suIds, suScales, lookupId);
+            }
+            if (scale === undefined && scales && scales.length > i) {
+                scale = Number(scales[i]);
+            }
 
             const entitySegmentCount = fullyDataMap.has(lookupId) ? fullyDataMap.get(lookupId) : undefined;
 
@@ -919,7 +960,16 @@ export class Game extends Phaser.Scene {
                 snake.setNickname(fullyDataNicknameMap.get(lookupId));
             }
 
-            snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
+            // M01: olcek TOPOLOJIDEN SONRA, path tohumundan ONCE uygulanir —
+            // govde araligi olcekten turedigi icin tohum guncel olcegi gormeli.
+            // ScaleGuard degismemis degeri sifir ise ile eler.
+            if (scale !== undefined) {
+                this.applyAuthoritativeScale(snake, scale, entityId);
+            }
+
+            // Olcek artik ayri kanaldan geliyor: pozisyon/aci guncellemesine
+            // DAHIL EDILMEZ (aksi halde her tick kosulsuz sprite gecisi olurdu).
+            snake.updateFromServerState({ x: initialX, y: initialY, angle: angle });
             // Dokunulmazlik bayragi HER tick sunucudan gelir. Liste bossa
             // (invulnerableSet === null) hicbir entity dokunulmaz degildir,
             // dolayisiyla bayrak false'a duser ve efekt temizlenir.
@@ -932,6 +982,74 @@ export class Game extends Phaser.Scene {
             // geometrisinin her hâlükârda kazanmasını garanti eder.
             this.flushPendingPathSeed(entityId, snake);
         }
+
+        // Dongude karsilanmayan olcek girdileri (nadir: entity_ids'te olmayan
+        // ama batch'te bulunan bir id). ScaleGuard TAM esitlikle eledigi icin
+        // dongude zaten uygulanmis olanlar burada sifir is uretir.
+        if (hasScaleBatch) this._applyScaleUpdates(suIds, suScales);
+    }
+
+    /**
+     * M01 — seyrek batch'te bir entity'nin olcegini arar.
+     *
+     * DOGRUSAL TARAMA, gecici Map DEGIL: batch tipik olarak 0-3 elemanlidir
+     * (yalnizca 1/106'lik olcek esigini gecen yilanlar + keyframe dilimi).
+     * Bu boyutta indexOf hash'lemeyi doveler ve HICBIR SEY ayirmaz; her pakette
+     * 60 Hz'de bir Map kurmak tam da kacinmak istedigimiz cop.
+     *
+     * @returns {number|undefined} bulunursa olcek, yoksa undefined.
+     */
+    _lookupSparseScale(suIds, suScales, entityId) {
+        for (let k = 0; k < suIds.length; k++) {
+            if (Number(suIds[k]) === entityId) return Number(suScales[k]);
+        }
+        return undefined;
+    }
+
+    /** M01 — seyrek batch'i mevcut yilanlara uygular (dogrulama guard'da). */
+    _applyScaleUpdates(suIds, suScales) {
+        for (let k = 0; k < suIds.length; k++) {
+            const entityId = this.toId(suIds[k]);
+            if (entityId === null) continue;
+            const snake = (this.myId !== null && entityId === this.myId)
+                ? this.snakes.get(this.myId)
+                : this.snakes.get(entityId);
+            if (!snake) continue;
+            this.applyAuthoritativeScale(snake, Number(suScales[k]), entityId);
+        }
+    }
+
+    /**
+     * M01 — OLCEK UYGULAMASININ TEK KAPISI (ScaleGuard).
+     *
+     * Uzak guncellemeler, kendi guncellemesi ve baslatma yollari BURADAN gecer;
+     * gecerlilik ve degisim kontrolu tek yerde yasar.
+     *
+     * GECERSIZ DEGER => mevcut olcek KORUNUR. Ozellikle 0 "degismedi" ya da
+     * "1.0'a don" DEMEK DEGILDIR; gecersiz bir oyun olcegidir.
+     */
+    applyAuthoritativeScale(snake, canonical, entityId) {
+        if (!snake) return;
+        if (!Number.isFinite(canonical) || canonical <= 0 || canonical > SCALE_MAX) {
+            this._warnOnce('invalidScale',
+                `[M01] Gecersiz olcek ${canonical} (entity ${entityId}) — mevcut olcek korundu.`);
+            return;
+        }
+        snake.applyCanonicalScale(canonical);
+    }
+
+    /**
+     * Ayni tani mesajini yalnizca BIR kez basar.
+     *
+     * NEDEN: bu yollar paket basina (60 Hz) kosar. Kapisiz bir console.warn,
+     * tam da onlemeye calistigimiz seyi yapardi — ana is parcaciginda surekli
+     * duraklama ve sinirsiz string tutma (bkz. DEBUG_LOG_FULLY_DATA_RX).
+     */
+    _warnOnce(key, message) {
+        if (!this._warnedOnce) this._warnedOnce = new Set();
+        if (this._warnedOnce.has(key)) return;
+        this._warnedOnce.add(key);
+        console.warn(message);
     }
 
     onSegmentMutationCollection(segmentMutationCollection) {
@@ -1042,6 +1160,19 @@ export class Game extends Phaser.Scene {
         );
         this.flushPendingSegmentMutations(entityId, snake);
 
+        // ── M01: KENDI OLCEGI — ACIK VARLIK KONTROLU ────────────────────────
+        // SelfPosition.scale artik `optional`: YOK => degismedi.
+        //
+        // `!= null` SART. Dogruluk (truthiness) uzerinden kontrol EDILEMEZ:
+        // 0 falsy'dir ama gecerli bir olcek DEGILDIR — ikisini karistirmak
+        // gecersiz bir degeri sessizce "guncelleme yok" saymak olurdu. Burada
+        // gecersiz degerler applyAuthoritativeScale icinde ayrica elenir.
+        // (protobufjs `optional` skaleri yoksa null/undefined birakir.)
+        const selfScale = selfPosition?.scale;
+        if (selfScale !== null && selfScale !== undefined) {
+            this.applyAuthoritativeScale(snake, Number(selfScale), entityId);
+        }
+
         // KENDI dokunulmazligimiz — HER TICK sunucudan. Oyuncunun kendi
         // entity'si EntityCollection'da BULUNMADIGI icin (sunucu gozlemciyi
         // kendi gorunur kumesinden cikarir) bayrak SelfPosition'da tasinir.
@@ -1107,6 +1238,12 @@ export class Game extends Phaser.Scene {
         const snake = this.snakes.get(entityId);
         if (!snake) return;
 
+        // M01 — OLCEK TABANI SIFIRLAMASI BURADA YAPISALDIR: bu metot Snake
+        // NESNESINI yok eder ve id'yi map'ten duser, dolayisiyla bir sonraki
+        // FULLY_DATA yepyeni bir Snake kurar ve _canonicalScale NaN baslar.
+        // GERI DONUSTURULMUS entity id'si eski yasamin kanonik olcegini
+        // MIRAS ALAMAZ; ayrica bir sifirlama cagrisi gerekmez.
+
         // KRİTİK SIRALAMA: kayıt silme ÖNCE, görsel imha SONRA (try/catch).
         // destroy() içindeki herhangi bir hata artık map silmesini engelleyemez;
         // id her koşulda kayıtlardan düşer ve bir sonraki EntityFull temiz
@@ -1143,11 +1280,10 @@ export class Game extends Phaser.Scene {
             if (segmentCount !== undefined) {
                 existingSnake.syncSegmentCountFromServer(segmentCount);
             }
-            if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
-                existingSnake.scale = scale;
-                // scale alanını değiştirmek sprite'ları otomatik boyutlamaz —
-                // görsel boyut sunucu hitbox'ıyla anında eşitlensin.
-                existingSnake._updateSegmentScaling();
+            // M01: TEK kapi. Degismemisse sifir is; degismisse gorsel boyut
+            // sunucu hitbox'iyla aninda esitlenir (eskiden kosulsuz gecis).
+            if (scale !== undefined) {
+                this.applyAuthoritativeScale(existingSnake, Number(scale), entityId);
             }
             if (!existingSnake.nickname) {
                 existingSnake.setNickname(nickname);
@@ -1169,9 +1305,11 @@ export class Game extends Phaser.Scene {
         if (angleRaw !== undefined) {
             playerSnake._hasServerHeading = true;
         }
-        if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
-            playerSnake.scale = scale;
-            playerSnake._updateSegmentScaling(); // görsel boyut = sunucu scale, ilk kareden itibaren
+        // M01: DOGUM/YENIDEN KURULUM. Yeni obje oldugu icin _canonicalScale
+        // NaN'dir ve guard degeri DAIMA uygular — sayisal olarak onceki objenin
+        // degeriyle ayni olsa bile gorsel baglama acikca kurulur.
+        if (scale !== undefined) {
+            this.applyAuthoritativeScale(playerSnake, Number(scale), entityId);
         }
         this.snakes.set(entityId, playerSnake);
 

@@ -4,6 +4,22 @@ package server;
 
 import "server/upgrade/entity-full.proto";
 
+// SEYREK OLCEK KANALI (M01).
+//
+// Konumsal eslesme: entity_ids[i] <-> scales[i]. Iki dizi AYNI uzunlukta
+// olmali ve entity_ids bir batch icinde TEKIL olmalidir. Uzunluklar
+// uyusmuyorsa istemci batch'in TAMAMINI atar (kismi uygulama YOK).
+//
+// NEDEN AYRI BIR MESAJ, iki ust-duzey dizi DEGIL: protobufjs static-module
+// her `repeated` alani mesaj kurucusunda `[]` ile baslatir. Iki ust-duzey
+// dizi, olcek degismeyen tick'lerde bile paket basina IKI bos dizi ayirirdi
+// (60/sn). Ic ice mesaj yoksa HICBIR SEY ayrilmaz; bedeli yalnizca gercekten
+// degisiklik tasiyan paketlerde ~2 bayttir.
+message ScaleUpdates {
+  repeated uint32 entity_ids = 1 [packed = true];
+  repeated float scales = 2 [packed = true];
+}
+
 message EntityCollection {
   repeated uint32 entity_ids = 1 [packed=true];
   repeated float xs = 2 [packed=true];
@@ -12,7 +28,18 @@ message EntityCollection {
 
   repeated uint32 fully_data_entity_ids = 5 [packed=true];
   repeated uint32 fully_data_segment_counts = 6 [packed=true];
-  repeated float scales = 7 [packed=true];
+  // KULLANIMDAN KALDIRILDI (M01) — yerine scale_updates (alan 10) gecti.
+  //
+  // Paketlenmis bir dizide KONUMSAL varlik "degismedi"yi ifade EDEMEZ:
+  // i. elemani atlamak sonraki tum degerleri yanlis entity'lere kaydirir.
+  // Bu yuzden proto3 `optional` bu alana UYGULANAMAZ (varlik yalnizca tekil
+  // alanlarin ozelligidir) ve seyrek bir id->deger listesi tek dogru bicimdir.
+  //
+  // ALAN NUMARASI KASITLI OLARAK KORUNUYOR: geri donus yolu budur.
+  // ServerConfig.isSparseScaleEnabled() false yapilirsa sunucu bu diziyi
+  // yeniden doldurur ve sema degisikligi GEREKMEZ. Bu numara BASKA HICBIR
+  // anlam icin yeniden kullanilamaz.
+  repeated float scales = 7 [packed=true, deprecated=true];
   repeated string fully_data_nicknames = 8;
 
   // SU AN DOKUNULMAZ olan entity id'leri (SEYREK liste).
@@ -23,4 +50,15 @@ message EntityCollection {
   // listesi ise normal durumda TAMAMEN BOSTUR ve proto3'te sifir bayt
   // serialize edilir. Istemci bunu bir Set'e cevirip O(1) sorgular.
   repeated uint32 invulnerable_entity_ids = 9 [packed=true];
+
+  // SEYREK OLCEK GUNCELLEMELERI (M01).
+  //
+  //   YOK      => bu snapshot'ta hicbir dusman olcegi degismedi.
+  //   VAR      => listelenen her entity'nin MUTLAK otoriter olcegi.
+  //               Listede OLMAYAN entity'ler mevcut olceklerini KORUR.
+  //
+  // "Yok" HICBIR ZAMAN 1.0 anlamina gelmez. Olcek tabani olmayan yeni/yeniden
+  // kurulmus bir entity eksik replikasyon tabanidir; istemci sessizce 1.0
+  // varsaymaz (bkz. Game.js applyAuthoritativeScale).
+  ScaleUpdates scale_updates = 10;
 }
