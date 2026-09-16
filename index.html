@@ -311,66 +311,64 @@
             </div>
         </div>
 
-        <!-- Game Over Screen (reference: game_over.html) -->
-        <div id="gameover-overlay" class="gameover-overlay hidden">
-            <!-- Animated Background Decor -->
-            <div class="gameover-decor gameover-decor-1"></div>
-            <div class="gameover-decor gameover-decor-2"></div>
+        <!-- ══════════════════════════════════════════════════════════════
+             GAME OVER — reference: game_over_ui/game_over.html
+             Behaviour: src/ui/overlays.js (the ids are its hooks). Every
+             number comes from state the client already holds: score and food
+             from Game.js, rank from the last leaderboard packet.
+             ══════════════════════════════════════════════════════════════ -->
+        <div id="gameover-overlay" class="gameover-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+            <section class="gameover-card">
+                <div class="gameover-logo" aria-hidden="true">
+                    <img src="/assets/logo/logo-circle-final.png" alt="" width="1254" height="1254" />
+                </div>
 
-            <!-- Game Over Modal Cluster -->
-            <div class="gameover-cluster">
-                <!-- Mascot Section -->
-                <div class="gameover-mascot-wrap gameover-float">
-                    <div class="gameover-mascot-ring">
-                        <img alt="Game Mascot" src="/assets/logo_image.jpeg" />
+                <h1 id="gameover-title" class="gameover-title">Game Over</h1>
+
+                <!-- Stats bar: score | rank | food eaten -->
+                <div class="gameover-stats">
+                    <div class="gameover-stat gameover-stat-main">
+                        <p class="gameover-stat-label">Final Score</p>
+                        <p id="gameover-score" class="gameover-stat-value gameover-score-value">0</p>
                     </div>
-                    <!-- Dizzy stars overlay effect -->
-                    <div class="gameover-star gameover-star-spin">
-                        <span class="material-symbols-outlined">star</span>
+
+                    <div class="gameover-stat">
+                        <p class="gameover-stat-label">
+                            <img class="gameover-stat-icon" src="/assets/leaderboard/victory_cup.png"
+                                 alt="" width="23" height="21" />
+                            Rank
+                        </p>
+                        <p id="gameover-rank" class="gameover-stat-value">—</p>
                     </div>
-                    <div class="gameover-star gameover-star-pulse">
-                        <span class="material-symbols-outlined">star</span>
+
+                    <div class="gameover-stat">
+                        <p class="gameover-stat-label">
+                            <img class="gameover-stat-icon" src="/assets/leaderboard/score-orb.png"
+                                 alt="" width="24" height="24" />
+                            Food Eaten
+                        </p>
+                        <p id="gameover-food-eaten" class="gameover-stat-value">0</p>
                     </div>
                 </div>
 
-                <!-- Modal Panel -->
-                <div class="gameover-panel">
-                    <h1 class="gameover-title">GAME OVER</h1>
-
-                    <!-- Stats Bento Grid -->
-                    <div class="gameover-stats-grid">
-                        <div class="gameover-stat gameover-stat-score">
-                            <p class="gameover-stat-label">Final Score</p>
-                            <p id="gameover-score" class="gameover-score-value">0</p>
-                        </div>
-                        <div class="gameover-stat">
-                            <p class="gameover-stat-label">Rank</p>
-                            <p class="gameover-rank-value">#14</p>
-                        </div>
-                        <div class="gameover-stat">
-                            <p class="gameover-stat-label">Food Eaten</p>
-                            <p id="gameover-food-eaten" class="gameover-food-value">0</p>
-                        </div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="gameover-actions">
-                        <button id="gameover-play-again" class="gameover-btn-primary">PLAY AGAIN</button>
-                        <button id="gameover-back-menu" class="gameover-btn-secondary">BACK TO MENU</button>
-                    </div>
-
-                    <div class="gameover-links">
-                        <button class="gameover-link gameover-link-share">
-                            <span class="material-symbols-outlined">share</span>
-                            <span class="gameover-link-label">Share Score</span>
-                        </button>
-                        <button class="gameover-link gameover-link-board">
-                            <span class="material-symbols-outlined">leaderboard</span>
-                            <span class="gameover-link-label">Leaderboard</span>
-                        </button>
-                    </div>
+                <div class="gameover-actions">
+                    <button id="gameover-play-again" class="gameover-btn-primary" type="button">Play Again</button>
+                    <button id="gameover-back-menu" class="gameover-btn-secondary" type="button">Back to Menu</button>
                 </div>
-            </div>
+
+                <!-- NOT: bu iki bağlantının henüz bir davranışı yok (eski
+                     ekranda da yoktu); referansta yer aldıkları için duruyorlar. -->
+                <div class="gameover-links">
+                    <button class="gameover-link" type="button">
+                        <span class="material-symbols-outlined">share</span>
+                        <span class="gameover-link-label">Share Score</span>
+                    </button>
+                    <button class="gameover-link" type="button">
+                        <span class="material-symbols-outlined">leaderboard</span>
+                        <span class="gameover-link-label">Leaderboard</span>
+                    </button>
+                </div>
+            </section>
         </div>
 
         <!-- Server Selection Modal (reference: server_list.html) -->

@@ -174,6 +174,10 @@ export function showConnectingOverlay(serverName, initialPingMs = null) {
     // açıksa ilerleme SIFIRLANMAZ — yalnızca kapalıyken yeni tur başlar.
     const overlay = $('connecting-overlay');
     if (overlay?.classList.contains('hidden')) {
+        // YENİ TUR: önceki turun sıralaması düşürülür. Aksi halde bu turun ilk
+        // sıralama paketi gelmeden ölen oyuncuya ESKİ turun sırası gösterilirdi
+        // (bkz. showGameOverOverlay → lastLeaderboardData).
+        lastLeaderboardData = null;
         connectingStage = null;
         connectingProgress = 0;
         renderConnectingProgress(0);
@@ -206,19 +210,74 @@ export function onConnectingCancel(handler) {
     if (btn) btn.onclick = handler; // onclick ataması — tekrar bağlamada listener birikmez
 }
 
-// ── Game Over overlay (reference: game_over.html) ───────────────────────────
+// ── Game Over overlay (reference: game_over_ui/game_over.html) ─────────────
 
-// stats: { score, foodEaten } — client tarafında takip edilir (Game.js).
+const COUNT_UP_MS = 600;
+const prefersReducedMotion = () =>
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+
+/** Çalışan sayaçlar — yeni bir ölüm ekranı öncekini iptal eder. */
+const countUpFrames = new Map();
+
+/**
+ * Değeri 0'dan hedefe sayar. Metin HER ZAMAN formatScore'dan geçer, yani
+ * sayarken de bitişte de HUD ile aynı biçimi (binlik ayraç) kullanır.
+ *
+ * <p>Animasyon azaltma tercihinde (ya da hedef 0 iken) anında yazılır.
+ */
+function countUp(el, target, format = formatScore) {
+    if (!el) return;
+
+    const running = countUpFrames.get(el);
+    if (running) cancelAnimationFrame(running);
+
+    const end = Math.max(0, Math.trunc(Number(target) || 0));
+    if (end === 0 || prefersReducedMotion()) {
+        el.textContent = format(end);
+        countUpFrames.delete(el);
+        return;
+    }
+
+    const started = performance.now();
+    const step = (now) => {
+        // easeOutCubic: hızlı başlar, hedefte yumuşak durur.
+        const t = Math.min(1, (now - started) / COUNT_UP_MS);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = format(Math.round(end * eased));
+        if (t < 1) {
+            countUpFrames.set(el, requestAnimationFrame(step));
+        } else {
+            countUpFrames.delete(el);
+        }
+    };
+    el.textContent = format(0);
+    countUpFrames.set(el, requestAnimationFrame(step));
+}
+
+/**
+ * stats: { score, foodEaten } — client tarafında takip edilir (Game.js).
+ *
+ * <p>SIRA (rank) için sunucudan ayrıca bir şey beklenmez: istemci sıralama
+ * paketlerini zaten işliyor ve sonuncusu lastLeaderboardData'da duruyor
+ * (bkz. updateHUDLeaderboard). Sıralama ~5 sn'de bir yayınlandığı için değer
+ * ölüm anında o kadar bayat olabilir; oyuncu hiç sıralanmadıysa 0 gelir ve
+ * uydurma bir sayı yerine "—" gösterilir.
+ */
 export function showGameOverOverlay(stats, onPlayAgain) {
     const { score = 0, foodEaten = 0 } = stats ?? {};
 
-    // Oyun sonu ekrani da AYNI biçimlendiriciyi kullanır — oyuncunun HUD'da
-    // "12,450" görüp ölünce "12450" görmesi tutarsızlığını kapatır.
-    const scoreEl = $('gameover-score');
-    if (scoreEl) scoreEl.textContent = formatScore(score);
+    countUp($('gameover-score'), score);
+    countUp($('gameover-food-eaten'), foodEaten);
 
-    const foodEl = $('gameover-food-eaten');
-    if (foodEl) foodEl.textContent = formatScore(foodEaten);
+    const rankEl = $('gameover-rank');
+    if (rankEl) {
+        const rank = Number(lastLeaderboardData?.selfRank) || 0;
+        if (rank > 0) {
+            countUp(rankEl, rank, (v) => `#${formatScore(v)}`);
+        } else {
+            rankEl.textContent = '—';
+        }
+    }
 
     const btn = $('gameover-play-again');
     if (btn) {

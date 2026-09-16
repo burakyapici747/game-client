@@ -1315,14 +1315,11 @@ button {
     }
 }
 
-/* ── Game Over Overlay ── */
-/* ═══════════════════════════════════════════════
-   GAME OVER SCREEN (reference: game_over.html — 1:1)
-   Palette: surface-container #271448, surface-container-low #231043,
-   primary-container #b7f700, on-primary #253600,
-   secondary-fixed #ffe170, tertiary-fixed-dim #d5baff
-   ═══════════════════════════════════════════════ */
-
+/* ── Game Over Overlay — reference: game_over_ui/game_over.html ──
+   Glass card over the blurred seabed — the same treatment as the connecting
+   overlay, so both transition screens read as one family. Opaque on purpose:
+   the frozen game canvas behind it should not distract.
+   Palette: :root --menu-* / --play-* / --ping-*. */
 .gameover-overlay {
     position: absolute;
     inset: 0;
@@ -1330,11 +1327,13 @@ button {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px; /* container-padding */
-    background: #1a063b; /* background/surface-dim */
-    color: #ebddff;      /* on-background */
-    font-family: 'Quicksand', sans-serif;
-    overflow: hidden;
+    padding: clamp(12px, 3vw, 24px);
+    padding-top: max(clamp(12px, 3vw, 24px), env(safe-area-inset-top, 0px));
+    padding-bottom: max(clamp(12px, 3vw, 24px), env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    font-family: var(--font-menu);
+    color: var(--menu-text);
+    background: var(--menu-surface);
     opacity: 1;
     visibility: visible;
     transition: opacity 0.25s ease, visibility 0.25s;
@@ -1346,299 +1345,264 @@ button {
     pointer-events: none;
 }
 
-/* Animated background decor (blurred blobs) */
-.gameover-decor {
-    position: absolute;
-    border-radius: 9999px;
-    opacity: 0.05;
+.gameover-overlay::before {
+    content: '';
+    position: fixed;
+    inset: -24px;
+    background: url('/assets/background/main-menu-background.png') center bottom / cover no-repeat;
+    filter: blur(6px) brightness(0.9);
+}
+
+.gameover-overlay::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(to top, rgba(8, 51, 103, 0.55) 0%, rgba(8, 51, 103, 0.25) 50%, rgba(40, 185, 230, 0.15) 100%);
     pointer-events: none;
 }
 
-.gameover-decor-1 {
-    top: 80px;
-    left: 40px;
-    width: 256px;  /* w-64 */
-    height: 256px;
-    background: #b7f700; /* primary-container */
-    filter: blur(120px);
-}
-
-.gameover-decor-2 {
-    bottom: 80px;
-    right: 40px;
-    width: 384px;  /* w-96 */
-    height: 384px;
-    background: #ecdcff; /* tertiary-container */
-    filter: blur(150px);
-}
-
-/* Modal cluster: mascot + panel */
-.gameover-cluster {
+/* Glass card. margin:auto keeps it centred when it fits and lets it scroll
+   when a short landscape phone can't show it whole. */
+.gameover-card {
     position: relative;
-    z-index: 10;
+    z-index: 1;
+    margin: auto;
     width: 100%;
-    max-width: 512px; /* max-w-lg */
+    max-width: 500px;
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: clamp(14px, 2.4vh, 22px);
+    padding: clamp(20px, 3vh, 32px) clamp(18px, 4vw, 36px) clamp(20px, 3vh, 32px);
+    text-align: center;
+    background: linear-gradient(180deg, rgba(40, 185, 230, 0.35) 0%, rgba(48, 134, 206, 0.3) 50%, rgba(8, 51, 103, 0.45) 100%);
+    border: 2px solid rgba(255, 255, 255, 0.55);
+    border-radius: clamp(28px, 4vw, 38px);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 20px 50px -10px rgba(8, 51, 103, 0.55), 0 0 35px 2px rgba(40, 185, 230, 0.25);
 }
 
-/* Mascot */
-.gameover-mascot-wrap {
-    position: relative;
-    margin-bottom: -64px; /* -mb-16 */
-    z-index: 20;
+/* Same circular logo (and size) as the connecting screen. */
+.gameover-logo {
+    width: clamp(104px, 22vmin, 176px);
+    aspect-ratio: 1 / 1;
+    filter: drop-shadow(0 10px 18px rgba(8, 51, 103, 0.55));
 }
 
-.gameover-float {
-    animation: gameoverFloat 3s ease-in-out infinite;
-}
-
-@keyframes gameoverFloat {
-    0%   { transform: translateY(0px); }
-    50%  { transform: translateY(-10px); }
-    100% { transform: translateY(0px); }
-}
-
-.gameover-mascot-ring {
-    width: 160px;   /* w-40 */
-    height: 160px;
-    border-radius: 9999px;
-    padding: 8px;   /* p-2 */
-    background: #b7f700; /* primary-container */
-    box-shadow: 0 8px 0 0 #374e00;
-}
-
-@media (min-width: 768px) {
-    .gameover-mascot-ring {
-        width: 224px;  /* md:w-56 */
-        height: 224px;
-    }
-}
-
-.gameover-mascot-ring img {
+.gameover-logo img {
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: contain;
-    border-radius: 9999px;
-    background: #150136; /* surface-container-lowest */
-    display: block;
 }
 
-/* Dizzy stars */
-.gameover-star {
-    position: absolute;
-}
-
-.gameover-star .material-symbols-outlined {
-    color: #ffe170; /* secondary-fixed */
-    font-variation-settings: 'FILL' 1;
-}
-
-.gameover-star-spin {
-    top: -16px;   /* -top-4 */
-    right: -16px; /* -right-4 */
-    animation: gameoverSpin 1s linear infinite;
-}
-
-.gameover-star-spin .material-symbols-outlined {
-    font-size: 36px; /* text-4xl */
-}
-
-@keyframes gameoverSpin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
-}
-
-.gameover-star-pulse {
-    top: 0;
-    left: -24px; /* -left-6 */
-    animation: gameoverPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.gameover-star-pulse .material-symbols-outlined {
-    font-size: 30px; /* text-3xl */
-}
-
-@keyframes gameoverPulse {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.5; }
-}
-
-/* Modal Panel */
-.gameover-panel {
-    width: 100%;
-    background: #271448; /* surface-container */
-    border: 6px solid #b7f700; /* border-primary-container */
-    border-radius: 2rem; /* rounded-lg */
-    padding: 80px 32px 40px; /* pt-20 px-8 pb-10 */
-    text-align: center;
-    /* .bubbly-container */
-    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.1), 0 10px 25px rgba(26, 15, 46, 0.5);
-}
-
+/* White title with a dark outline — legible over both the bright water and
+   the card's own gradient. */
 .gameover-title {
-    font-family: 'Quicksand', sans-serif;
-    font-size: 48px;         /* text-display */
-    line-height: 56px;
-    letter-spacing: -0.02em;
-    font-weight: 700;
-    margin: 0 0 32px;        /* mb-8 */
-    /* .snake-gradient */
-    background: linear-gradient(180deg, #ff5f6d 0%, #ffc371 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.35)); /* drop-shadow-lg */
+    margin: 0;
+    font-size: clamp(1.9rem, 6vw, 2.8rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--menu-text);
+    -webkit-text-stroke: 1.5px var(--sea-dark);
+    text-shadow: 0 3px 0 var(--sea-dark), 0 6px 14px rgba(0, 0, 0, 0.35);
 }
 
-/* Stats Bento Grid */
-.gameover-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;          /* gap-4 */
-    margin-bottom: 40px; /* mb-10 */
+/* Stats bar: score | rank | food eaten, split by hairline dividers. */
+.gameover-stats {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    padding: clamp(10px, 1.6vh, 16px) clamp(6px, 1.5vw, 12px);
+    background: linear-gradient(180deg, rgba(18, 52, 91, 0.95) 0%, rgba(8, 51, 103, 0.95) 100%);
+    border: 1px solid rgba(54, 136, 208, 0.35);
+    border-radius: clamp(16px, 2vw, 22px);
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.1), 0 10px 25px rgba(8, 51, 103, 0.45);
 }
 
 .gameover-stat {
-    background: #231043; /* surface-container-low */
-    padding: 16px;       /* p-4 */
-    border-radius: 2rem; /* rounded-lg */
-    border-bottom: 4px solid #322053; /* border-b-4 surface-container-high */
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 clamp(4px, 1vw, 10px);
 }
 
-.gameover-stat-score {
-    grid-column: span 2 / span 2; /* col-span-2 */
-    padding: 24px; /* p-6 */
+.gameover-stat + .gameover-stat {
+    border-left: 1px solid rgba(125, 211, 252, 0.2);
 }
 
 .gameover-stat-label {
-    font-size: 12px;     /* text-label-bold */
-    line-height: 16px;
-    font-weight: 700;
-    color: #c2caad;      /* on-surface-variant */
-    margin: 0 0 4px;     /* mb-1 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    margin: 0 0 2px;
+    font-size: clamp(0.62rem, 2.2vw, 0.72rem);
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 0.1em; /* tracking-widest */
+    /* One line always: "FOOD EATEN" wrapping made its column taller than the
+       other two and knocked the whole bar out of alignment. */
+    white-space: nowrap;
+    color: var(--menu-text-muted);
 }
 
+.gameover-stat-main .gameover-stat-label {
+    color: var(--menu-placeholder);
+}
+
+.gameover-stat-icon {
+    flex-shrink: 0;
+    width: auto;
+    height: 0.95em;
+    object-fit: contain;
+}
+
+.gameover-stat-value {
+    margin: 0;
+    font-size: clamp(1.15rem, 4.4vw, 1.6rem);
+    font-weight: 800;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-text);
+}
+
+/* The score is the headline number. */
 .gameover-score-value {
-    font-family: 'Quicksand', sans-serif;
-    font-size: 64px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1;      /* leading-none */
-    color: #b7f700;      /* primary-container */
-    filter: drop-shadow(0 0 15px rgba(183, 247, 0, 0.4));
-    margin: 0;
+    font-size: clamp(1.6rem, 6.4vw, 2.3rem);
+    color: var(--ping-good);
+    text-shadow: 0 2px 8px rgba(89, 232, 27, 0.4);
 }
 
-.gameover-rank-value {
-    font-size: 32px;     /* text-headline-lg */
-    line-height: 40px;
-    font-weight: 700;
-    color: #ffe170;      /* secondary-fixed */
-    margin: 0;
-}
-
-.gameover-food-value {
-    font-size: 32px;     /* text-headline-lg */
-    line-height: 40px;
-    font-weight: 700;
-    color: #d5baff;      /* tertiary-fixed-dim */
-    margin: 0;
-}
-
-/* Action Buttons */
+/* Actions */
 .gameover-actions {
     display: flex;
     flex-direction: column;
-    gap: 16px; /* gap-4 */
+    gap: clamp(10px, 1.6vh, 14px);
+    width: 100%;
+}
+
+.gameover-btn-primary,
+.gameover-btn-secondary {
+    width: 100%;
+    font-family: var(--font-menu);
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--menu-text);
+    border: none;
+    border-radius: 999px;
+    transition: transform 0.12s ease, filter 0.15s ease, box-shadow 0.12s ease;
 }
 
 .gameover-btn-primary {
-    width: 100%;
-    background: #b7f700;  /* primary-container */
-    color: #253600;       /* on-primary */
-    padding: 16px 32px;   /* py-button-padding-y px-button-padding-x */
-    border-radius: 2rem;  /* rounded-lg */
-    font-family: 'Quicksand', sans-serif;
-    font-size: 32px;      /* text-headline-lg */
-    line-height: 40px;
-    font-weight: 700;
-    box-shadow: 0 4px 0 0 #374e00;
-    border: none;
-    transition: all 0.1s ease; /* .pressable-button */
-}
-
-.gameover-btn-primary:hover {
-    transform: scale(1.02);
-}
-
-.gameover-btn-primary:active {
-    box-shadow: none;
-    transform: translateY(4px);
+    min-height: 54px;
+    padding: 4px 24px 0;
+    font-size: clamp(1.15rem, 4.5vw, 1.45rem);
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
+    box-shadow: 0 6px 0 var(--menu-accent-deep), 0 10px 18px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.6);
 }
 
 .gameover-btn-secondary {
-    width: 100%;
-    background: #322053;  /* surface-container-high */
-    color: #ebddff;       /* on-surface */
-    padding: 16px 32px;
-    border-radius: 2rem;
-    font-family: 'Quicksand', sans-serif;
-    font-size: 20px;      /* text-title-md */
-    line-height: 28px;
-    font-weight: 600;
-    border: none;
-    border-bottom: 4px solid #3d2b5e; /* surface-container-highest */
-    transition: background-color 0.15s ease, color 0.15s ease;
+    min-height: 46px;
+    padding: 3px 24px 0;
+    font-size: clamp(0.95rem, 3.6vw, 1.1rem);
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, var(--menu-surface-lowest) 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
+    box-shadow: 0 5px 0 var(--sea-dark), 0 10px 18px rgba(0, 0, 0, 0.3);
 }
 
+.gameover-btn-primary:hover,
 .gameover-btn-secondary:hover {
-    background: #412f63; /* surface-bright */
+    filter: brightness(1.06);
+}
+
+.gameover-btn-primary:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 var(--menu-accent-deep), 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .gameover-btn-secondary:active {
-    transform: translateY(2px);
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 var(--sea-dark), 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.gameover-btn-primary:focus-visible,
+.gameover-btn-secondary:focus-visible,
+.gameover-link:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 3px;
 }
 
 /* Bottom links */
 .gameover-links {
-    margin-top: 32px; /* mt-8 */
     display: flex;
     justify-content: center;
-    gap: 24px; /* gap-6 */
+    gap: clamp(20px, 6vw, 32px);
 }
 
 .gameover-link {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    padding: 4px;
+    font-family: var(--font-menu);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--menu-text-soft);
     background: none;
     border: none;
-    padding: 0;
-    color: #c2caad; /* on-surface-variant */
-    transition: color 0.15s ease;
+    opacity: 0.85;
+    transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.gameover-link:hover {
+    color: var(--menu-text);
+    opacity: 1;
 }
 
 .gameover-link .material-symbols-outlined {
-    font-size: 24px;
-    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    font-size: 18px;
 }
 
-.gameover-link-label {
-    font-size: 12px;   /* text-label-bold */
-    line-height: 16px;
-    font-weight: 700;
+/* Very narrow phones (<=360px): the icons cost ~17px per label, which is the
+   difference between "FOOD EATEN" fitting on one line and wrapping. At 375px
+   the labels still fit WITH their icons, so the threshold stays below that. */
+@media (max-width: 360px) {
+    .gameover-stat-icon { display: none; }
+
+    .gameover-stat-label {
+        letter-spacing: 0.04em;
+        font-size: 0.6rem;
+    }
+
+    .gameover-stat { padding: 0 4px; }
 }
 
-.gameover-link-share:hover {
-    color: #b7f700; /* primary-container */
+/* Short landscape phones: trim the vertical rhythm so the card still fits. */
+@media (max-height: 560px) {
+    .gameover-card {
+        gap: 10px;
+        padding: 14px 20px 18px;
+        max-width: 460px;
+    }
+
+    .gameover-logo { width: clamp(72px, 18vmin, 104px); }
+    .gameover-title { font-size: clamp(1.4rem, 4.5vw, 1.9rem); }
+    .gameover-btn-primary { min-height: 46px; }
+    .gameover-btn-secondary { min-height: 40px; }
+    .gameover-links { display: none; }
 }
 
-.gameover-link-board:hover {
-    color: #ffe170; /* secondary-fixed */
+@media (prefers-reduced-motion: reduce) {
+    .gameover-btn-primary,
+    .gameover-btn-secondary {
+        transition: none;
+    }
 }
 
 /* ═══════════════════════════════════════════════
@@ -2795,99 +2759,6 @@ html.pseudo-fullscreen #app {
     }
 
     #hud-coord { min-width: 11ch; }
-}
-
-/* ═══════════════════════════════════════════════
-   RESPONSIVE — Game Over & Connecting overlays
-   Overlays must NEVER clip: switch from rigid centering to
-   scrollable + margin:auto (keeps centered when it fits,
-   scrolls when it doesn't), and scale inner elements down.
-   ═══════════════════════════════════════════════ */
-@media (max-width: 768px), (max-height: 640px) {
-    /* ── Game Over ── */
-    .gameover-overlay {
-        padding: 16px;
-        align-items: flex-start;   /* centering handled by margin:auto below */
-        overflow-y: auto;
-    }
-
-    .gameover-cluster {
-        margin: auto;              /* centers when short, scrolls when tall */
-        max-width: 420px;
-    }
-
-    .gameover-mascot-wrap {
-        margin-bottom: -40px;
-    }
-
-    .gameover-mascot-ring {
-        width: 96px;
-        height: 96px;
-        padding: 5px;
-        box-shadow: 0 5px 0 0 #374e00;
-    }
-
-    .gameover-star-spin .material-symbols-outlined { font-size: 24px; }
-    .gameover-star-pulse .material-symbols-outlined { font-size: 20px; }
-
-    .gameover-panel {
-        padding: 52px 20px 24px;
-        border-width: 4px;
-        border-radius: 1.5rem;
-    }
-
-    .gameover-title {
-        font-size: 30px;
-        line-height: 36px;
-        margin-bottom: 16px;
-    }
-
-    .gameover-stats-grid {
-        gap: 10px;
-        margin-bottom: 20px;
-    }
-
-    .gameover-stat {
-        padding: 10px;
-        border-radius: 1.25rem;
-    }
-
-    .gameover-stat-score {
-        padding: 14px;
-    }
-
-    .gameover-score-value {
-        font-size: 40px;
-    }
-
-    .gameover-rank-value,
-    .gameover-food-value {
-        font-size: 20px;
-        line-height: 26px;
-    }
-
-    .gameover-actions {
-        gap: 10px;
-    }
-
-    .gameover-btn-primary {
-        font-size: 20px;
-        line-height: 26px;
-        padding: 12px 20px;
-        border-radius: 1.25rem;
-    }
-
-    .gameover-btn-secondary {
-        font-size: 15px;
-        line-height: 20px;
-        padding: 10px 20px;
-        border-radius: 1.25rem;
-    }
-
-    .gameover-links {
-        margin-top: 16px;
-        gap: 16px;
-    }
 }
 
 /* Landscape phones with taller-than-768px width still hit the height limit
