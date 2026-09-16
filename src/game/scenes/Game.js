@@ -21,6 +21,9 @@ import {
 
 // Note: updateHUDLeaderboard is called with empty array [] to trigger
 // the default mockup data initialization in overlays.js
+// Kamera takip lerp'i — 60Hz'de kare basina oran; diger kare hizlarina
+// update() icinde ustel olarak donusturulur.
+const CAMERA_FOLLOW_LERP_60HZ = 0.15;
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
 // ── YEM DOKUSU (GÖREV 1: hepsi parlayan DAİRE) ───────────────────────────────
@@ -1316,7 +1319,12 @@ export class Game extends Phaser.Scene {
         // Kamera kafayı takip eder ve HER ZAMAN ekran merkezine kilitler.
         // followOffset (0, 0) → hedef tam merkezde; removeBounds() (bkz.
         // onStartGame) sayesinde harita kenarında da merkezden kaymaz.
-        this.cameras.main.startFollow(playerSnake.getHead(), true, 0.15, 0.15);
+        // roundPixels=false: kamera true ile her sprite'in dunya konumunu
+        // Math.floor'lar (MultiPipeline.batchSprite). Hemen asagidaki
+        // setRoundPixels(false) bunu zaten geri aliyordu; burada da acikca false.
+        // Lerp degeri her karede dt'ye gore yeniden yazilir (bkz. update →
+        // CAMERA_FOLLOW_LERP_60HZ); buradaki yalnizca ilk karenin degeridir.
+        this.cameras.main.startFollow(playerSnake.getHead(), false, CAMERA_FOLLOW_LERP_60HZ, CAMERA_FOLLOW_LERP_60HZ);
         this.cameras.main.setFollowOffset(0, 0);
         // Savunma amaçlı: sahne yeniden başlarken kamera örneği yeniden
         // kullanılırsa önceki turdan kalan sınır burada da düşürülür.
@@ -2258,6 +2266,14 @@ export class Game extends Phaser.Scene {
                 // 120Hz'de iki kat hızlı yakınsıyordu. 3.0/s ≈ 0.05 @60fps.
                 const zoomLerp = 1 - Math.exp(-3.0 * (delta / 1000));
                 this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
+
+                // Kamera takip lerp'i Phaser'da KARE BASINA uygulanir: sabit 0.15,
+                // 120/144Hz'de 60Hz'e gore 2-2.4x hizli yakinsar ve kare suresi
+                // dalgalandikca kafanin ekran konumu titrer. 60Hz'deki 0.15'e
+                // esdeger, kare-hizindan bagimsiz ustel katsayi.
+                const followLerp = 1 - Math.pow(1 - CAMERA_FOLLOW_LERP_60HZ,
+                    Math.min(delta, 100) / (1000 / 60));
+                this.cameras.main.setLerp(followLerp, followLerp);
             }
         }
 
