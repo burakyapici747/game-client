@@ -105,12 +105,81 @@ export function initServiceBanner() {
 }
 
 // ── Connecting overlay ───────────────────────────────────────────────────────
+// PLAY'e basıldığı anda açılır (src/main.js) ve oyun görünene kadar kalır.
+// İlerleme çubuğu SAHTE DEĞİLDİR — her aşama gerçek bir olaya bağlıdır:
+//
+//   assets      Preloader yükleme oranı 0..1        (Preloader 'progress')  →  0–40%
+//   connecting  soket açılıyor 0 → açıldı 1          (Game.create / 'socket_open') → 45–55%
+//   joining     ilk veri bayrakları 0..3 / 3         (Game.checkInitialDataComplete) → 60–95%
+//   (gizle)     dünya görünür                        (hideConnectingOverlay)  → 100%
+//
+// Çubuk ve başlık yalnızca İLERİ gider: geç gelen bir önceki aşama çağrısı
+// (ör. respawn'da sahnenin yeniden kurulması) göstergeyi geri sardırmaz.
+const CONNECTING_STAGES = Object.freeze({
+    assets:     { order: 0, title: 'Loading game assets…',  from: 0,  to: 40 },
+    connecting: { order: 1, title: 'Connecting to server…', from: 45, to: 55 },
+    joining:    { order: 2, title: 'Joining world…',        from: 60, to: 95 },
+});
+
+let connectingStage = null;
+let connectingProgress = 0;
+
+function renderConnectingProgress(pct) {
+    const fill = $('conn-progress-fill');
+    if (fill) fill.style.width = `${pct}%`;
+    $('conn-progress')?.setAttribute('aria-valuenow', String(Math.round(pct)));
+}
+
+function setConnectingTitle(text) {
+    const el = $('conn-title');
+    if (!el || el.textContent === text) return;
+    el.textContent = text;
+    // Yumuşak geçiş: yalnızca opacity/transform (layout yok), Web Animations
+    // API ile — sınıf ekle/çıkar + reflow hilesine gerek kalmaz.
+    el.animate?.(
+        [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 250, easing: 'ease-out' },
+    );
+}
+
+/**
+ * @param {'assets'|'connecting'|'joining'} stage
+ * @param {number} [fraction=0] Aşama içindeki ilerleme, 0..1.
+ */
+export function setConnectingStage(stage, fraction = 0) {
+    const def = CONNECTING_STAGES[stage];
+    if (!def) return;
+
+    const current = connectingStage ? CONNECTING_STAGES[connectingStage].order : -1;
+    if (def.order < current) return;
+    if (def.order > current) {
+        connectingStage = stage;
+        setConnectingTitle(def.title);
+    }
+
+    const f = Math.min(1, Math.max(0, Number(fraction) || 0));
+    const pct = def.from + (def.to - def.from) * f;
+    if (pct > connectingProgress) {
+        connectingProgress = pct;
+        renderConnectingProgress(pct);
+    }
+}
 
 export function showConnectingOverlay(serverName, initialPingMs = null) {
     const nameEl = $('conn-server-name');
     if (nameEl) nameEl.textContent = serverName || 'Unknown';
     updateConnectingPing(initialPingMs);
-    $('connecting-overlay')?.classList.remove('hidden');
+
+    // İKİ çağıran var: PLAY anında main.js, ardından Game.create. Ekran zaten
+    // açıksa ilerleme SIFIRLANMAZ — yalnızca kapalıyken yeni tur başlar.
+    const overlay = $('connecting-overlay');
+    if (overlay?.classList.contains('hidden')) {
+        connectingStage = null;
+        connectingProgress = 0;
+        renderConnectingProgress(0);
+        setConnectingStage('assets', 0);
+        overlay.classList.remove('hidden');
+    }
 }
 
 // Bağlantı ekranındaki PING metriği: önce menüden ölçülen değerle başlar,
@@ -122,7 +191,12 @@ export function updateConnectingPing(ms) {
 }
 
 export function hideConnectingOverlay() {
-    $('connecting-overlay')?.classList.add('hidden');
+    const overlay = $('connecting-overlay');
+    if (!overlay || overlay.classList.contains('hidden')) return;
+    // Son kare dolu çubuk: overlay 0.3 sn'lik fade ile kaybolurken %100 görünür.
+    connectingProgress = 100;
+    renderConnectingProgress(100);
+    overlay.classList.add('hidden');
 }
 
 // Cancel butonu: bağlantı iptal akışının sahibi (soketi kapatıp menüye dönen

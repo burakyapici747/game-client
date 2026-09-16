@@ -1,5 +1,5 @@
 import StartGame from './game/main';
-import { hideAllGameOverlays, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle,
+import { hideAllGameOverlays, showConnectingOverlay, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle,
          hideAuthOverlay, clearAuthError, getGoogleButtonSlot, getInlineGoogleButtonSlot,
          initAuthOverlayClose, initServiceBanner } from './ui/overlays.js';
 import { initGoogleAuth, isSignedIn, renderSignInButton } from './auth/GoogleAuth.js';
@@ -436,6 +436,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         // olcum soketleri kapatilir ve yeni olcum acilmasi kilitlenir. Boylece
         // NetworkManager.connect() calistiginda oturumda baska WebSocket kalmaz.
         serverProbe.lock();
+
+        // Bağlanma ekranı PLAY anında açılır: Phaser boot + Preloader (2048'lik
+        // zemin dahil) Game.create'ten ÖNCE çalışır. Eskiden ekran Game.create'te
+        // açıldığı için bu süre boyunca menü gizli, canvas boş kalıyordu.
+        showConnectingOverlay(window.gameSettings.serverName, window.gameSettings.menuPingMs);
 
         // Dismiss the mobile on-screen keyboard BEFORE Phaser boots. Phaser's
         // RESIZE scale mode snapshots the parent's bounds once at boot and only

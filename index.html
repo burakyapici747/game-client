@@ -42,13 +42,13 @@
             </div>
             
             <main class="main-menu-content">
-                <!-- Logo & Branding — the avatar badge overlaps the top of the
-                     sphere card below (reference: LOGIN SCREEN/index.html). -->
+                <!-- Logo & Branding — frameless wordmark above the login card.
+                     width/height are the asset's own 1376x768 so the browser
+                     reserves the right box before the image decodes (no jump);
+                     CSS scales it fluidly (see .brand-logo). -->
                 <div class="brand float-anim">
-                    <h1 class="brand-title">SEANAKES.IO</h1>
-                    <div class="brand-logo-ring">
-                        <img src="/assets/logo/logo-1.png" alt="SEANAKES.IO logo" />
-                    </div>
+                    <img class="brand-logo" src="/assets/logo/logo-circle-final.png"
+                         alt="SEANAKES.IO" width="1376" height="768" />
                 </div>
 
                 <!-- Login Card -->
@@ -272,57 +272,42 @@
             </div>
         </div>
 
-        <!-- Connecting Screen -->
-        <div id="connecting-overlay" class="connecting-overlay hidden">
-            <!-- Decorative Background Elements -->
-            <div class="connecting-overlay-blob connecting-overlay-blob-1"></div>
-            <div class="connecting-overlay-blob connecting-overlay-blob-2"></div>
-
-            <div class="connecting-card">
-                <!-- Loading Animation Container (Rolling Egg) -->
-                <div class="egg-loader-container">
-                    <div class="egg-loader-ring"></div>
-                    <div class="egg-loader">
-                        <div class="egg-eye egg-eye-left"></div>
-                        <div class="egg-eye egg-eye-right"></div>
-                        <div class="egg-blush egg-blush-left"></div>
-                        <div class="egg-blush egg-blush-right"></div>
-                    </div>
+        <!-- ══════════════════════════════════════════════════════════════
+             CONNECTING OVERLAY — reference: connecting-ui/connecting-ui.html
+             Opened on PLAY (src/main.js) and kept until the world is revealed.
+             The title and progress bar follow REAL milestones — see
+             src/ui/overlays.js → setConnectingStage.
+             ══════════════════════════════════════════════════════════════ -->
+        <div id="connecting-overlay" class="connecting-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="conn-title">
+            <div class="connecting-portal">
+                <div class="connecting-mascot" aria-hidden="true">
+                    <img src="/assets/logo/logo-circle-final.png" alt="" width="1376" height="768" />
                 </div>
 
-                <!-- Status Text -->
                 <div class="connecting-status">
-                    <h2 class="connecting-title">Waiting For Server...</h2>
-                    <div class="connecting-info">
-                        <span class="info-label">Server:</span>
-                        <span id="conn-server-name" class="info-value">--</span>
-                        <span class="info-separator">|</span>
-                        <span class="info-label">Ping:</span>
-                        <span id="conn-ping-value" class="info-value">--</span>
+                    <h2 id="conn-title" class="connecting-title" aria-live="polite">Loading game assets…</h2>
+
+                    <div class="connecting-server">
+                        <span id="conn-server-name" class="connecting-server-name">--</span>
+                        <span class="connecting-server-divider" aria-hidden="true"></span>
+                        <span class="connecting-ping" title="Server latency">
+                            <svg class="connecting-ping-icon" viewBox="0 0 16 14" aria-hidden="true">
+                                <rect x="0" y="10.5" width="2.6" height="3.5" rx="0.7"></rect>
+                                <rect x="4.4" y="7.5" width="2.6" height="6.5" rx="0.7"></rect>
+                                <rect x="8.8" y="4" width="2.6" height="10" rx="0.7"></rect>
+                                <rect x="13.2" y="0.5" width="2.6" height="13.5" rx="0.7"></rect>
+                            </svg>
+                            <span id="conn-ping-value">--</span>
+                        </span>
+                    </div>
+
+                    <div id="conn-progress" class="connecting-progress" role="progressbar"
+                         aria-label="Connection progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div id="conn-progress-fill" class="connecting-progress-fill"></div>
                     </div>
                 </div>
 
-                <!-- Progress Bar with Snake Animation -->
-                <div class="connecting-progress-bar">
-                    <div class="snake-animation">
-                        <div class="snake-segment snake-segment-1"></div>
-                        <div class="snake-segment snake-segment-2"></div>
-                        <div class="snake-segment snake-segment-3"></div>
-                        <div class="snake-segment snake-segment-4"></div>
-                        <div class="snake-head">
-                            <div class="snake-eye snake-eye-1"></div>
-                            <div class="snake-eye snake-eye-2"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Cancel Button -->
-                <button id="conn-cancel-btn" class="connecting-cancel-btn">
-                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path>
-                    </svg>
-                    Cancel Connection
-                </button>
+                <button id="conn-cancel-btn" class="connecting-cancel-btn" type="button">CANCEL</button>
             </div>
         </div>
 

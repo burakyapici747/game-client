@@ -74,6 +74,8 @@ export class NetworkManager {
         this.socket.onopen = () => {
             console.log('Sunucuya bağlanıldı.');
             this.connected = true;
+            // Bağlanma ekranının "Connecting to server…" aşamasını tamamlar.
+            this.scene.events.emit('socket_open');
 
             // Nickname bilgisini sunucuya gonder
             const nickname = window.gameSettings?.nickname || '';

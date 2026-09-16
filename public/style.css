@@ -203,9 +203,9 @@ body {
        than the viewport (flex centering + overflow bug) */
     justify-content: safe center;
     width: 100%;
-    /* Avatar size is shared by the badge and the card's top padding, which
-       must leave room for the part of the badge that overlaps it. */
-    --logo-size: clamp(104px, 15vmin, 140px);
+    /* Rendered WIDTH of the frameless logo; its height follows from the
+       asset's 1376x768 ratio. Breakpoints below override it. */
+    --logo-size: clamp(280px, 35vw, 520px);
     padding: 0 clamp(16px, 4vw, 40px) clamp(16px, 6vh, 72px); /* side padding keeps card/logo off the edges */
     min-height: 0;
     overflow-y: auto;
@@ -227,8 +227,8 @@ body {
     max-width: 100%;
     position: relative;
     z-index: 2;
-    /* The avatar badge overlaps the top of the card (reference: mb-[-54px]). */
-    margin-bottom: calc(var(--logo-size) * -0.42);
+    /* Frameless logo sits ABOVE the card (it no longer overlaps it). */
+    margin-bottom: clamp(10px, 2vh, 22px);
 }
 
 .float-anim {
@@ -240,38 +240,18 @@ body {
     50% { transform: translateY(-10px); }
 }
 
-/* Avatar badge — reference: white → cyan-100 → sky-300 gradient ring. */
-.brand-logo-ring {
+/* Frameless logo: no ring, border, halo or shadow — just the artwork.
+   aspect-ratio matches the asset (logo-final-1.png, 1376x768), so the box is
+   correct before the image loads and the picture can never be distorted;
+   object-fit: contain is the belt-and-braces guard if the asset is swapped
+   for one with a different ratio. */
+.brand-logo {
+    display: block;
     width: var(--logo-size);
     max-width: 100%;
-    aspect-ratio: 1 / 1;
     height: auto;
-    padding: 4px;
-    border-radius: 50%;
-    background: linear-gradient(180deg, #ffffff 0%, #cffafe 50%, var(--menu-placeholder) 100%);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-}
-
-.brand-logo-ring img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    border-radius: 50%;
-}
-
-.brand-title {
-    font-family: var(--font-menu);
-    /* Fluid type: shrinks with viewport so the nowrap title always fits */
-    font-size: clamp(1.8rem, 2.5vw + 1rem, 3rem);
-    font-weight: 800;
-    line-height: 1.1;
-    letter-spacing: 0.04em;
-    color: var(--menu-text);
-    text-shadow: 0 3px 0 var(--sea-dark), 0 6px 16px rgba(0, 0, 0, 0.35);
-    margin: 0 0 clamp(8px, 1.5vh, 14px);
-    max-width: 100%;
-    white-space: nowrap;
+    aspect-ratio: 1376 / 768;
+    object-fit: contain;
 }
 
 /* ── Login Card — reference .ocean-sphere ── */
@@ -283,7 +263,7 @@ body {
     width: 100%;
     max-width: clamp(360px, 28vw, 420px);
     padding:
-        calc(var(--logo-size) * 0.42 + clamp(14px, 2.5vh, 22px))
+        clamp(20px, 3vh, 32px)
         clamp(18px, 2vw, 28px)
         clamp(20px, 3vh, 32px);
     background: radial-gradient(circle at 50% 38%, rgba(68, 178, 237, 0.55) 0%, rgba(17, 102, 185, 0.75) 75%, rgba(6, 68, 142, 0.88) 100%);
@@ -322,6 +302,7 @@ button {
 .side-panel button,
 .servers-modal button,
 .settings-modal button,
+.connecting-overlay button,
 .auth-overlay button {
     font-family: var(--font-menu);
 }
@@ -1033,7 +1014,10 @@ button {
    (Connecting + Game Over — src/ui/overlays.js)
    ═══════════════════════════════════════════════ */
 
-/* ── Connecting Overlay ── */
+/* ── Connecting Overlay — reference: connecting-ui/connecting-ui.html ──
+   Circular glass "portal" over a blurred seabed. Opaque on purpose: the game
+   world must stay hidden until Game._revealGameplay has aligned it.
+   Palette: :root --menu-* / --play-* / --ping-*. */
 .connecting-overlay {
     position: absolute;
     inset: 0;
@@ -1041,11 +1025,16 @@ button {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #1a063b;
+    padding: 16px;
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
+    font-family: var(--font-menu);
+    color: var(--menu-text);
+    background: var(--menu-surface);
     opacity: 1;
     visibility: visible;
     transition: opacity 0.3s ease, visibility 0.3s;
-    overflow: hidden;
 }
 
 .connecting-overlay.hidden {
@@ -1054,297 +1043,276 @@ button {
     pointer-events: none;
 }
 
-/* Decorative background blobs */
-.connecting-overlay-blob {
+/* Blurred seabed — on a pseudo-element with negative inset so the blur
+   doesn't fade into a light halo along the screen edges. */
+.connecting-overlay::before {
+    content: '';
     position: absolute;
-    border-radius: 50%;
+    inset: -24px;
+    background: url('/assets/background/main-menu-background.png') center bottom / cover no-repeat;
+    filter: blur(6px) brightness(1.05);
+}
+
+/* Ocean-depth tint: darker toward the seabed, lighter toward the surface. */
+.connecting-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(8, 51, 103, 0.4) 0%, transparent 50%, rgba(40, 185, 230, 0.2) 100%);
     pointer-events: none;
-    filter: blur(80px);
 }
 
-.connecting-overlay-blob-1 {
-    width: 400px;
-    height: 400px;
-    background: #322053;
-    top: -10%;
-    left: -10%;
-    opacity: 0.4;
-}
-
-.connecting-overlay-blob-2 {
-    width: 500px;
-    height: 500px;
-    background: #ecdcff;
-    bottom: -10%;
-    right: -10%;
-    opacity: 0.2;
-    filter: blur(100px);
-}
-
-.connecting-card {
+/* The portal is a circle sized by the SMALLER viewport side, so it fits
+   portrait phones, short landscape phones and ultra-wide screens alike.
+   Inner sizes use cqi (the portal's own width) so everything scales with the
+   circle instead of the viewport. */
+.connecting-portal {
+    --portal-size: min(470px, 88vw, calc(100vh - 150px));
     position: relative;
-    z-index: 10;
+    z-index: 1;
+    container-type: inline-size;
+    width: var(--portal-size);
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    /* Room for the mascot overhanging the rim (13.6% of the portal). */
+    margin-top: calc(var(--portal-size) * 0.136);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 32px;
-    width: 100%;
-    max-width: 420px;
-    padding: 48px 32px;
-    background: #271448;
-    border: 1px solid #322053;
-    border-radius: 28px;
-    box-shadow: 0 8px 30px rgba(26, 15, 46, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+    justify-content: space-between;
+    /* NOT cqi: container units on the container ITSELF resolve against the
+       nearest ANCESTOR container — there is none, so they fell back to the
+       viewport and squeezed the content on wide-but-short screens. */
+    padding: 0 calc(var(--portal-size) * 0.08) calc(var(--portal-size) * 0.09);
     text-align: center;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgba(40, 185, 230, 0.35) 0%, rgba(48, 134, 206, 0.3) 50%, rgba(8, 51, 103, 0.45) 100%);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow:
+        0 0 0 5px rgba(255, 255, 255, 0.35),
+        0 0 40px rgba(40, 185, 230, 0.25),
+        0 0 45px rgba(255, 255, 255, 0.18),
+        inset 0 0 25px rgba(255, 255, 255, 0.12);
+    animation: connecting-portal-pulse 5s ease-in-out infinite;
 }
 
-/* Egg Loader */
-.egg-loader-container {
+@supports (height: 100dvh) {
+    .connecting-portal {
+        --portal-size: min(470px, 88vw, calc(100dvh - 150px));
+    }
+}
+
+/* Inner concentric highlight ring. */
+.connecting-portal::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+}
+
+@keyframes connecting-portal-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.95; }
+    50%      { transform: scale(1.015); opacity: 1; }
+}
+
+/* Logo badge overlapping the top rim.
+   logo-circle-final.png is ALREADY a circular badge with its own glowing rim
+   and transparent corners, so there is no white disc behind it and no
+   border-radius clipping (which cut that rim off). The shadow is a
+   drop-shadow filter: it follows the artwork's silhouette, where box-shadow
+   would trace the square transparent box instead. */
+.connecting-mascot {
     position: relative;
-    width: 96px;
-    height: 96px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    z-index: 2;
+    width: 60cqi;                 /* ~30% larger than the previous 30cqi badge */
+    aspect-ratio: 1 / 1;
+    margin-top: -13.6cqi;         /* overhang unchanged — .connecting-portal's
+                                     top margin reserves exactly this much */
+    filter: drop-shadow(0 10px 18px rgba(8, 51, 103, 0.55));
 }
 
-.egg-loader-ring {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: rgba(183, 247, 0, 0.2);
-    filter: blur(12px);
-    opacity: 0;
+.connecting-mascot img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
-.egg-loader {
-    position: relative;
-    width: 64px;
-    height: 64px;
-    background: #a0d800;
-    border-radius: 50%;
-    box-shadow: 0 4px 0 #506e00, inset 0 2px 0 rgba(255, 255, 255, 0.1);
-    border: 2px solid #b7f700;
-    animation: rollEgg 2s linear infinite;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-@keyframes rollEgg {
-    0% { transform: rotate(0deg) translateX(0); }
-    25% { transform: rotate(90deg) translateX(10px); }
-    50% { transform: rotate(180deg) translateX(0); }
-    75% { transform: rotate(270deg) translateX(-10px); }
-    100% { transform: rotate(360deg) translateX(0); }
-}
-
-/* Egg Eyes */
-.egg-eye {
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    background: #506e00;
-    border-radius: 50%;
-}
-
-.egg-eye-left {
-    top: 20px;
-    left: 16px;
-}
-
-.egg-eye-right {
-    top: 20px;
-    right: 16px;
-}
-
-/* Egg Blush */
-.egg-blush {
-    position: absolute;
-    width: 8px;
-    height: 5px;
-    background: rgba(255, 107, 91, 0.5);
-    border-radius: 50%;
-    filter: blur(1px);
-}
-
-.egg-blush-left {
-    top: 28px;
-    left: 6px;
-}
-
-.egg-blush-right {
-    top: 28px;
-    right: 6px;
-}
-
-/* Connecting Status */
 .connecting-status {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    align-items: center;
+    gap: 3.4cqi;
+    width: 100%;
 }
 
 .connecting-title {
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.6rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: #ebddff;
     margin: 0;
-    animation: pulseSoft 1.5s ease-in-out infinite;
+    font-size: clamp(1.1rem, 6cqi, 1.9rem);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+    color: var(--menu-text);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-@keyframes pulseSoft {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-}
-
-.connecting-info {
-    display: flex;
+/* Server name | signal + ping */
+.connecting-server {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.75rem;
+    gap: 12px;
+    max-width: 100%;
+    padding: 5px 22px 3px;
+    font-size: clamp(0.8rem, 3.2cqi, 0.95rem);
     font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #c2caad;
+    line-height: 1.3;
+    background: rgba(8, 51, 103, 0.75);            /* --sea-dark */
+    border: 1px solid rgba(125, 211, 252, 0.25);   /* --menu-placeholder */
+    border-radius: 999px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
-.info-label {
-    color: #c2caad;
-}
-
-.info-value {
-    color: #b7f700;
-    font-weight: 700;
-}
-
-.info-separator {
-    opacity: 0.5;
-    margin: 0 4px;
-}
-
-/* Progress Bar with Snake */
-.connecting-progress-bar {
-    width: 100%;
-    height: 16px;
-    background: #150136;
-    border-radius: 8px;
+.connecting-server-name {
+    min-width: 0;
     overflow: hidden;
-    position: relative;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--menu-text);
 }
 
-.snake-animation {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    height: 100%;
-    width: 33%;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 2px;
-    padding-right: 8px;
-    animation: slither 2.5s linear infinite;
-}
-
-@keyframes slither {
-    0% { transform: translateY(-50%) translateX(-100%); }
-    100% { transform: translateY(-50%) translateX(300%); }
-}
-
-.snake-segment {
-    border-radius: 50%;
-    background: #b7f700;
-    animation: wiggle 0.5s ease-in-out infinite;
+.connecting-server-divider {
     flex-shrink: 0;
+    width: 1px;
+    height: 1.1em;
+    background: rgba(125, 211, 252, 0.4);
 }
 
-.snake-segment-1 { width: 8px; height: 8px; opacity: 0.4; animation-delay: 0s; }
-.snake-segment-2 { width: 10px; height: 10px; opacity: 0.6; animation-delay: 0.1s; }
-.snake-segment-3 { width: 12px; height: 12px; opacity: 0.8; animation-delay: 0.2s; }
-.snake-segment-4 { width: 14px; height: 14px; animation-delay: 0.3s; }
+.connecting-ping {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    color: var(--ping-good);
+    font-variant-numeric: tabular-nums;
+}
 
-.snake-head {
+.connecting-ping-icon {
     width: 16px;
-    height: 16px;
+    height: 14px;
+    margin-bottom: 2px;
+    fill: currentColor;
+}
+
+/* Reserve the widest value ("999ms") so the pill doesn't resize as it ticks. */
+#conn-ping-value {
+    min-width: 4.5ch;
+    text-align: left;
+}
+
+/* Progress track + fill */
+.connecting-progress {
+    width: min(305px, 72cqi);
+    height: clamp(14px, 4.7cqi, 22px);
+    padding: 3px;
+    background: rgba(14, 46, 82, 0.8);             /* --menu-surface-lowest */
+    border: 1px solid rgba(54, 136, 208, 0.25);    /* --menu-bright */
+    border-radius: 999px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.connecting-progress-fill {
     position: relative;
-    background: #a0d800;
-    border-radius: 50%;
-    animation: wiggle 0.5s ease-in-out infinite, rotateHead 2s linear infinite;
-    animation-delay: 0.4s, 0s;
-    flex-shrink: 0;
+    width: 0%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--sea-light) 0%, var(--ping-good) 100%);
+    box-shadow: 0 0 16px rgba(40, 185, 230, 0.65);
+    transition: width 0.45s ease-out;
 }
 
-@keyframes wiggle {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-2px); }
-}
-
-@keyframes rotateHead {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.snake-eye {
+/* Moving sheen: the bar looks alive while a stage waits on the server. */
+.connecting-progress-fill::after {
+    content: '';
     position: absolute;
-    width: 2px;
-    height: 2px;
-    background: #506e00;
-    border-radius: 50%;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: connecting-shimmer 1.6s linear infinite;
 }
 
-.snake-eye-1 {
-    top: 3px;
-    right: 4px;
+@keyframes connecting-shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
 }
 
-.snake-eye-2 {
-    bottom: 3px;
-    right: 4px;
-}
-
-/* Cancel Button */
+/* Cancel — 3D coral pill (palette: --ping-bad, as the settings close button). */
 .connecting-cancel-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 14px 32px;
-    font-family: var(--font-heading);
-    font-size: 0.95rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: white;
-    background: #ff6b5b;
+    position: relative;
+    z-index: 2;
+    min-width: min(160px, 40cqi);
+    min-height: 44px;
+    padding: 0.5em 1.6em 0.4em;
+    font-size: clamp(1rem, 4cqi, 1.2rem);
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    color: var(--menu-text);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+    background: var(--ping-bad);
     border: none;
-    border-radius: 16px;
-    border-bottom: 4px solid #cc3d30;
-    cursor: pointer;
-    transition: all 0.12s ease;
-    box-shadow: 0 8px 16px rgba(255, 107, 91, 0.3);
+    border-radius: 999px;
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.28), 0 8px 15px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 0.4);
+    transition: transform 0.12s ease, filter 0.15s ease, box-shadow 0.12s ease;
 }
 
 .connecting-cancel-btn:hover {
-    filter: brightness(1.1);
-    transform: scale(1.05);
-    box-shadow: 0 12px 24px rgba(255, 107, 91, 0.4);
+    filter: brightness(1.08);
 }
 
 .connecting-cancel-btn:active {
-    transform: translateY(2px) scale(0.98);
-    border-bottom-width: 2px;
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.28), 0 3px 6px rgba(0, 0, 0, 0.25);
 }
 
-.connecting-cancel-btn svg {
-    width: 20px;
-    height: 20px;
+.connecting-cancel-btn:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 3px;
+}
+
+/* Short landscape phones: less vertical chrome so the circle can grow. */
+@media (max-height: 500px) {
+    .connecting-overlay { padding-top: 8px; padding-bottom: 8px; }
+    .connecting-portal { --portal-size: min(470px, 88vw, calc(100vh - 90px)); }
+    .connecting-status { gap: 2.6cqi; }
+}
+
+@supports (height: 100dvh) {
+    @media (max-height: 500px) {
+        .connecting-portal { --portal-size: min(470px, 88vw, calc(100dvh - 90px)); }
+    }
+}
+
+/* Ultra-wide / 4K: lift the 470px cap. */
+@media (min-width: 2200px) and (min-height: 1200px) {
+    .connecting-portal { --portal-size: 600px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .connecting-portal,
+    .connecting-progress-fill::after {
+        animation: none;
+    }
+
+    .connecting-progress-fill {
+        transition: none;
+    }
 }
 
 /* ── Game Over Overlay ── */
@@ -2242,13 +2210,21 @@ button {
        (clamp) — this block only restructures what can't scale: the avatar
        sizes from width instead of vmin and the sphere takes the full column. */
     .main-menu-content {
-        --logo-size: clamp(96px, 26vw, 124px);
+        --logo-size: min(62vw, 420px);
         padding: 0 16px 3vh;
     }
 
     .login-card {
         max-width: min(420px, 100%);
         border-radius: 40px;
+    }
+}
+
+/* Narrow phones: the logo takes ~72% of the width, which keeps the whole
+   login card (down to the PLAY button) above the fold on a 375x667 phone. */
+@media (max-width: 480px) {
+    .main-menu-content {
+        --logo-size: min(72vw, 330px);
     }
 }
 
@@ -2279,8 +2255,7 @@ button {
 /* Ultra-wide / 4K: the clamps above cap for 1080p–1440p; lift the caps so the
    menu doesn't shrink into a postage stamp in the middle of the screen. */
 @media (min-width: 2200px) and (min-height: 1200px) {
-    .main-menu-content { --logo-size: 180px; }
-    .brand-title { font-size: 3.8rem; }
+    .main-menu-content { --logo-size: 620px; }
     .login-card { max-width: 500px; }
     .login-card > * { max-width: 360px; }
     .side-panel { --sp-width: 440px; }
@@ -2312,10 +2287,11 @@ button {
         padding: 0 16px;
     }
 
-    /* Side by side, the badge can't overlap the card — it sits above the
-       title column instead, so the card drops its reserved top padding. */
+    /* Beside the card, the logo is limited by WIDTH, not height: a 16:9
+       wordmark at 38vw is ~0.53 * that in height, which clears a 390px-tall
+       viewport with room for the card next to it. */
     .main-menu-content {
-        --logo-size: 84px;
+        --logo-size: min(38vw, 300px);
     }
 
     .brand {
@@ -2327,10 +2303,6 @@ button {
     /* Disable the ±10px float so the logo can't bob out of a tight viewport */
     .float-anim {
         animation: none;
-    }
-
-    .brand-title {
-        font-size: clamp(1.2rem, 3vw, 1.6rem);
     }
 
     .login-card {
@@ -2915,59 +2887,6 @@ html.pseudo-fullscreen #app {
     .gameover-links {
         margin-top: 16px;
         gap: 16px;
-    }
-
-    /* ── Connecting / "Waiting for Server..." ── */
-    .connecting-overlay {
-        padding: 16px;
-        align-items: flex-start;
-        overflow-y: auto;
-    }
-
-    .connecting-card {
-        margin: auto;
-        max-width: 360px;
-        gap: 18px;
-        padding: 24px 20px;
-    }
-
-    .egg-loader-container {
-        width: 64px;
-        height: 64px;
-    }
-
-    .egg-loader {
-        width: 48px;
-        height: 48px;
-    }
-
-    /* Re-align face features to the smaller 48px egg */
-    .egg-eye { width: 6px; height: 6px; }
-    .egg-eye-left  { top: 15px; left: 12px; }
-    .egg-eye-right { top: 15px; right: 12px; }
-    .egg-blush-left  { top: 21px; left: 4px; }
-    .egg-blush-right { top: 21px; right: 4px; }
-
-    .connecting-status {
-        gap: 8px;
-    }
-
-    .connecting-title {
-        font-size: 1.15rem;
-    }
-
-    .connecting-info {
-        font-size: 0.65rem;
-        letter-spacing: 1px;
-    }
-
-    .connecting-progress-bar {
-        height: 12px;
-    }
-
-    .connecting-cancel-btn {
-        padding: 10px 20px;
-        font-size: 0.8rem;
     }
 }
 

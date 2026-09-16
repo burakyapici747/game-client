@@ -6,6 +6,7 @@ import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
 import {
     showConnectingOverlay,
+    setConnectingStage,
     updateConnectingPing,
     hideConnectingOverlay,
     showGameOverOverlay,
@@ -348,6 +349,10 @@ export class Game extends Phaser.Scene {
         };
         this.events.on('ping_update', this._onPingUpdate, this);
 
+        // Soket açıldı → bağlanma ekranında "Connecting to server…" tamamlanır.
+        this._onSocketOpen = () => setConnectingStage('connecting', 1);
+        this.events.on('socket_open', this._onSocketOpen, this);
+
         // Restart/kapanışta açık kalan HTML overlay'leri temizle.
         this.events.once('shutdown', () => hideAllGameOverlays());
 
@@ -377,6 +382,7 @@ export class Game extends Phaser.Scene {
             this.events.off('death_notification', this.onDeathNotification, this);
             this.events.off('leaderboard_update', this.onLeaderboardUpdate, this);
             this.events.off('ping_update', this._onPingUpdate, this);
+            this.events.off('socket_open', this._onSocketOpen, this);
             this.events.off('postupdate', this._onPostUpdate, this);
         });
 
@@ -500,6 +506,9 @@ export class Game extends Phaser.Scene {
             window.gameSettings?.serverName,
             window.gameSettings?.menuPingMs ?? null
         );
+        // connect() yukarıda çağrıldı; soket aynı tick'te açılamaz, yani
+        // 'socket_open' (→ aşama tamam) her zaman bundan SONRA gelir.
+        setConnectingStage('connecting', 0);
     }
 
     // ── Camera routing helpers ──────────────────────────────────────────────
@@ -1226,6 +1235,13 @@ export class Game extends Phaser.Scene {
 
     checkInitialDataComplete() {
         if (this.gameStarted) return;
+
+        // Bağlanma ekranı: "Joining world…" ilerlemesi = gelen ilk veri
+        // bayraklarının oranı. Her bayrak set edildiğinde bu metot çağrılır.
+        const flags = this.initialDataFlags;
+        setConnectingStage('joining',
+            ((flags.startInfo ? 1 : 0) + (flags.entities ? 1 : 0) + (flags.selfBaseline ? 1 : 0)) / 3);
+
         // selfBaseline KOŞULU KRİTİK: eskiden perde, StartInformation + herhangi
         // bir entity paketi gelir gelmez kalkıyordu. Oyuncunun KENDİ otoriter
         // konumu henüz uygulanmamış olabildiğinden, açılışta yılan spawn

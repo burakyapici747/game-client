@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import * as SnakeSkin from '../render/SnakeSkin.js';
 import * as Terrain from '../render/Terrain.js';
+import { setConnectingStage } from '../../ui/overlays.js';
 
 // Kameranin zemin rengi — TEK DOGRULUK KAYNAGI.
 // Kamera artik harita sinirlarinin DISINA cikabildigi icin (bkz. Game.js →
@@ -37,6 +38,9 @@ export class Preloader extends Phaser.Scene {
     this.load.on('loaderror', (file) => {
       console.warn('[Preloader] varlik yuklenemedi:', file?.src ?? file?.key);
     });
+
+    // Bağlanma ekranının "Loading game assets…" aşaması — gerçek yükleme oranı.
+    this.load.on('progress', (value) => setConnectingStage('assets', value));
   }
 
   create() {
