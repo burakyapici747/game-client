@@ -4,6 +4,7 @@ import { VOID_BACKGROUND_COLOR, MINIMAP_TEXTURE_KEY } from './Preloader';
 import { TerrainRenderer } from './../render/Terrain';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
+import * as Viewport from './../render/Viewport';
 import {
     showConnectingOverlay,
     setConnectingStage,
@@ -398,19 +399,22 @@ export class Game extends Phaser.Scene {
         // We keep the camera viewport in sync with the live game size, and derive
         // a base zoom factor from the screen's pixel area so smaller (mobile)
         // screens zoom OUT to preserve a comparable field of view to desktop.
-        // Self-heal: if the ScaleManager's snapshot has drifted from the real
-        // parent size (e.g. boot raced a keyboard/viewport transition on
-        // mobile), force a re-measure. refresh() emits 'resize', which lands
-        // in handleResize below and re-syncs camera/terrain/controls.
-        const ps = this.scale.parentSize;
-        if (ps.width && ps.height &&
-            (this.scale.width !== ps.width || this.scale.height !== ps.height)) {
-            this.scale.refresh();
-        }
+        // Self-heal: if the parent size drifted since boot (e.g. boot raced a
+        // keyboard/viewport transition on mobile), apply it right now instead
+        // of on the next rAF. A real change emits 'resize' → handleResize,
+        // which is registered below, so the explicit sync-up follows here.
+        Viewport.syncNow(this.game);
 
+        // ── HIGH-DPI CAMERA TRANSFORM (bkz. render/Viewport.js) ─────────────
+        // Camera viewports are in BUFFER px (= CSS px × D). The world must
+        // still show the same number of world units per CSS px, so:
+        //   worldZoom = baseZoom(CSS-derived) × D
+        //   visible world width = bufferW / worldZoom = cssW / baseZoom
+        // → FOV is independent of D; only the sampling density changes.
+        this._renderDensity = this.renderDensity;
         this.cameras.main.setSize(this.scale.width, this.scale.height);
         this.baseZoom = this.computeBaseZoom();
-        this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
+        this.cameras.main.setZoom(this.baseZoom * this._renderDensity).setRoundPixels(false);
 
         // Kamera harita dışına çıkabildiği için (bkz. onStartGame →
         // removeBounds) zemin rengi terrain karolarının kenar tonuyla AYNI
@@ -435,8 +439,14 @@ export class Game extends Phaser.Scene {
         // touches only registered inside that rectangle. The fix: a second
         // camera at zoom 1 renders (and hit-tests) HUD objects exclusively.
         // The zoomed main camera ignores HUD; the UI camera ignores the world.
+        //
+        // HIGH-DPI: the UI camera zooms by D around its TOP-LEFT corner, so a
+        // HUD object at (x, y) CSS px lands on buffer px (x·D, y·D). All HUD
+        // code (minimap, joystick, boost, texts) therefore keeps working in
+        // CSS px via viewWidth/viewHeight, and input hit-testing through this
+        // camera inverts the same transform automatically.
         this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
-        this.uiCamera.setScroll(0, 0);
+        this.uiCamera.setOrigin(0, 0).setZoom(this._renderDensity).setScroll(0, 0);
 
         this.scale.on('resize', this.handleResize, this);
         this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
@@ -525,6 +535,28 @@ export class Game extends Phaser.Scene {
         return obj;
     }
 
+    // ── High-DPI accessors (single source: render/Viewport.js) ──────────────
+    /** Backing-buffer px per CSS px (min(devicePixelRatio, 2)). */
+    get renderDensity() { return Viewport.renderDensity(this.game); }
+
+    /** Screen width in CSS px — use for ALL HUD layout (UI camera space). */
+    get viewWidth() { return Viewport.cssWidth(this.game); }
+
+    /** Screen height in CSS px — use for ALL HUD layout (UI camera space). */
+    get viewHeight() { return Viewport.cssHeight(this.game); }
+
+    /**
+     * World camera zoom expressed per CSS px (i.e. with the density factor
+     * removed). 1 world px is drawn as {@code cssZoom} CSS px on screen.
+     */
+    get cssZoom() { return this.cameras.main.zoom / (this._renderDensity || 1); }
+
+    /** Pointer position (buffer px) → HUD/CSS px, matching the UI camera. */
+    pointerToView(pointer) {
+        const d = this._renderDensity || 1;
+        return { x: pointer.x / d, y: pointer.y / d };
+    }
+
     // Derives a base camera zoom from the live screen's SMALLER dimension,
     // relative to a 720px desktop-portrait reference. Mobile phones in
     // landscape have a short dimension (height) far below any desktop
@@ -533,13 +565,17 @@ export class Game extends Phaser.Scene {
     // still left the camera noticeably over-zoomed. Using min(width,height)
     // zooms out aggressively on phones while leaving desktop/tablet (where the
     // short dimension is already >= the reference) at zoom 1.0, unchanged.
+    //
+    // HIGH-DPI: measured in CSS px ON PURPOSE. Using the buffer size would make
+    // a DPR-2 phone look like a 1440px-tall desktop and wrongly clamp to 1.0;
+    // the density factor is applied separately on top (worldZoom = base × D).
     computeBaseZoom() {
         const REFERENCE_MIN_DIM = 720;
         const MIN_ZOOM = 0.45;
         const MAX_ZOOM = 1.0;
 
-        const width = this.scale.width;
-        const height = this.scale.height;
+        const width = this.viewWidth;
+        const height = this.viewHeight;
         if (!width || !height) return 1.0;
 
         const minDim = Math.min(width, height);
@@ -555,16 +591,38 @@ export class Game extends Phaser.Scene {
         const height = gameSize.height;
         if (!width || !height) return;
 
+        // gameSize is in BUFFER px → camera viewports; HUD uses CSS px.
         this.cameras.main.setSize(width, height);
         this.uiCamera?.setSize(width, height);
+
+        // Density change (monitor switch / browser zoom): rescale the CURRENT
+        // world zoom by D_new / D_old immediately so the FOV does not visibly
+        // jump while the update-loop lerp would otherwise catch up over ~1s.
+        const prevDensity = this._renderDensity || 1;
+        const density = this.renderDensity;
+        if (density !== prevDensity) {
+            this.cameras.main.setZoom(this.cameras.main.zoom * (density / prevDensity));
+            this._renderDensity = density;
+        }
+        this.uiCamera?.setZoom(density);
+
+        const prevBaseZoom = this.baseZoom;
         this.baseZoom = this.computeBaseZoom();
+        // Before gameplay the update loop does not drive zoom; keep the camera
+        // on the (new) base so the reveal frame already has the right FOV.
+        if (!this._revealStarted && prevBaseZoom !== this.baseZoom) {
+            this.cameras.main.setZoom(this.baseZoom * density);
+        }
 
         // Zemin dunya uzayindadir ve kendi gorunur-hucre araligini kameranin
         // worldView'inden turetir; viewport degisince o aralik onbellegi
         // gecersizdir (yeni ekran orani daha fazla/az karo gerektirebilir).
         this.terrain?.refresh();
 
-        this.mobileControls?.resize(width, height);
+        this.mobileControls?.resize(this.viewWidth, this.viewHeight);
+
+        // Minimap geometry is cached by layout key; CSS size change → redraw.
+        this._minimapLayout = null;
 
         // (Connecting/Game Over ekranları HTML/CSS overlay — CSS kendisi
         // responsive olduğundan burada yeniden konumlandırma gerekmiyor.)
@@ -1620,9 +1678,9 @@ export class Game extends Phaser.Scene {
             this.boundaryGraphics.destroy();
             this.boundaryGraphics = null;
         }
-        const disconnectText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
+        const disconnectText = this.add.text(this.viewWidth / 2, this.viewHeight / 2,
             `Sunucu bağlantısı koptu!`,
-            { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000' }
+            { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000', resolution: this.renderDensity }
         ).setOrigin(0.5, 0.5).setScrollFactor(0);
         this.registerHUD(disconnectText);
     }
@@ -2053,7 +2111,10 @@ export class Game extends Phaser.Scene {
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 // baseZoom: ekran boyutuna göre belirlenen taban zoom (bkz. computeBaseZoom)
-                const targetZoom = this.baseZoom / (1.0 + (mySnake.scale - 1.0) * 0.12);
+                // × renderDensity: bkz. create() HIGH-DPI CAMERA TRANSFORM —
+                // FOV CSS pikseline göre sabit, yoğunluk yalnız örneklemeyi artırır.
+                const targetZoom = this.baseZoom * this._renderDensity
+                    / (1.0 + (mySnake.scale - 1.0) * 0.12);
                 const currentZoom = this.cameras.main.zoom;
                 // Frame-rate-agnostik üstel yumuşatma: eski sabit 0.05/frame,
                 // 120Hz'de iki kat hızlı yakınsıyordu. 3.0/s ≈ 0.05 @60fps.
@@ -2243,9 +2304,10 @@ export class Game extends Phaser.Scene {
     // MobileControls to keep the boost button clear of the minimap corner.
     // Mobile (short dimension < 720px): ~24% of the short dimension, 88–120px.
     // Desktop: the original 160px.
+    // Sizes are CSS px (UI camera space), NOT camera/buffer px.
     minimapMetrics() {
-        const w = this.cameras.main.width;
-        const h = this.cameras.main.height;
+        const w = this.viewWidth;
+        const h = this.viewHeight;
         const minDim = Math.min(w, h);
         if (minDim < 720) {
             return {
@@ -2258,8 +2320,8 @@ export class Game extends Phaser.Scene {
 
     drawMinimap(mySnake) {
         const { size, padding } = this.minimapMetrics();
-        const cx = this.cameras.main.width - size / 2 - padding;
-        const cy = this.cameras.main.height - size / 2 - padding;
+        const cx = this.viewWidth - size / 2 - padding;
+        const cy = this.viewHeight - size / 2 - padding;
 
         const g = this.minimapGraphics;
         g.clear();

@@ -32,7 +32,20 @@ import Phaser from 'phaser';
  *    kuyrugun 393x722 orani bu sayede korunur ve kuyruk dogal olarak uzun kalir
  *    (kareye sikistirilmis bir kuyruk yerine).
  *
- * 3) GERI DUSUS. Bir PNG yuklenemezse (404, bozuk dosya) oyun kirmizi kutu
+ * 3) MIPMAP / POWER-OF-TWO. Kaynak PNG'ler POT degildir; WebGL1 (ve Phaser
+ *    3.90, WebGLRenderer.canvasToTexture) mip zincirini YALNIZCA POT dokular
+ *    icin uretir. Mobilde kamera ~0.45 zoom'dadir ve 639 px'lik kafa ekranda
+ *    ~20-65 piksele iner: mipmap'siz LINEAR ornekleme 30x kucultmede her
+ *    ekran pikseli icin yalnizca 2x2 texel okur → pullar hareket ederken
+ *    kivilcimlanir/moire uretir.
+ *
+ *    COZUM: dokular sabit POT tuvallere (bkz. POT_CANVAS) en-boy orani
+ *    korunarak sigdirilip ORTALANIR. Tuval POT oldugu icin Phaser game
+ *    config'teki mipmapFilter'i (LINEAR_MIPMAP_LINEAR) uygular ve refresh()
+ *    sirasinda gl.generateMipmap cagirir. setFilter() CAGRILMAZ — o cagri min
+ *    filter'i duz LINEAR'a indirip mip zincirini devre disi birakirdi.
+ *
+ * 4) GERI DUSUS. Bir PNG yuklenemezse (404, bozuk dosya) oyun kirmizi kutu
  *    cizmek yerine eski uretilmis daire dokularina duser ve konsola tek satir
  *    uyari birakir. Gorsel bozulur ama oynanis ve carpisma senkronu bozulmaz.
  */
@@ -84,6 +97,29 @@ const FALLBACK = {
 };
 
 /**
+ * DOKU BASINA POT TUVAL BOYUTU (dondurme SONRASI yonelimde: genislik = ileri
+ * eksen, yukseklik = carpisma kesiti).
+ *
+ * <p>Boyut secimi — en buyuk ekran kesiti: kesit = 48 · scale · cssZoom · D.
+ * Kamera yilan buyudukce uzaklastigi icin (Game.js: base / (1 + 0.12·(s-1)))
+ * scale ~7.5'te kesit ~202·baseZoom CSS px'e doyar → masaustu Retina (D=2)
+ * ~404, mobil (base 0.45, D=2) ~182 buffer px. Bu yuzden:
+ *   - kafa  512² : 639 → 512 kesit (≥404, masaustu en kotu durumu karsilar).
+ *   - govde 256² : 289 → 256 kesit. Kaynak zaten ~290; 512'ye buyutmek detay
+ *                  eklemez, yalnizca 4x bellek harcar. Govde yilan basina
+ *                  onlarca kez cizilir ama TEK doku paylasir.
+ *   - kuyruk 512²: 722x393 → 512x279 (kesit 279).
+ *
+ * <p>Bellek (RGBA + %33 mip): 512² ≈ 1.4 MB, 256² ≈ 0.35 MB → toplam ~3.1 MB;
+ * eski POT olmayan tuvaller (639·623 + 295·289 + 722·393) ≈ 3.0 MB mip'siz.
+ */
+const POT_CANVAS = {
+    [SnakeTexture.HEAD]: { width: 512, height: 512 },
+    [SnakeTexture.BODY]: { width: 256, height: 256 },
+    [SnakeTexture.TAIL]: { width: 512, height: 512 },
+};
+
+/**
  * Carpisma kesiti (px, scale=1). SnakeGeometryConfig.HEAD_RADIUS_PX * 2 = 48.
  * Bu deger sunucu ile SOZLESMEDIR; degistirilecekse iki tarafta birlikte.
  */
@@ -127,17 +163,16 @@ export function build(scene) {
     bakeRotated(scene, SOURCE.body.key, SnakeTexture.BODY, BAKE_ROTATION.body);
     bakeRotated(scene, SOURCE.tail.key, SnakeTexture.TAIL, BAKE_ROTATION.tail);
 
-    for (const key of Object.values(SnakeTexture)) {
-        scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
-    }
+    // BILEREK setFilter(LINEAR) YOK: POT tuval + config.mipmapFilter zaten
+    // min=LINEAR_MIPMAP_LINEAR / mag=LINEAR kurar (bkz. modul basi, madde 3).
 
     spritesReady = true;
     return true;
 }
 
 /**
- * Kaynak dokuyu 90° dondurup yeni bir canvas dokusu olarak kaydeder ve
- * normalizasyon carpanini hesaplar.
+ * Kaynak dokuyu dondurup POT bir canvas dokusuna OLCEKLEYEREK ve ORTALAYARAK
+ * yazar, normalizasyon carpanini hesaplar.
  *
  * <p>DONUS YONU: canvas'ta y ASAGI oldugu icin pozitif aci SAAT YONUDUR.
  * rotate(+PI/2) altinda goruntunun UST kenari (0,-h/2) noktasi (h/2, 0)'a,
@@ -146,6 +181,18 @@ export function build(scene) {
  *
  * <p>BOYUT TAKASI: dondurmeden sonra en/boy yer degistirir. Yeni YUKSEKLIK
  * eski GENISLIKtir — yani carpisma kesiti odur ve normalizasyon ondan turer.
+ *
+ * <p>POT SIGDIRMA FORMULU (dondurulmus boyutlar rotW x rotH, tuval PW x PH):
+ * <pre>
+ *   fit        = min(PW / rotW, PH / rotH)       // oran korunur, tasma yok
+ *   drawW,drawH = rotW·fit, rotH·fit             // tuvalde goruntunun kapladigi alan
+ *   kesit(texel) = rotH · fit                    // = drawH
+ *   norm       = 48 / kesit                      // setScale carpani
+ * </pre>
+ * Goruntu tuvalde ORTALANDIGI icin sprite origin'i (0.5, 0.5) hala goruntu
+ * merkezine denk gelir; saydam dolgu yalnizca tuvalin frame boyutunu buyutur,
+ * gorunen kesit ise norm · drawH · scale = 48 · scale olarak KORUNUR →
+ * sunucu hitbox sozlesmesi (24·scale yaricap) degismez.
  */
 function bakeRotated(scene, sourceKey, targetKey, rotation) {
     const source = scene.textures.get(sourceKey).getSourceImage();
@@ -157,19 +204,31 @@ function bakeRotated(scene, sourceKey, targetKey, rotation) {
     // ileride 180°'lik bir varlik eklenirse tuval boyutu yine dogru cikssin.)
     const quarterTurns = Math.round(rotation / (Math.PI / 2)) & 3;
     const swaps = quarterTurns === 1 || quarterTurns === 3;
-    const canvasW = swaps ? h : w;
-    const canvasH = swaps ? w : h;
+    const rotW = swaps ? h : w;
+    const rotH = swaps ? w : h;
 
-    const canvasTexture = scene.textures.createCanvas(targetKey, canvasW, canvasH);
+    const pot = POT_CANVAS[targetKey];
+    const fit = Math.min(pot.width / rotW, pot.height / rotH);
+    const drawW = w * fit;   // dondurme ONCESI eksenlerde cizim boyutu
+    const drawH = h * fit;
+
+    const canvasTexture = scene.textures.createCanvas(targetKey, pot.width, pot.height);
     const ctx = canvasTexture.getContext();
     ctx.imageSmoothingEnabled = true;
-    ctx.translate(canvasW / 2, canvasH / 2);
+    // Tek adimli kucultme orani en fazla ~1.4x (722→512); bu aralikta 'high'
+    // kalite tarayicinin coklu-ornekli filtresini kullanir, mip zincirinin
+    // ilk seviyesi temiz baslar.
+    ctx.imageSmoothingQuality = 'high';
+    ctx.translate(pot.width / 2, pot.height / 2);
     ctx.rotate(rotation);
-    ctx.drawImage(source, -w / 2, -h / 2);
+    ctx.drawImage(source, -drawW / 2, -drawH / 2, drawW, drawH);
+    // refresh → canvasToTexture: POT → min filter = config.mipmapFilter ve
+    // WebGLTextureWrapper.update icinde gl.generateMipmap.
     canvasTexture.refresh();
 
-    // Kesit = dondurme sonrasi YUKSEKLIK. 90/270°'de bu kaynagin GENISLIGIDIR.
-    normByTexture.set(targetKey, TARGET_DIAMETER_PX / canvasH);
+    // Kesit = dondurme sonrasi goruntu YUKSEKLIGI (texel). Tuval yuksekligi
+    // DEGIL — dolgu kesite dahil edilirse sprite kucuk gorunurdu.
+    normByTexture.set(targetKey, TARGET_DIAMETER_PX / (rotH * fit));
 }
 
 /** Sprite dokulari kullanilabilir mi (degilse cagiran daireye duser). */
@@ -185,8 +244,8 @@ export function textureKey(logicalKey) {
 /**
  * Bir sprite'a dokuyu VE ona ait normalizasyon carpanini birlikte uygular.
  *
- * <p>IKISI AYRILAMAZ: doku degisince carpan da degismelidir (kafa 0.075, govde
- * 0.166, kuyruk 0.122). Carpani sprite uzerinde {@code _texNorm} olarak
+ * <p>IKISI AYRILAMAZ: doku degisince carpan da degismelidir (POT tuvallerle
+ * kafa ~0.094, govde ~0.191, kuyruk ~0.172). Carpani sprite uzerinde {@code _texNorm} olarak
  * saklamak, sonraki her {@code setScale} cagrisinin (buyume animasyonu, sunucu
  * scale guncellemesi, retire solmasi) dogru olcegi kendiliginden korumasini
  * saglar — cagri yerlerinin hangi dokunun takili oldugunu bilmesi gerekmez.

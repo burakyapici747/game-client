@@ -3,6 +3,28 @@ import { EntityInterpolator } from '../net/EntityInterpolator.js';
 import * as SnakeSkin from '../render/SnakeSkin.js';
 import { SnakeTexture } from '../render/SnakeSkin.js';
 
+// ── NICKNAME TYPOGRAPHY (High-DPI) ──────────────────────────────────────────
+// Nicknames are sized in CSS px ON SCREEN, independent of camera zoom:
+//
+//   screenPx  = clamp(NICK_FONT_PX · cssZoom, NICK_MIN_SCREEN_PX, NICK_FONT_PX)
+//   objScale  = screenPx / (NICK_FONT_PX · cssZoom)     // counter-scale in world
+//
+// The glyph canvas is rasterized at `resolution = D` (render density), so one
+// glyph texel covers 1/D CSS px. Drawn by the world camera at zoom cssZoom·D:
+//   buffer px per texel = objScale · cssZoom · D / D = screenPx / NICK_FONT_PX
+// → between 12/14 and 1.0: never magnified, at most ~14% minified. Crisp.
+//
+// WHY WORLD CAMERA (not UI camera + world→screen projection): the world
+// camera follows the head with lerp, and Phaser computes that scroll inside
+// Camera.preRender — i.e. AFTER update(). A UI-space label positioned in
+// update() would trail the camera by one frame and visibly jitter against
+// the head at boost speed. Counter-scaling in world space keeps the label in
+// the same transform as the head (zero lag) and costs no texture redraw:
+// only setScale changes per frame, the glyph canvas is redrawn on setText.
+const NICK_FONT_PX = 14;          // raster size and max on-screen size (CSS px)
+const NICK_MIN_SCREEN_PX = 12;    // legibility floor regardless of zoom
+const NICK_GAP_PX = 4;            // screen gap between head edge and label (CSS px)
+
 const SnakeConfig = {
     // ── Boyut senkronu (SUNUCU ile BIREBIR) ─────────────────────────────
     // Sunucu: game-server com/common/SnakeGeometryConfig.java →
@@ -1027,15 +1049,50 @@ export class Snake {
         if (this.nicknameText) {
             this.nicknameText.setText(nickname);
         } else {
-            this.nicknameText = this.scene.registerWorld(this.scene.add.text(this.head.x, this.head.y - 35 * this.scale, nickname, {
+            this.nicknameText = this.scene.registerWorld(this.scene.add.text(this.head.x, this.head.y, nickname, {
                 fontFamily: 'Outfit, Inter, Arial, sans-serif',
-                fontSize: '14px',
+                fontSize: `${NICK_FONT_PX}px`,
                 fontStyle: 'bold',
                 fill: '#ffffff',
                 stroke: '#000000',
-                strokeThickness: 3
+                strokeThickness: 3,
+                // Rasterize at backing-buffer density (bkz. NICKNAME TYPOGRAPHY).
+                // Default 0 → 1 would be upscaled D× by the camera and blur.
+                resolution: this.scene.renderDensity ?? 1
             }).setOrigin(0.5).setDepth(2000));
+            this._nickDensity = this.scene.renderDensity ?? 1;
         }
+        this._layoutNickname();
+    }
+
+    /**
+     * Places + counter-scales the nickname for the CURRENT camera zoom
+     * (formulas: NICKNAME TYPOGRAPHY block at the top of this file).
+     */
+    _layoutNickname() {
+        const text = this.nicknameText;
+        if (!text || !this.head) return;
+
+        // Density changed (monitor switch): re-rasterize once at the new D.
+        const density = this.scene.renderDensity ?? 1;
+        if (density !== this._nickDensity) {
+            this._nickDensity = density;
+            text.setResolution(density);
+        }
+
+        const cssZoom = Math.max(1e-3, this.scene.cssZoom ?? this.scene.cameras.main.zoom);
+        const screenPx = Phaser.Math.Clamp(NICK_FONT_PX * cssZoom, NICK_MIN_SCREEN_PX, NICK_FONT_PX);
+        const objScale = screenPx / (NICK_FONT_PX * cssZoom);
+        if (text.scaleX !== objScale) text.setScale(objScale);
+
+        // Vertical offset: the original 35·scale world px, but never closer than
+        // (head radius + gap + half label height) — once the label stops
+        // shrinking with zoom it would otherwise overlap the head. The CSS-px
+        // terms are converted to world units by dividing by cssZoom.
+        const halfLabelWorld = (text.height * objScale) / 2;
+        const minOffset = this.config.HEAD_RADIUS * this.scale + NICK_GAP_PX / cssZoom + halfLabelWorld;
+        const offset = Math.max(35 * this.scale, minOffset);
+        text.setPosition(this.head.x, this.head.y - offset);
     }
 
     updateFromInput(targetAngleRad, isBoosting, delta, sequenceId = 0) {
@@ -1183,7 +1240,7 @@ export class Snake {
             this._updateEyes(worldPoint.x, worldPoint.y);
         }
         if (this.nicknameText) {
-            this.nicknameText.setPosition(this.head.x, this.head.y - 35 * this.scale);
+            this._layoutNickname();
         }
     }
 

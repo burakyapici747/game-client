@@ -456,23 +456,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const game = StartGame('game-container');
             gameInstance = game;
 
-            const refresh = () => game.scale.refresh();
-
-            // Re-measure once boot completes, in case bounds shifted mid-boot.
-            game.events.once('ready', refresh);
-
-            // Phaser only listens to window.resize + orientationchange. On
-            // mobile, keyboard show/hide and browser-chrome (address bar)
-            // changes often fire ONLY visualViewport resize — or no event at
-            // all except the element itself changing size. ResizeObserver on
-            // the parent makes it the single source of truth for game size.
-            const observer = new ResizeObserver(refresh);
-            observer.observe(document.getElementById('game-container'));
-            window.visualViewport?.addEventListener('resize', refresh);
-            teardownFns.push(() => {
-                observer.disconnect();
-                window.visualViewport?.removeEventListener('resize', refresh);
-            });
+            // Resize/DPR tracking (ResizeObserver, visualViewport, window
+            // resize, orientationchange, devicePixelRatio changes) is owned
+            // by StartGame → render/Viewport.js and torn down on game destroy.
         }, 150));
 
         // In-game joystick/boost controls are now rendered inside the Phaser
