@@ -45,4 +45,29 @@ message SelfPosition {
   // gozlemciyi kendi gorunur kumesinden cikarir), bu yuzden bayrak burada
   // tasinmak zorundadir.
   bool invulnerable = 7;
+  // ── OTORITER ETKIN BOOST DURUMU ─────────────────────────────────────────
+  //
+  // NEDEN GEREKLI: boost istemcide TAHMIN edilir (girdi gecikmesi hizalamasi
+  // ile, bkz. Game.js _inputDelayQueue), ama protokolde boost'u tasiyan
+  // HICBIR alan yoktu. Dolayisiyla istemci tahmininin DOGRU olup olmadigini
+  // ogrenebilecegi tek gozlem konum kaymasiydi ve reconciliation o kaymayi
+  // sessizce yutuyordu.
+  //
+  // AYRISMA MALIYETI (olculmus): istemci boost tahmin eder, sunucu etmezse
+  // hata 450-225 = 225 px/sn ile birikir. Istemcinin duzeltme orani
+  // RECONCILIATION_POSITION_FACTOR=0.10/kare ≈ 6·hata/sn, tavan 300 px/sn;
+  // denge noktasi 6·e = 225 → e ≈ 37.5 px. Bu deger HARD_SNAP esiginin
+  // (800 px) ALTINDA oldugu icin oyuncu HICBIR ZAMAN bir sicrama gormez —
+  // sadece kafasi, carpismalarin gercekten cozuldugu yerin ~1.5 kafa capi
+  // onunde durur. Yani "gozle gecmis gorundugum bosluktan olmek".
+  //
+  // BU ALAN SUNUCUNUN ETKIN DURUMUDUR (boostActive), oyuncunun niyeti
+  // (boostRequested) DEGILDIR. Istemci bunu bir GECIKME EKLEMEK icin degil,
+  // AYRISMA TESPITI icin kullanir: kendi tahmini sunucununkinden bir tam
+  // gidis-donusten UZUN sure farkli kalirsa tahmini birakir (bkz. Snake.js
+  // applyAuthoritativeBoost). Normal durumda ikisi ayni oldugu icin
+  // tahminin tepki suresine HICBIR SEY eklenmez.
+  //
+  // proto3 EKLEMELI: alan 8 yeni; eski istemciler bilinmeyen alani yok sayar.
+  bool boost_active = 8;
 }

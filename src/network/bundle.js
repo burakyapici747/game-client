@@ -4229,6 +4229,7 @@ export const server = $root.server = (() => {
          * @property {number|null} [lastProcessedSequenceId] SelfPosition lastProcessedSequenceId
          * @property {number|null} [totalScore] SelfPosition totalScore
          * @property {boolean|null} [invulnerable] SelfPosition invulnerable
+         * @property {boolean|null} [boostActive] SelfPosition boostActive
          */
 
         /**
@@ -4302,6 +4303,14 @@ export const server = $root.server = (() => {
          */
         SelfPosition.prototype.invulnerable = false;
 
+        /**
+         * SelfPosition boostActive.
+         * @member {boolean} boostActive
+         * @memberof server.SelfPosition
+         * @instance
+         */
+        SelfPosition.prototype.boostActive = false;
+
         // OneOf field names bound to virtual getters and setters
         let $oneOfFields;
 
@@ -4354,6 +4363,8 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 6, wireType 0 =*/48).uint32(message.totalScore);
             if (message.invulnerable != null && Object.hasOwnProperty.call(message, "invulnerable"))
                 writer.uint32(/* id 7, wireType 0 =*/56).bool(message.invulnerable);
+            if (message.boostActive != null && Object.hasOwnProperty.call(message, "boostActive"))
+                writer.uint32(/* id 8, wireType 0 =*/64).bool(message.boostActive);
             return writer;
         };
 
@@ -4418,6 +4429,10 @@ export const server = $root.server = (() => {
                         message.invulnerable = reader.bool();
                         break;
                     }
+                case 8: {
+                        message.boostActive = reader.bool();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -4477,6 +4492,9 @@ export const server = $root.server = (() => {
             if (message.invulnerable != null && message.hasOwnProperty("invulnerable"))
                 if (typeof message.invulnerable !== "boolean")
                     return "invulnerable: boolean expected";
+            if (message.boostActive != null && message.hasOwnProperty("boostActive"))
+                if (typeof message.boostActive !== "boolean")
+                    return "boostActive: boolean expected";
             return null;
         };
 
@@ -4506,6 +4524,8 @@ export const server = $root.server = (() => {
                 message.totalScore = object.totalScore >>> 0;
             if (object.invulnerable != null)
                 message.invulnerable = Boolean(object.invulnerable);
+            if (object.boostActive != null)
+                message.boostActive = Boolean(object.boostActive);
             return message;
         };
 
@@ -4529,6 +4549,7 @@ export const server = $root.server = (() => {
                 object.lastProcessedSequenceId = 0;
                 object.totalScore = 0;
                 object.invulnerable = false;
+                object.boostActive = false;
             }
             if (message.entityId != null && message.hasOwnProperty("entityId"))
                 object.entityId = message.entityId;
@@ -4547,6 +4568,8 @@ export const server = $root.server = (() => {
                 object.totalScore = message.totalScore;
             if (message.invulnerable != null && message.hasOwnProperty("invulnerable"))
                 object.invulnerable = message.invulnerable;
+            if (message.boostActive != null && message.hasOwnProperty("boostActive"))
+                object.boostActive = message.boostActive;
             return object;
         };
 

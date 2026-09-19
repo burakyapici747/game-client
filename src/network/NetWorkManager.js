@@ -322,17 +322,33 @@ export class NetworkManager {
     }
 
     // angleValue: quantizeAngleDeg ile önceden kuantalanmış 0..250 değeri.
+    // isBoosting: oyuncunun HAM NIYETI (tus basili mi) — uygunluk kapisindan
+    //   GECMIS deger DEGIL. Kapi (skor esigi + histerezis) hem sunucuda
+    //   (SnakeDynamicsSystem) hem de yerel tahminde (Snake._resolveBoostActive)
+    //   ayrica uygulanir; tele giden sey yalnizca niyettir.
     // sendAngle: girdi katmanindaki deadzone/epsilon guard'i aci gonderimini
-    // bastirdiginda false gelir — bu durumda YALNIZCA boost islenir, aci paketi
-    // uretilmez (mouse head merkezine cok yakinken paket spam'ini onler).
+    //   bastirdiginda false gelir — bu durumda YALNIZCA boost islenir, aci
+    //   paketi uretilmez (mouse head merkezine cok yakinken paket spam'ini
+    //   onler).
     updateAndSendInput(angleValue, isBoosting, delta, sendAngle = true) {
         if (!this.canSend()) return;
 
-        // 1. Boost durumu değiştiğinde anında paket gönder. (Deadzone'da bile
-        //    boost her zaman islenmeli — aci gonderiminden bagimsizdir.)
+        // 1. NIYET degistiginde anında paket gönder. (Deadzone'da bile boost
+        //    her zaman islenmeli — aci gonderiminden bagimsizdir.)
+        //
+        // KENAR TETIKLEMELI GONDERIM — sunucu tarafinda bir on kosulu vardir:
+        // niyet orada KALICI olmalidir. Sunucu eskiden tek bir isBoosting
+        // alani tutuyor ve uygunluk kapisi kapandiginda onu false'a cekiyordu;
+        // yani ETKIYI ifade etmek icin NIYETI siliyordu. Bizim gonderecegimiz
+        // yeni bir kenar OLMADIGI icin (tus durumu degismedi) boost oyuncu
+        // tusu birakip yeniden basana kadar KALICI OLARAK kapali kaliyordu.
+        // Sunucu artik niyeti (boostRequested) ve etkin durumu (boostActive)
+        // ayri alanlarda tutar, dolayisiyla kenar tetikleme yeterlidir ve
+        // periyodik bir "niyet tazeleme" paketine gerek yoktur.
         if (isBoosting !== this.isCurrentlyBoosting) {
             this.isCurrentlyBoosting = isBoosting;
-            const actionValue = isBoosting ? 251 : 252; // 251: Boost Başlat, 252: Boost Bitir
+            // 251: boost NIYETI basladi, 252: boost NIYETI bitti.
+            const actionValue = isBoosting ? 251 : 252;
             this.nextSequenceId++;
             this.sendAction(actionValue, this.nextSequenceId);
         }

@@ -1163,6 +1163,27 @@ export class Game extends Phaser.Scene {
         );
         this.flushPendingSegmentMutations(entityId, snake);
 
+        // ── BOOST KAPISI: OTORITER SKOR ─────────────────────────────────────
+        // Boost uygunlugu artik SKOR esigine bakiyor (sunucu ile birebir:
+        // ScoreConfig.BOOST_ENTRY_SCORE / BOOST_EXIT_SCORE). Skor TAHMIN
+        // EDILMEZ — sunucu her tick gonderir — bu yuzden kapi girdisi de
+        // otoriterdir ve client ile sunucu taban civarinda ayni karari verir.
+        if (this._hasAuthoritativeScore) {
+            snake.authoritativeScore = this.playerScore;
+        }
+
+        // ── BOOST TAHMIN AYRISMASI TESPITI ──────────────────────────────────
+        // Sunucunun ETKIN boost durumu (niyet DEGIL). Tahmine gecikme EKLEMEZ;
+        // yalnizca "client boost ediyorum diyor, sunucu etmiyor" halinin bir
+        // tam gidis-donusten uzun surmesini yakalar. O durum duzeltilmezse
+        // hata ~225 px/sn birikir ve reconciliation onu HARD_SNAP esiginin
+        // (800 px) ALTINDA, yani hicbir sicrama gostermeden, kalici ~37 px'lik
+        // bir kafa ofseti olarak sabitler — "gozle gectigim bosluktan olmek".
+        const serverBoostActive = selfPosition?.boostActive ?? selfPosition?.boost_active ?? false;
+        // Bayatlik penceresi = tam gidis-donus + bir snapshot araligi payi.
+        const rttMs = Number.isFinite(this.currentPingMs) ? this.currentPingMs : 150;
+        snake.applyAuthoritativeBoost(serverBoostActive, rttMs + 50);
+
         // ── M01: KENDI OLCEGI — ACIK VARLIK KONTROLU ────────────────────────
         // SelfPosition.scale artik `optional`: YOK => degismedi.
         //

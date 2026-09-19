@@ -39,8 +39,23 @@ const SnakeConfig = {
     BASE_SPEED_FACTOR: 3.75,
     SPEED_REDUCTION_PER_SCALE: 0.5 / 106,
     BOOST_SPEED_FACTOR: 7.5,
-    BOOST_DRAIN_INTERVAL_MS: 400,
-    BOOST_MIN_SEGMENTS: 10,
+
+    // ── BOOST UYGUNLUGU: SKOR ESIGI + HISTEREZIS BANDI ──────────────────
+    // SUNUCU AYNASI — game-server com/common/ScoreConfig.java
+    //   BOOST_ENTRY_SCORE / BOOST_EXIT_SCORE. Ayrisirlarsa client tahmini ile
+    //   sunucu otoritesi taban civarinda FARKLI kararlar verir ve her tur
+    //   ~225 px/sn ile hata biriktirir.
+    //
+    // ESKI KAPI segment sayisi uzerindeydi (BOOST_MIN_SEGMENTS = 10). Dogum
+    // 5 segment oldugundan gercek giris bedeli 300 puandi ve esigi yeni gecen
+    // oyuncunun toplam rezervi 400 ms (~90 px) idi — taktik degeri olmayan
+    // bir kilit. Artik esik dogrudan SKOR uzerinde.
+    //
+    // IKI ESIK SART: tek esikle tabanda duran oyuncu her kare ac/kapa yapar
+    // (60 Hz kare dalga). Ayni kalip asagida reconciliation esiklerinde de
+    // kullanilir (RECON_START_THRESHOLD / RECON_STOP_THRESHOLD).
+    BOOST_ENTRY_SCORE: 150,   // boost'u BASLATMAK icin gereken skor
+    BOOST_EXIT_SCORE: 120,    // boost'un ACIK KALABILECEGI skor
     TURN_ANGLE_BASE: 3.3,
     TURN_SPEED_INFLUENCE: 4.8,
     INITIAL_SEGMENT_COUNT: 32,
@@ -267,6 +282,28 @@ export class Snake {
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
+
+        // ── BOOST UYGUNLUGU: OTORITER SKOR ──────────────────────────────────
+        // Kapi artik segment sayisina degil SKORA bakar (sunucu ile birebir).
+        // Skor TAHMIN EDILMEZ; sunucu her tick SelfPosition.total_score
+        // gonderir ve Game.onSelfPosition bunu buraya yazar. Ilk paket
+        // gelene kadar 0'dir, yani boost dogal olarak kapalidir — dogru
+        // ve guvenli varsayilan.
+        this.authoritativeScore = 0;
+
+        // ── TAHMIN AYRISMASI TESPITI ────────────────────────────────────────
+        // serverBoostActive: sunucunun bildirdigi ETKIN boost (SelfPosition.
+        //   boost_active). Tahmine GECIKME EKLEMEK icin kullanilmaz.
+        // _boostDenied: sunucu, bizim boost ettigimizi iddia ettigimiz halde
+        //   bir tam gidis-donusten uzun sure "boost yok" diyorsa kurulur;
+        //   tahmin birakilir. Niyet birakildiginda veya sunucu boost'u
+        //   onayladiginda temizlenir (bkz. applyAuthoritativeBoost).
+        // _lastBoostChangeAtMs: son YEREL boost gecisinin zamani. Bundan
+        //   once yola cikmis paketler BAYATTIR ve tespit icin kullanilamaz.
+        this.serverBoostActive = false;
+        this._boostDenied = false;
+        this._lastBoostChangeAtMs = -Infinity;
+
         this.nickname = nickname;
         this.lastReconciledSequenceId = 0;
         
@@ -412,8 +449,9 @@ export class Snake {
      * niyet edilen durumu disaridan verebilir.
      */
     getTurnRateRadPerSec(isBoosting = this.isBoosting) {
-        const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
-        const speed = (isBoosting && canBoost)
+        // Kapi, simulasyonun kullandigi kapinin TA KENDISIDIR (_resolveBoostActive).
+        // Girdi kelepcesi ile simulasyon kelepcesinin ayni esikten gecmesi sart.
+        const speed = this._resolveBoostActive(isBoosting)
             ? this.calculateBoostSpeed()
             : this.calculateBaseSpeed();
         const speedTurnFactor = Math.min(1, speed / this.config.TURN_SPEED_INFLUENCE);
@@ -656,7 +694,109 @@ export class Snake {
     }
 
     getSampleMinStep() { return Math.max(this.config.PATH_SAMPLE_MIN_STEP, this.getSegmentSpacing() * 0.1); }
-    setBoost(b) { this.isBoosting = b; }
+    /**
+     * ETKIN boost durumunu yazar ve gecis ANINI kaydeder.
+     *
+     * Gecis ani, sunucudan gelen otoriter bayragin BAYAT olup olmadigina karar
+     * vermek icin gereklidir: biz durumu degistirdikten sonra yola cikmis ilk
+     * paketler hala eski durumu tasir (bkz. applyAuthoritativeBoost).
+     */
+    setBoost(b) {
+        const next = !!b;
+        if (next !== this.isBoosting) {
+            this.isBoosting = next;
+            this._lastBoostChangeAtMs = (typeof performance !== 'undefined')
+                ? performance.now()
+                : Date.now();
+        }
+    }
+
+    /**
+     * BOOST UYGUNLUK KAPISI — sunucunun SnakeDynamicsSystem.resolveBoostActive
+     * fonksiyonunun aynasidir (skor esigi + histerezis), arti YALNIZCA
+     * client'ta bulunan bir ayrisma kilidi.
+     *
+     * @param {boolean} requested Oyuncunun o karedeki NIYETI (tus basili mi).
+     * @returns {boolean} ETKIN boost.
+     *
+     * Kilit (_boostDenied) YALNIZCA iki kosulda kalkar:
+     *   1) Oyuncu tusu birakti — burada temizlenir.
+     *   2) Sunucu boost'u ONAYLADI — applyAuthoritativeBoost temizler.
+     *
+     * KILIT SKORA BAKARAK KALKMAZ. Bu bilincli bir karardir: "otoriter skor
+     * yeniden giris esiginin ustune cikti" kosuluyla temizlemek, kilidi tam
+     * da var olma sebebi olan durumda ise yaramaz hale getirirdi — client
+     * yuksek skorda boost ettigini saniyor, sunucu etmiyor. O senaryoda skor
+     * zaten esigin cok ustundedir ve kilit kurulur kurulmaz kendini silerdi.
+     *
+     * KILITLENME RISKI YOK: kilit YALNIZCA yerel TAHMINI durdurur, NIYETI
+     * degil. Tele giden deger ham niyettir (Game.js -> updateAndSendInput),
+     * dolayisiyla sunucu boost etmeye devam eder/edebilir ve uygunluk geri
+     * geldiginde boost_active=true gonderir; kilit o paketle kalkar. En
+     * kotu durumda bu tek seferlik ~yarim gidis-donusluk bir gecikmedir ve
+     * bunun karsiliginda kalici ~37 px'lik gorunmez kafa ofseti onlenir.
+     */
+    _resolveBoostActive(requested) {
+        if (!requested) {
+            this._boostDenied = false;
+            return false;
+        }
+
+        if (this._boostDenied) return false;
+
+        const score = this.authoritativeScore;
+
+        return this.isBoosting
+            ? score >= this.config.BOOST_EXIT_SCORE
+            : score >= this.config.BOOST_ENTRY_SCORE;
+    }
+
+    /**
+     * Sunucunun ETKIN boost durumunu uygular (SelfPosition.boost_active).
+     *
+     * ONEMLI — BU BIR GECIKME KAYNAGI DEGILDIR. Bayragi dogrudan isBoosting'e
+     * yazmak, boost basiminin tam bir gidis-donus kadar gecikmesi demek
+     * olurdu; oysa mevcut mimari boost'u zaten girdi gecikmesiyle HIZALIYOR
+     * (Game.js _inputDelayQueue), yani client ve sunucu ayni simulasyon
+     * aninda basliyor. Normal durumda iki taraf ayni karari verdigi icin bu
+     * fonksiyon HICBIR SEY yapmaz.
+     *
+     * Yaptigi tek sey AYRISMA TESPITIDIR:
+     *   • Sunucu "boost var" diyorsa → tahmin dogrulandi, kilit kalkar.
+     *   • Sunucu "boost yok" diyor, biz boost ediyoruz VE paket son yerel
+     *     gecisimizden SONRAKI bir duruma ait (bayat degil) → tahmin
+     *     gercekten yanlis; kilit kurulur, tahmin birakilir.
+     *
+     * Kilit burada TEMIZLENMEZ (sunucu onayi disinda): temizleme kosullari
+     * _resolveBoostActive'de toplanmistir. Burada da temizlenseydi, kilit
+     * kurulur kurulmaz isBoosting false'a dusecegi ve bir sonraki paket
+     * "anlasmazlik yok" goruecegi icin kilit her defasinda tek tick yasar,
+     * ardindan tahmin yeniden acilirdi — snapshot frekansinda salinim.
+     *
+     * @param {boolean} serverActive Sunucunun etkin boost durumu.
+     * @param {number}  staleWindowMs Bir tam gidis-donus + pay.
+     */
+    applyAuthoritativeBoost(serverActive, staleWindowMs) {
+        this.serverBoostActive = !!serverActive;
+
+        if (this.serverBoostActive) {
+            this._boostDenied = false;
+            return;
+        }
+        if (!this.isBoosting) {
+            // Anlasmazlik yok — degerlendirilecek bir sey de yok. Kilit
+            // (varsa) KORUNUR; bkz. yukaridaki javadoc.
+            return;
+        }
+
+        const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        const staleWindow = Number.isFinite(staleWindowMs) ? staleWindowMs : 250;
+        if (now - this._lastBoostChangeAtMs < staleWindow) {
+            // Bu paket biz durumu degistirmeden ONCE yola cikmis olabilir.
+            return;
+        }
+        this._boostDenied = true;
+    }
 
     _normalizeSegmentCount(rawCount) {
         const count = Math.round(Number(rawCount));
@@ -1264,8 +1404,13 @@ export class Snake {
     updateFromInput(targetAngleRad, isBoosting, delta, sequenceId = 0) {
         if (!this.alive || !this.isPlayerControlled || !this.head) return;
 
-        const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
-        const effectiveBoosting = isBoosting && canBoost;
+        // isBoosting = oyuncunun NIYETI. Etkin durum, sunucunun kapisiyla
+        // BIREBIR ayni fonksiyondan gecer (skor esigi + histerezis + ayrisma
+        // kilidi). Eski kapi segment sayisina bakiyordu ve sunucunun skor
+        // tabanli kapisiyla ayrisabiliyordu; ustelik segment sayisi sunucudan
+        // ~RTT gecikmeli geldigi icin kapi taban civarinda daima yanlis
+        // taraftaydi.
+        const effectiveBoosting = this._resolveBoostActive(isBoosting);
         this.setBoost(effectiveBoosting);
 
         const baseSpeed = this.calculateBaseSpeed();

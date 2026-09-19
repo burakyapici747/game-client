@@ -1573,6 +1573,9 @@ export namespace server {
 
         /** SelfPosition invulnerable */
         invulnerable?: (boolean|null);
+
+        /** SelfPosition boostActive */
+        boostActive?: (boolean|null);
     }
 
     /** Represents a SelfPosition. */
@@ -1604,6 +1607,9 @@ export namespace server {
 
         /** SelfPosition invulnerable. */
         public invulnerable: boolean;
+
+        /** SelfPosition boostActive. */
+        public boostActive: boolean;
 
         /** SelfPosition _scale. */
         public _scale?: "scale";
