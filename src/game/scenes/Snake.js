@@ -447,6 +447,11 @@ export class Snake {
      * isBoosting parametresi opsiyoneldir: girdi katmani, o karede GONDERILECEK
      * boost durumunu bilir ve henuz setBoost() calismamis olabilir, bu yuzden
      * niyet edilen durumu disaridan verebilir.
+     *
+     * SALT OKUNUR: bu metot ve cagirdigi _resolveBoostActive HICBIR durum
+     * yazmaz. Kac kez, hangi argumanla cagrilirsa cagrilsin yilanin durumu
+     * degismez — ozellikle _boostDenied kilidi. (Eski surumde bu garanti
+     * yoktu ve kilit her karede sessizce siliniyordu.)
      */
     getTurnRateRadPerSec(isBoosting = this.isBoosting) {
         // Kapi, simulasyonun kullandigi kapinin TA KENDISIDIR (_resolveBoostActive).
@@ -719,29 +724,26 @@ export class Snake {
      * @param {boolean} requested Oyuncunun o karedeki NIYETI (tus basili mi).
      * @returns {boolean} ETKIN boost.
      *
-     * Kilit (_boostDenied) YALNIZCA iki kosulda kalkar:
-     *   1) Oyuncu tusu birakti — burada temizlenir.
-     *   2) Sunucu boost'u ONAYLADI — applyAuthoritativeBoost temizler.
+     * SAF FONKSIYON — HICBIR DURUM YAZMAZ.
      *
-     * KILIT SKORA BAKARAK KALKMAZ. Bu bilincli bir karardir: "otoriter skor
-     * yeniden giris esiginin ustune cikti" kosuluyla temizlemek, kilidi tam
-     * da var olma sebebi olan durumda ise yaramaz hale getirirdi — client
-     * yuksek skorda boost ettigini saniyor, sunucu etmiyor. O senaryoda skor
-     * zaten esigin cok ustundedir ve kilit kurulur kurulmaz kendini silerdi.
+     * NEDEN KRITIK: bu metot yalnizca girdi isleme gecisinden degil,
+     * getTurnRateRadPerSec uzerinden SALT-OKUNUR sorgu yolundan da cagrilir
+     * (Game._applySteeringLimiter ve updateFromInput'un kendi turnSpeed
+     * hesabi). Onceki surumde burada `if (!requested) this._boostDenied = false`
+     * vardi ve kilit ETKIN durumu okumak icin yapilan her cagrida siliniyordu:
+     * updateFromInput once kapiyi cagirip effectiveBoosting=false aliyor
+     * (kilitli oldugu icin), hemen ardindan getTurnRateRadPerSec(false)
+     * cagiriyordu → `requested=false` "tus birakildi" sanilip kilit
+     * temizleniyordu. Yani kilit gercek oyun dongusunde TEK KARE bile
+     * yasamiyordu; oyuncu tusu basili tutarken bile her karede sifirlaniyordu.
      *
-     * KILITLENME RISKI YOK: kilit YALNIZCA yerel TAHMINI durdurur, NIYETI
-     * degil. Tele giden deger ham niyettir (Game.js -> updateAndSendInput),
-     * dolayisiyla sunucu boost etmeye devam eder/edebilir ve uygunluk geri
-     * geldiginde boost_active=true gonderir; kilit o paketle kalkar. En
-     * kotu durumda bu tek seferlik ~yarim gidis-donusluk bir gecikmedir ve
-     * bunun karsiliginda kalici ~37 px'lik gorunmez kafa ofseti onlenir.
+     * Kilit artik YALNIZCA iki yerde degistirilir; ikisi de acik, tekil
+     * gecislerdir:
+     *   • updateFromInput  — girdi isleme gecisi (tus birakildiginda temizler)
+     *   • applyAuthoritativeBoost — snapshot isleyicisi (kurar / onayla temizler)
      */
     _resolveBoostActive(requested) {
-        if (!requested) {
-            this._boostDenied = false;
-            return false;
-        }
-
+        if (!requested) return false;
         if (this._boostDenied) return false;
 
         const score = this.authoritativeScore;
@@ -781,6 +783,28 @@ export class Snake {
 
         if (this.serverBoostActive) {
             this._boostDenied = false;
+
+            // ── HISTEREZIS LATCH'INI SUNUCUDAN DEVRAL ───────────────────────
+            // Histerezis DURUMLUDUR: "zaten acik" iken taban 120, "kapali"
+            // iken 150'dir. Iki taraf ayni skoru gorse bile LATCH bitleri
+            // ayrisabilir ve o zaman ayni skor farkli kararlar uretir.
+            //
+            // Somut ayrisma: skor 140 (banda ait), sunucu boost ediyor
+            // (latch acik, 140 >= 120). Client latch'i kapaliysa 140 < 150
+            // oldugu icin boost'u REDDEDER → client taban hizda, sunucu boost
+            // hizinda; fark ~225 px/sn ile birikir ve reconciliation bunu
+            // gorunmeyen kalici bir kafa ofseti olarak sabitler.
+            //
+            // Sunucu otoritedir: bayragi latch olarak DEVRALIRIZ, boylece bir
+            // sonraki _resolveBoostActive CIKIS dalindan (>= 120) gecer.
+            // Bu boost'u ZORLAMAZ — niyet hala gereklidir: oyuncu tusu
+            // birakmissa _resolveBoostActive(false) yine false doner.
+            //
+            // setBoost KULLANILMAZ: o, _lastBoostChangeAtMs'i gunceller ve o
+            // damga "benim YEREL kararim" anlamina gelir. Burada yaptigimiz
+            // sey bir karar degil, sunucunun kararini benimsemektir; damgayi
+            // ilerletmek mesru bir ayrisma tespitini bir pencere geciktirirdi.
+            this.isBoosting = true;
             return;
         }
         if (!this.isBoosting) {
@@ -1410,6 +1434,16 @@ export class Snake {
         // tabanli kapisiyla ayrisabiliyordu; ustelik segment sayisi sunucudan
         // ~RTT gecikmeli geldigi icin kapi taban civarinda daima yanlis
         // taraftaydi.
+        // ── KILIT TEMIZLEME: TEK GIRDI ISLEME NOKTASI ───────────────────────
+        // Tus birakildiginda ayrisma kilidi kalkar. Bu, kapinin ICINDE
+        // yapilamaz: kapi salt-okunur sorgu yolundan da cagrilir ve orada
+        // "etkin durum false" ile "oyuncu tusu birakti" birbirine karisir
+        // (bkz. _resolveBoostActive javadoc). Burasi niyetin GERCEKTEN
+        // okundugu tek yerdir, dolayisiyla dogru yer burasidir.
+        if (!isBoosting) {
+            this._boostDenied = false;
+        }
+
         const effectiveBoosting = this._resolveBoostActive(isBoosting);
         this.setBoost(effectiveBoosting);
 

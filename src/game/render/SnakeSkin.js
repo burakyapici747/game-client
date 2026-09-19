@@ -83,10 +83,10 @@ const BAKE_ROTATION = {
 //
 // Yalnizca varsayilan karakter Preloader'da yuklenir; digerleri ilk
 // kullanildiklarinda (ensureSkin) tembel yuklenir — acilis maliyeti degismez.
-export const DEFAULT_SKIN_ID = 2;
+export const DEFAULT_SKIN_ID = 12;
 
 /** Kayitli karakter sayisi (public/assets/snake/character-1..N). */
-const SKIN_COUNT = 10;
+const SKIN_COUNT = 12;
 
 /**
  * Kaynak dosyalar public/assets/snake/ altinda; Vite bunlari aynen kopyalar.
