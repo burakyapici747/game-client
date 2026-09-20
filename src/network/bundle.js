@@ -1827,6 +1827,7 @@ export const server = $root.server = (() => {
          * @property {server.IFoodMutationCollection|null} [foodMutationCollection] ServerEnvelope foodMutationCollection
          * @property {server.ILeaderboardUpdate|null} [leaderboardUpdate] ServerEnvelope leaderboardUpdate
          * @property {server.IPathSeedCollection|null} [pathSeedCollection] ServerEnvelope pathSeedCollection
+         * @property {Array.<server.IFoodSectorBootstrap>|null} [foodSectorBootstraps] ServerEnvelope foodSectorBootstraps
          */
 
         /**
@@ -1838,6 +1839,7 @@ export const server = $root.server = (() => {
          * @param {server.IServerEnvelope=} [properties] Properties to set
          */
         function ServerEnvelope(properties) {
+            this.foodSectorBootstraps = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -1932,6 +1934,14 @@ export const server = $root.server = (() => {
          */
         ServerEnvelope.prototype.pathSeedCollection = null;
 
+        /**
+         * ServerEnvelope foodSectorBootstraps.
+         * @member {Array.<server.IFoodSectorBootstrap>} foodSectorBootstraps
+         * @memberof server.ServerEnvelope
+         * @instance
+         */
+        ServerEnvelope.prototype.foodSectorBootstraps = $util.emptyArray;
+
         // OneOf field names bound to virtual getters and setters
         let $oneOfFields;
 
@@ -1992,6 +2002,9 @@ export const server = $root.server = (() => {
                 $root.server.LeaderboardUpdate.encode(message.leaderboardUpdate, writer.uint32(/* id 14, wireType 2 =*/114).fork()).ldelim();
             if (message.pathSeedCollection != null && Object.hasOwnProperty.call(message, "pathSeedCollection"))
                 $root.server.PathSeedCollection.encode(message.pathSeedCollection, writer.uint32(/* id 15, wireType 2 =*/122).fork()).ldelim();
+            if (message.foodSectorBootstraps != null && message.foodSectorBootstraps.length)
+                for (let i = 0; i < message.foodSectorBootstraps.length; ++i)
+                    $root.server.FoodSectorBootstrap.encode(message.foodSectorBootstraps[i], writer.uint32(/* id 16, wireType 2 =*/130).fork()).ldelim();
             return writer;
         };
 
@@ -2070,6 +2083,12 @@ export const server = $root.server = (() => {
                     }
                 case 15: {
                         message.pathSeedCollection = $root.server.PathSeedCollection.decode(reader, reader.uint32());
+                        break;
+                    }
+                case 16: {
+                        if (!(message.foodSectorBootstraps && message.foodSectorBootstraps.length))
+                            message.foodSectorBootstraps = [];
+                        message.foodSectorBootstraps.push($root.server.FoodSectorBootstrap.decode(reader, reader.uint32()));
                         break;
                     }
                 default:
@@ -2186,6 +2205,15 @@ export const server = $root.server = (() => {
                 if (error)
                     return "pathSeedCollection." + error;
             }
+            if (message.foodSectorBootstraps != null && message.hasOwnProperty("foodSectorBootstraps")) {
+                if (!Array.isArray(message.foodSectorBootstraps))
+                    return "foodSectorBootstraps: array expected";
+                for (let i = 0; i < message.foodSectorBootstraps.length; ++i) {
+                    let error = $root.server.FoodSectorBootstrap.verify(message.foodSectorBootstraps[i]);
+                    if (error)
+                        return "foodSectorBootstraps." + error;
+                }
+            }
             return null;
         };
 
@@ -2256,6 +2284,16 @@ export const server = $root.server = (() => {
                     throw TypeError(".server.ServerEnvelope.pathSeedCollection: object expected");
                 message.pathSeedCollection = $root.server.PathSeedCollection.fromObject(object.pathSeedCollection);
             }
+            if (object.foodSectorBootstraps) {
+                if (!Array.isArray(object.foodSectorBootstraps))
+                    throw TypeError(".server.ServerEnvelope.foodSectorBootstraps: array expected");
+                message.foodSectorBootstraps = [];
+                for (let i = 0; i < object.foodSectorBootstraps.length; ++i) {
+                    if (typeof object.foodSectorBootstraps[i] !== "object")
+                        throw TypeError(".server.ServerEnvelope.foodSectorBootstraps: object expected");
+                    message.foodSectorBootstraps[i] = $root.server.FoodSectorBootstrap.fromObject(object.foodSectorBootstraps[i]);
+                }
+            }
             return message;
         };
 
@@ -2272,6 +2310,8 @@ export const server = $root.server = (() => {
             if (!options)
                 options = {};
             let object = {};
+            if (options.arrays || options.defaults)
+                object.foodSectorBootstraps = [];
             if (options.defaults) {
                 object.selfPosition = null;
                 object.segmentMutationCollection = null;
@@ -2317,6 +2357,11 @@ export const server = $root.server = (() => {
                 object.leaderboardUpdate = $root.server.LeaderboardUpdate.toObject(message.leaderboardUpdate, options);
             if (message.pathSeedCollection != null && message.hasOwnProperty("pathSeedCollection"))
                 object.pathSeedCollection = $root.server.PathSeedCollection.toObject(message.pathSeedCollection, options);
+            if (message.foodSectorBootstraps && message.foodSectorBootstraps.length) {
+                object.foodSectorBootstraps = [];
+                for (let j = 0; j < message.foodSectorBootstraps.length; ++j)
+                    object.foodSectorBootstraps[j] = $root.server.FoodSectorBootstrap.toObject(message.foodSectorBootstraps[j], options);
+            }
             return object;
         };
 
@@ -5637,6 +5682,585 @@ export const server = $root.server = (() => {
         return FoodCollection;
     })();
 
+    server.FoodSectorEviction = (function() {
+
+        /**
+         * Properties of a FoodSectorEviction.
+         * @memberof server
+         * @interface IFoodSectorEviction
+         * @property {number|null} [sectorId] FoodSectorEviction sectorId
+         * @property {number|Long|null} [subscriptionGeneration] FoodSectorEviction subscriptionGeneration
+         * @property {Array.<number>|null} [evictedFoodIds] FoodSectorEviction evictedFoodIds
+         */
+
+        /**
+         * Constructs a new FoodSectorEviction.
+         * @memberof server
+         * @classdesc Represents a FoodSectorEviction.
+         * @implements IFoodSectorEviction
+         * @constructor
+         * @param {server.IFoodSectorEviction=} [properties] Properties to set
+         */
+        function FoodSectorEviction(properties) {
+            this.evictedFoodIds = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * FoodSectorEviction sectorId.
+         * @member {number} sectorId
+         * @memberof server.FoodSectorEviction
+         * @instance
+         */
+        FoodSectorEviction.prototype.sectorId = 0;
+
+        /**
+         * FoodSectorEviction subscriptionGeneration.
+         * @member {number|Long} subscriptionGeneration
+         * @memberof server.FoodSectorEviction
+         * @instance
+         */
+        FoodSectorEviction.prototype.subscriptionGeneration = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+        /**
+         * FoodSectorEviction evictedFoodIds.
+         * @member {Array.<number>} evictedFoodIds
+         * @memberof server.FoodSectorEviction
+         * @instance
+         */
+        FoodSectorEviction.prototype.evictedFoodIds = $util.emptyArray;
+
+        /**
+         * Creates a new FoodSectorEviction instance using the specified properties.
+         * @function create
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {server.IFoodSectorEviction=} [properties] Properties to set
+         * @returns {server.FoodSectorEviction} FoodSectorEviction instance
+         */
+        FoodSectorEviction.create = function create(properties) {
+            return new FoodSectorEviction(properties);
+        };
+
+        /**
+         * Encodes the specified FoodSectorEviction message. Does not implicitly {@link server.FoodSectorEviction.verify|verify} messages.
+         * @function encode
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {server.IFoodSectorEviction} message FoodSectorEviction message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        FoodSectorEviction.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.sectorId != null && Object.hasOwnProperty.call(message, "sectorId"))
+                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.sectorId);
+            if (message.subscriptionGeneration != null && Object.hasOwnProperty.call(message, "subscriptionGeneration"))
+                writer.uint32(/* id 2, wireType 0 =*/16).uint64(message.subscriptionGeneration);
+            if (message.evictedFoodIds != null && message.evictedFoodIds.length) {
+                writer.uint32(/* id 3, wireType 2 =*/26).fork();
+                for (let i = 0; i < message.evictedFoodIds.length; ++i)
+                    writer.uint32(message.evictedFoodIds[i]);
+                writer.ldelim();
+            }
+            return writer;
+        };
+
+        /**
+         * Encodes the specified FoodSectorEviction message, length delimited. Does not implicitly {@link server.FoodSectorEviction.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {server.IFoodSectorEviction} message FoodSectorEviction message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        FoodSectorEviction.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a FoodSectorEviction message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.FoodSectorEviction} FoodSectorEviction
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        FoodSectorEviction.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.FoodSectorEviction();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.sectorId = reader.uint32();
+                        break;
+                    }
+                case 2: {
+                        message.subscriptionGeneration = reader.uint64();
+                        break;
+                    }
+                case 3: {
+                        if (!(message.evictedFoodIds && message.evictedFoodIds.length))
+                            message.evictedFoodIds = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.evictedFoodIds.push(reader.uint32());
+                        } else
+                            message.evictedFoodIds.push(reader.uint32());
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a FoodSectorEviction message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.FoodSectorEviction} FoodSectorEviction
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        FoodSectorEviction.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a FoodSectorEviction message.
+         * @function verify
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        FoodSectorEviction.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.sectorId != null && message.hasOwnProperty("sectorId"))
+                if (!$util.isInteger(message.sectorId))
+                    return "sectorId: integer expected";
+            if (message.subscriptionGeneration != null && message.hasOwnProperty("subscriptionGeneration"))
+                if (!$util.isInteger(message.subscriptionGeneration) && !(message.subscriptionGeneration && $util.isInteger(message.subscriptionGeneration.low) && $util.isInteger(message.subscriptionGeneration.high)))
+                    return "subscriptionGeneration: integer|Long expected";
+            if (message.evictedFoodIds != null && message.hasOwnProperty("evictedFoodIds")) {
+                if (!Array.isArray(message.evictedFoodIds))
+                    return "evictedFoodIds: array expected";
+                for (let i = 0; i < message.evictedFoodIds.length; ++i)
+                    if (!$util.isInteger(message.evictedFoodIds[i]))
+                        return "evictedFoodIds: integer[] expected";
+            }
+            return null;
+        };
+
+        /**
+         * Creates a FoodSectorEviction message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.FoodSectorEviction} FoodSectorEviction
+         */
+        FoodSectorEviction.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.FoodSectorEviction)
+                return object;
+            let message = new $root.server.FoodSectorEviction();
+            if (object.sectorId != null)
+                message.sectorId = object.sectorId >>> 0;
+            if (object.subscriptionGeneration != null)
+                if ($util.Long)
+                    (message.subscriptionGeneration = $util.Long.fromValue(object.subscriptionGeneration)).unsigned = true;
+                else if (typeof object.subscriptionGeneration === "string")
+                    message.subscriptionGeneration = parseInt(object.subscriptionGeneration, 10);
+                else if (typeof object.subscriptionGeneration === "number")
+                    message.subscriptionGeneration = object.subscriptionGeneration;
+                else if (typeof object.subscriptionGeneration === "object")
+                    message.subscriptionGeneration = new $util.LongBits(object.subscriptionGeneration.low >>> 0, object.subscriptionGeneration.high >>> 0).toNumber(true);
+            if (object.evictedFoodIds) {
+                if (!Array.isArray(object.evictedFoodIds))
+                    throw TypeError(".server.FoodSectorEviction.evictedFoodIds: array expected");
+                message.evictedFoodIds = [];
+                for (let i = 0; i < object.evictedFoodIds.length; ++i)
+                    message.evictedFoodIds[i] = object.evictedFoodIds[i] >>> 0;
+            }
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a FoodSectorEviction message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {server.FoodSectorEviction} message FoodSectorEviction
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        FoodSectorEviction.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.arrays || options.defaults)
+                object.evictedFoodIds = [];
+            if (options.defaults) {
+                object.sectorId = 0;
+                if ($util.Long) {
+                    let long = new $util.Long(0, 0, true);
+                    object.subscriptionGeneration = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
+                } else
+                    object.subscriptionGeneration = options.longs === String ? "0" : 0;
+            }
+            if (message.sectorId != null && message.hasOwnProperty("sectorId"))
+                object.sectorId = message.sectorId;
+            if (message.subscriptionGeneration != null && message.hasOwnProperty("subscriptionGeneration"))
+                if (typeof message.subscriptionGeneration === "number")
+                    object.subscriptionGeneration = options.longs === String ? String(message.subscriptionGeneration) : message.subscriptionGeneration;
+                else
+                    object.subscriptionGeneration = options.longs === String ? $util.Long.prototype.toString.call(message.subscriptionGeneration) : options.longs === Number ? new $util.LongBits(message.subscriptionGeneration.low >>> 0, message.subscriptionGeneration.high >>> 0).toNumber(true) : message.subscriptionGeneration;
+            if (message.evictedFoodIds && message.evictedFoodIds.length) {
+                object.evictedFoodIds = [];
+                for (let j = 0; j < message.evictedFoodIds.length; ++j)
+                    object.evictedFoodIds[j] = message.evictedFoodIds[j];
+            }
+            return object;
+        };
+
+        /**
+         * Converts this FoodSectorEviction to JSON.
+         * @function toJSON
+         * @memberof server.FoodSectorEviction
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        FoodSectorEviction.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for FoodSectorEviction
+         * @function getTypeUrl
+         * @memberof server.FoodSectorEviction
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        FoodSectorEviction.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.FoodSectorEviction";
+        };
+
+        return FoodSectorEviction;
+    })();
+
+    server.FoodSectorBootstrap = (function() {
+
+        /**
+         * Properties of a FoodSectorBootstrap.
+         * @memberof server
+         * @interface IFoodSectorBootstrap
+         * @property {number|null} [sectorId] FoodSectorBootstrap sectorId
+         * @property {number|Long|null} [subscriptionGeneration] FoodSectorBootstrap subscriptionGeneration
+         * @property {Array.<server.IFoodData>|null} [foods] FoodSectorBootstrap foods
+         */
+
+        /**
+         * Constructs a new FoodSectorBootstrap.
+         * @memberof server
+         * @classdesc Represents a FoodSectorBootstrap.
+         * @implements IFoodSectorBootstrap
+         * @constructor
+         * @param {server.IFoodSectorBootstrap=} [properties] Properties to set
+         */
+        function FoodSectorBootstrap(properties) {
+            this.foods = [];
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * FoodSectorBootstrap sectorId.
+         * @member {number} sectorId
+         * @memberof server.FoodSectorBootstrap
+         * @instance
+         */
+        FoodSectorBootstrap.prototype.sectorId = 0;
+
+        /**
+         * FoodSectorBootstrap subscriptionGeneration.
+         * @member {number|Long} subscriptionGeneration
+         * @memberof server.FoodSectorBootstrap
+         * @instance
+         */
+        FoodSectorBootstrap.prototype.subscriptionGeneration = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+        /**
+         * FoodSectorBootstrap foods.
+         * @member {Array.<server.IFoodData>} foods
+         * @memberof server.FoodSectorBootstrap
+         * @instance
+         */
+        FoodSectorBootstrap.prototype.foods = $util.emptyArray;
+
+        /**
+         * Creates a new FoodSectorBootstrap instance using the specified properties.
+         * @function create
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {server.IFoodSectorBootstrap=} [properties] Properties to set
+         * @returns {server.FoodSectorBootstrap} FoodSectorBootstrap instance
+         */
+        FoodSectorBootstrap.create = function create(properties) {
+            return new FoodSectorBootstrap(properties);
+        };
+
+        /**
+         * Encodes the specified FoodSectorBootstrap message. Does not implicitly {@link server.FoodSectorBootstrap.verify|verify} messages.
+         * @function encode
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {server.IFoodSectorBootstrap} message FoodSectorBootstrap message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        FoodSectorBootstrap.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.sectorId != null && Object.hasOwnProperty.call(message, "sectorId"))
+                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.sectorId);
+            if (message.subscriptionGeneration != null && Object.hasOwnProperty.call(message, "subscriptionGeneration"))
+                writer.uint32(/* id 2, wireType 0 =*/16).uint64(message.subscriptionGeneration);
+            if (message.foods != null && message.foods.length)
+                for (let i = 0; i < message.foods.length; ++i)
+                    $root.server.FoodData.encode(message.foods[i], writer.uint32(/* id 3, wireType 2 =*/26).fork()).ldelim();
+            return writer;
+        };
+
+        /**
+         * Encodes the specified FoodSectorBootstrap message, length delimited. Does not implicitly {@link server.FoodSectorBootstrap.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {server.IFoodSectorBootstrap} message FoodSectorBootstrap message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        FoodSectorBootstrap.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a FoodSectorBootstrap message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.FoodSectorBootstrap} FoodSectorBootstrap
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        FoodSectorBootstrap.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.FoodSectorBootstrap();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.sectorId = reader.uint32();
+                        break;
+                    }
+                case 2: {
+                        message.subscriptionGeneration = reader.uint64();
+                        break;
+                    }
+                case 3: {
+                        if (!(message.foods && message.foods.length))
+                            message.foods = [];
+                        message.foods.push($root.server.FoodData.decode(reader, reader.uint32()));
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a FoodSectorBootstrap message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.FoodSectorBootstrap} FoodSectorBootstrap
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        FoodSectorBootstrap.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a FoodSectorBootstrap message.
+         * @function verify
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        FoodSectorBootstrap.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.sectorId != null && message.hasOwnProperty("sectorId"))
+                if (!$util.isInteger(message.sectorId))
+                    return "sectorId: integer expected";
+            if (message.subscriptionGeneration != null && message.hasOwnProperty("subscriptionGeneration"))
+                if (!$util.isInteger(message.subscriptionGeneration) && !(message.subscriptionGeneration && $util.isInteger(message.subscriptionGeneration.low) && $util.isInteger(message.subscriptionGeneration.high)))
+                    return "subscriptionGeneration: integer|Long expected";
+            if (message.foods != null && message.hasOwnProperty("foods")) {
+                if (!Array.isArray(message.foods))
+                    return "foods: array expected";
+                for (let i = 0; i < message.foods.length; ++i) {
+                    let error = $root.server.FoodData.verify(message.foods[i]);
+                    if (error)
+                        return "foods." + error;
+                }
+            }
+            return null;
+        };
+
+        /**
+         * Creates a FoodSectorBootstrap message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.FoodSectorBootstrap} FoodSectorBootstrap
+         */
+        FoodSectorBootstrap.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.FoodSectorBootstrap)
+                return object;
+            let message = new $root.server.FoodSectorBootstrap();
+            if (object.sectorId != null)
+                message.sectorId = object.sectorId >>> 0;
+            if (object.subscriptionGeneration != null)
+                if ($util.Long)
+                    (message.subscriptionGeneration = $util.Long.fromValue(object.subscriptionGeneration)).unsigned = true;
+                else if (typeof object.subscriptionGeneration === "string")
+                    message.subscriptionGeneration = parseInt(object.subscriptionGeneration, 10);
+                else if (typeof object.subscriptionGeneration === "number")
+                    message.subscriptionGeneration = object.subscriptionGeneration;
+                else if (typeof object.subscriptionGeneration === "object")
+                    message.subscriptionGeneration = new $util.LongBits(object.subscriptionGeneration.low >>> 0, object.subscriptionGeneration.high >>> 0).toNumber(true);
+            if (object.foods) {
+                if (!Array.isArray(object.foods))
+                    throw TypeError(".server.FoodSectorBootstrap.foods: array expected");
+                message.foods = [];
+                for (let i = 0; i < object.foods.length; ++i) {
+                    if (typeof object.foods[i] !== "object")
+                        throw TypeError(".server.FoodSectorBootstrap.foods: object expected");
+                    message.foods[i] = $root.server.FoodData.fromObject(object.foods[i]);
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a FoodSectorBootstrap message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {server.FoodSectorBootstrap} message FoodSectorBootstrap
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        FoodSectorBootstrap.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.arrays || options.defaults)
+                object.foods = [];
+            if (options.defaults) {
+                object.sectorId = 0;
+                if ($util.Long) {
+                    let long = new $util.Long(0, 0, true);
+                    object.subscriptionGeneration = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
+                } else
+                    object.subscriptionGeneration = options.longs === String ? "0" : 0;
+            }
+            if (message.sectorId != null && message.hasOwnProperty("sectorId"))
+                object.sectorId = message.sectorId;
+            if (message.subscriptionGeneration != null && message.hasOwnProperty("subscriptionGeneration"))
+                if (typeof message.subscriptionGeneration === "number")
+                    object.subscriptionGeneration = options.longs === String ? String(message.subscriptionGeneration) : message.subscriptionGeneration;
+                else
+                    object.subscriptionGeneration = options.longs === String ? $util.Long.prototype.toString.call(message.subscriptionGeneration) : options.longs === Number ? new $util.LongBits(message.subscriptionGeneration.low >>> 0, message.subscriptionGeneration.high >>> 0).toNumber(true) : message.subscriptionGeneration;
+            if (message.foods && message.foods.length) {
+                object.foods = [];
+                for (let j = 0; j < message.foods.length; ++j)
+                    object.foods[j] = $root.server.FoodData.toObject(message.foods[j], options);
+            }
+            return object;
+        };
+
+        /**
+         * Converts this FoodSectorBootstrap to JSON.
+         * @function toJSON
+         * @memberof server.FoodSectorBootstrap
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        FoodSectorBootstrap.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for FoodSectorBootstrap
+         * @function getTypeUrl
+         * @memberof server.FoodSectorBootstrap
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        FoodSectorBootstrap.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.FoodSectorBootstrap";
+        };
+
+        return FoodSectorBootstrap;
+    })();
+
     server.FoodMutationCollection = (function() {
 
         /**
@@ -5645,6 +6269,7 @@ export const server = $root.server = (() => {
          * @interface IFoodMutationCollection
          * @property {Array.<server.IFoodData>|null} [addedFoods] FoodMutationCollection addedFoods
          * @property {Array.<number>|null} [removedFoodIds] FoodMutationCollection removedFoodIds
+         * @property {Array.<server.IFoodSectorEviction>|null} [sectorEvictions] FoodMutationCollection sectorEvictions
          */
 
         /**
@@ -5658,6 +6283,7 @@ export const server = $root.server = (() => {
         function FoodMutationCollection(properties) {
             this.addedFoods = [];
             this.removedFoodIds = [];
+            this.sectorEvictions = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -5679,6 +6305,14 @@ export const server = $root.server = (() => {
          * @instance
          */
         FoodMutationCollection.prototype.removedFoodIds = $util.emptyArray;
+
+        /**
+         * FoodMutationCollection sectorEvictions.
+         * @member {Array.<server.IFoodSectorEviction>} sectorEvictions
+         * @memberof server.FoodMutationCollection
+         * @instance
+         */
+        FoodMutationCollection.prototype.sectorEvictions = $util.emptyArray;
 
         /**
          * Creates a new FoodMutationCollection instance using the specified properties.
@@ -5713,6 +6347,9 @@ export const server = $root.server = (() => {
                     writer.uint32(message.removedFoodIds[i]);
                 writer.ldelim();
             }
+            if (message.sectorEvictions != null && message.sectorEvictions.length)
+                for (let i = 0; i < message.sectorEvictions.length; ++i)
+                    $root.server.FoodSectorEviction.encode(message.sectorEvictions[i], writer.uint32(/* id 3, wireType 2 =*/26).fork()).ldelim();
             return writer;
         };
 
@@ -5766,6 +6403,12 @@ export const server = $root.server = (() => {
                             message.removedFoodIds.push(reader.uint32());
                         break;
                     }
+                case 3: {
+                        if (!(message.sectorEvictions && message.sectorEvictions.length))
+                            message.sectorEvictions = [];
+                        message.sectorEvictions.push($root.server.FoodSectorEviction.decode(reader, reader.uint32()));
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -5817,6 +6460,15 @@ export const server = $root.server = (() => {
                     if (!$util.isInteger(message.removedFoodIds[i]))
                         return "removedFoodIds: integer[] expected";
             }
+            if (message.sectorEvictions != null && message.hasOwnProperty("sectorEvictions")) {
+                if (!Array.isArray(message.sectorEvictions))
+                    return "sectorEvictions: array expected";
+                for (let i = 0; i < message.sectorEvictions.length; ++i) {
+                    let error = $root.server.FoodSectorEviction.verify(message.sectorEvictions[i]);
+                    if (error)
+                        return "sectorEvictions." + error;
+                }
+            }
             return null;
         };
 
@@ -5849,6 +6501,16 @@ export const server = $root.server = (() => {
                 for (let i = 0; i < object.removedFoodIds.length; ++i)
                     message.removedFoodIds[i] = object.removedFoodIds[i] >>> 0;
             }
+            if (object.sectorEvictions) {
+                if (!Array.isArray(object.sectorEvictions))
+                    throw TypeError(".server.FoodMutationCollection.sectorEvictions: array expected");
+                message.sectorEvictions = [];
+                for (let i = 0; i < object.sectorEvictions.length; ++i) {
+                    if (typeof object.sectorEvictions[i] !== "object")
+                        throw TypeError(".server.FoodMutationCollection.sectorEvictions: object expected");
+                    message.sectorEvictions[i] = $root.server.FoodSectorEviction.fromObject(object.sectorEvictions[i]);
+                }
+            }
             return message;
         };
 
@@ -5868,6 +6530,7 @@ export const server = $root.server = (() => {
             if (options.arrays || options.defaults) {
                 object.addedFoods = [];
                 object.removedFoodIds = [];
+                object.sectorEvictions = [];
             }
             if (message.addedFoods && message.addedFoods.length) {
                 object.addedFoods = [];
@@ -5878,6 +6541,11 @@ export const server = $root.server = (() => {
                 object.removedFoodIds = [];
                 for (let j = 0; j < message.removedFoodIds.length; ++j)
                     object.removedFoodIds[j] = message.removedFoodIds[j];
+            }
+            if (message.sectorEvictions && message.sectorEvictions.length) {
+                object.sectorEvictions = [];
+                for (let j = 0; j < message.sectorEvictions.length; ++j)
+                    object.sectorEvictions[j] = $root.server.FoodSectorEviction.toObject(message.sectorEvictions[j], options);
             }
             return object;
         };

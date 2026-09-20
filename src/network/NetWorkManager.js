@@ -127,10 +127,40 @@ export class NetworkManager {
             this.scene.events.emit('food_collection', foodCollection);
         }
 
+        // ── AOI YEM SIRASI: BOOTSTRAP -> MUTASYON -> TAHLIYE ───────────────
+        // Sira KEYFI DEGILDIR:
+        //
+        // 1) BOOTSTRAP ONCE. Yeni abone olunan bir sektorun TABANI kurulmadan o
+        //    sektorun deltasi uygulanirsa, REMOVE bilinmeyen bir id'ye dusup
+        //    no-op olur ve ARDINDAN gelen bootstrap o OLU yemi diriltir —
+        //    kalici hayalet. (Sunucu ayni tick'te ikisini birden gondermemeli;
+        //    bu sira o sozlesmeye DAYANMAYAN bir emniyettir.)
+        // 2) MUTASYON SONRA. Kendi icinde istemci once REMOVE'lari sonra
+        //    ADD'leri uygular (bkz. Game.onFoodMutationCollection).
+        // 3) TAHLIYE EN SON. Bir yem ayni tick'te hem silinip hem tahliye
+        //    edilirse, gorsel onayi olan SILME once uygulanir; tahliye zararsiz
+        //    bir no-op'a duser. Tersi olsaydi yem sessizce yok edilir ve
+        //    oyuncu kendi yedigi yemin animasyonunu goremezdi.
+        const foodSectorBootstraps =
+            envelope.foodSectorBootstraps ?? envelope.food_sector_bootstraps;
+        if (Array.isArray(foodSectorBootstraps)) {
+            for (const bootstrap of foodSectorBootstraps) {
+                this.scene.events.emit('food_sector_bootstrap', bootstrap);
+            }
+        }
+
         const foodMutationCollection =
             envelope.foodMutationCollection ?? envelope.food_mutation_collection;
         if (foodMutationCollection) {
             this.scene.events.emit('food_mutation_collection', foodMutationCollection);
+
+            const sectorEvictions =
+                foodMutationCollection.sectorEvictions ?? foodMutationCollection.sector_evictions;
+            if (Array.isArray(sectorEvictions)) {
+                for (const eviction of sectorEvictions) {
+                    this.scene.events.emit('food_sector_eviction', eviction);
+                }
+            }
         }
 
         // Sıralama: sunucu bunu 5 sn'de birden sık GÖNDERMEZ ve yalnızca

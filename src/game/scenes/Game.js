@@ -74,6 +74,18 @@ const FOOD_EAT_DESTROY_DIST = 6;    // px — kafa merkezine bu kadar yaklaşın
 // (bkz. update() içindeki ayrıntılı not).
 const FOOD_PREDICTION_TIMEOUT_MS = 1000;
 
+// ── AOI SEKTOR IZGARASI — SUNUCU AYNASI ────────────────────────────────────
+// KRITIK SUNUCU SENKRONU: bu üç değer sunucudaki MapConfig.WORLD_SIZE_PX ve
+// SECTOR_COUNT_X/Y ile BİREBİR aynı olmalıdır. Sapma, yem düğümlerinin yanlış
+// sektöre etiketlenmesine ve sektör kapsamlı değiştirmenin yanlış düğümleri
+// yok etmesine yol açar. (Aynı ayna deseni: FoodConfig.eatRadiusPx ↔
+// eatRadiusForScale, AOICalculationSystem.AOI_SECTOR_RADIUS ↔ AOIDebugConfig.)
+const AOI_WORLD_SIZE_PX = 20000;
+const AOI_SECTOR_COUNT_X = 30;
+const AOI_SECTOR_COUNT_Y = 30;
+const AOI_SECTOR_WIDTH_PX = AOI_WORLD_SIZE_PX / AOI_SECTOR_COUNT_X;
+const AOI_SECTOR_HEIGHT_PX = AOI_WORLD_SIZE_PX / AOI_SECTOR_COUNT_Y;
+
 // M01 — SUNUCU ILE BIREBIR: SnakeDynamicsSystem.calculateScale doyum noktasi
 // (min(6.0, ...)). Bu esigin uzerindeki bir olcek bozuk paket demektir ve
 // uygulanmaz; mevcut olcek korunur.
@@ -203,6 +215,9 @@ export class Game extends Phaser.Scene {
         // yemler. foodId → { predictedAtMs }. Onay (FOOD_REMOVE) gelince silinir;
         // süre aşımında yalnızca kayıt düşer (skor/yem geri alınmaz).
         this.pendingConsumption = new Map();
+        // AOI abonelik kuşakları: sectorId → BigInt kuşak. Bayat sektör
+        // tahliyelerini reddetmenin TEK dayanağıdır (bkz. onFoodSectorEviction).
+        this.foodSectorGeneration = new Map();
         this.foodBlitter = null; // Tüm yemler için tek havuzlanmış Blitter (tek draw call)
         this.pendingSegmentMutations = new Map();
         // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
@@ -240,6 +255,11 @@ export class Game extends Phaser.Scene {
         this.foods = new Map();
         this.eatingFoods = new Map();
         this.pendingConsumption = new Map();
+        // KRİTİK: kuşak haritası BURADA da sıfırlanmalı. scene.restart()
+        // constructor'ı yeniden çalıştırmaz; harita taşınırsa sunucunun sıfırdan
+        // başlayan kuşakları monotonluk muhafızına takılır ve HİÇBİR sektör
+        // bootstrap'i kabul edilmez — oyuncu yemsiz bir dünyaya düşer.
+        this.foodSectorGeneration = new Map();
         this.pendingSegmentMutations = new Map();
         // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
         // emit'inden ÖNCE gelebildiği için entityId → seed olarak beklemeye alınır.
@@ -342,6 +362,8 @@ export class Game extends Phaser.Scene {
         this.events.on('path_seed_collection', this.onPathSeedCollection, this);
         this.events.on('food_collection', this.onFoodCollection, this);
         this.events.on('food_mutation_collection', this.onFoodMutationCollection, this);
+        this.events.on('food_sector_bootstrap', this.onFoodSectorBootstrap, this);
+        this.events.on('food_sector_eviction', this.onFoodSectorEviction, this);
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
@@ -386,6 +408,8 @@ export class Game extends Phaser.Scene {
             this.events.off('path_seed_collection', this.onPathSeedCollection, this);
             this.events.off('food_collection', this.onFoodCollection, this);
             this.events.off('food_mutation_collection', this.onFoodMutationCollection, this);
+            this.events.off('food_sector_bootstrap', this.onFoodSectorBootstrap, this);
+            this.events.off('food_sector_eviction', this.onFoodSectorEviction, this);
             this.events.off('remove_entity', this.onRemoveEntity, this);
             this.events.off('disconnected', this.onDisconnected, this);
             this.events.off('death_notification', this.onDeathNotification, this);
@@ -1120,6 +1144,154 @@ export class Game extends Phaser.Scene {
         }
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    // AOI — SEKTÖR ABONELİĞİ (Faz 5 / Aşama 2)
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Piksel konumundan AOI sektör kimliği. Sunucudaki
+     * PositionUtil.getSectorIdByPosition'ın AYNASIDIR.
+     *
+     * Y EKSENİ AYNALANIR: sunucunun dünya Y'si YUKARI artar, istemcinin piksel
+     * Y'si AŞAĞI. Aynalama atlanırsa sektörler dikeyde ters eşlenir ve hata
+     * yalnızca haritanın bir yarısında görünür — bu yüzden burada açıkça
+     * belgelenmiştir.
+     */
+    _foodSectorIdFromPx(pxX, pxY) {
+        if (!Number.isFinite(pxX) || !Number.isFinite(pxY)) return -1;
+        const sx = Math.floor(pxX / AOI_SECTOR_WIDTH_PX);
+        const sy = Math.floor((AOI_WORLD_SIZE_PX - pxY) / AOI_SECTOR_HEIGHT_PX);
+        const cx = Math.max(0, Math.min(AOI_SECTOR_COUNT_X - 1, sx));
+        const cy = Math.max(0, Math.min(AOI_SECTOR_COUNT_Y - 1, sy));
+        return cy * AOI_SECTOR_COUNT_X + cx;
+    }
+
+    /**
+     * uint64 abonelik kuşağını TAM SAYI olarak normalize eder.
+     *
+     * NEDEN Number DEĞİL: protobufjs uint64'ü bir Long nesnesi olarak çözer ve
+     * Number'a çevirmek 2^53 üstünde hassasiyet kaybeder. Ölçüldü: 9007199254740995
+     * ile 9007199254740996 Number'da AYNI değere çöker — yani FARKLI iki kuşak
+     * eşit görünür ve BAYAT BİR TAHLİYE KABUL EDİLİR. toString() her iki
+     * gösterimde de (Long | number | string) tam ondalık değeri verir.
+     *
+     * @returns {bigint|null} geçerli kuşak, ya da geçersiz/atanmamışsa null
+     */
+    _normalizeSubscriptionGeneration(raw) {
+        if (raw === null || raw === undefined) return null;
+        try {
+            const generation = BigInt(typeof raw === 'object' ? raw.toString() : raw);
+            // proto3'te yazılmamış bir uint64 sıfır olarak çözülür; sıfır
+            // "abonelik yok" demektir ve asla eşleşmemelidir.
+            return generation > 0n ? generation : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Bir sektöre YENİ abonelik: o sektörün TAM içeriği.
+     *
+     * SEKTÖR KAPSAMLI DEĞİŞTİRME (upsert DEĞİL): önce S'deki tüm yerel düğümler
+     * yok edilir, sonra gelenler kurulur. Upsert olsaydı upsertFood mevcut id'ler
+     * için erken döner ve BAYAT KONUMU korurdu — kimlik geri dönüşümünden sonra
+     * yemin sonsuza dek yanlış yerde çizilmesine yol açan sınıf tam olarak budur.
+     * onFoodCollection da kullanılamaz: onun budaması KÜRESELDİR ve hâlâ abone
+     * olunan diğer sektörleri de siler.
+     */
+    onFoodSectorBootstrap(bootstrap) {
+        const sectorId = Number(bootstrap?.sectorId);
+        if (!Number.isInteger(sectorId) || sectorId < 0) return;
+
+        const incomingGeneration = this._normalizeSubscriptionGeneration(
+            bootstrap?.subscriptionGeneration ?? bootstrap?.subscription_generation);
+        if (incomingGeneration === null) return;
+
+        // MONOTONLUK MUHAFIZI (iki yönlü reddin bootstrap tarafı): kuşak ancak
+        // İLERLEYEBİLİR. Eşit ya da geriye giden bir bootstrap ya tekrar ya da
+        // sıra dışıdır; uygulanması, güncel aboneliğin düğümlerini eski bir
+        // anlık görüntüyle ezerdi.
+        const currentGeneration = this.foodSectorGeneration.get(sectorId);
+        if (currentGeneration !== undefined && incomingGeneration <= currentGeneration) return;
+        this.foodSectorGeneration.set(sectorId, incomingGeneration);
+
+        // 1) S'deki TÜM yerel düğümleri yok et.
+        for (const [foodId, food] of this.foods) {
+            if (food.sectorId !== sectorId) continue;
+            this.foods.delete(foodId);
+            food.bob?.destroy();
+        }
+        // Uçuştaki (tahmin) düğümler de bu sektöre aitse temizlenir; aksi halde
+        // bootstrap'in kurduğu taze düğümün üstünde hayalet bir uçuş kalırdı.
+        for (const [foodId, flight] of this.eatingFoods) {
+            if (flight.sectorId !== sectorId) continue;
+            this.eatingFoods.delete(foodId);
+            this.pendingConsumption.delete(foodId);
+            flight.sprite?.destroy();
+        }
+
+        // 2) Gelenleri sıfırdan kur.
+        const incomingFoods = Array.isArray(bootstrap?.foods) ? bootstrap.foods : [];
+        for (const foodData of incomingFoods) {
+            this.upsertFood(foodData);
+        }
+    }
+
+    /**
+     * Sektör TAHLİYESİ — gözlemciye özel, sessiz yok etme.
+     *
+     * TAHLİYE ≠ SİLME. Yem sunucuda YAŞIYOR; yalnızca bu oyuncunun ilgi alanı
+     * artık o sektörü kapsamıyor. Bu yüzden removeFood() yolundan GEÇİLMEZ: o
+     * yol en yakın yılana doğru bir yeme-uçuşu animasyonu başlatır ve her sektör
+     * geçişinde yüzlerce yem uçuşuyordu gibi görünürdü.
+     */
+    onFoodSectorEviction(eviction) {
+        const sectorId = Number(eviction?.sectorId);
+        if (!Number.isInteger(sectorId) || sectorId < 0) return;
+
+        const incomingGeneration = this._normalizeSubscriptionGeneration(
+            eviction?.subscriptionGeneration ?? eviction?.subscription_generation);
+        if (incomingGeneration === null) return;
+
+        // BAYAT TAHLİYE REDDİ (TAM eşitlik): bu id'ler ARTIK KAPANMIŞ bir
+        // aboneliğin düğümleriydi. Gözlemci sektöre geri girdiyse bootstrap
+        // kuşağı ilerletmiştir; elimizdeki düğümler YENİ aboneliğin eseridir ve
+        // bu tahliye onlara ait DEĞİLDİR. "<=" değil "!==": ileriden gelen bir
+        // kuşak da aynı ölçüde şüphelidir.
+        const currentGeneration = this.foodSectorGeneration.get(sectorId);
+        if (currentGeneration === undefined || incomingGeneration !== currentGeneration) return;
+
+        const evictedFoodIds = Array.isArray(eviction?.evictedFoodIds)
+            ? eviction.evictedFoodIds
+            : (Array.isArray(eviction?.evicted_food_ids) ? eviction.evicted_food_ids : []);
+
+        for (const rawFoodId of evictedFoodIds) {
+            const foodId = this.toFoodId(rawFoodId);
+            if (foodId === null) continue;
+
+            // Tahmin işareti İPTAL edilir (onaylanmaz): tahliye "yedin" demek
+            // değildir. Bırakılırsa yalnızca zaman aşımıyla düşerdi.
+            this.pendingConsumption.delete(foodId);
+
+            const food = this.foods.get(foodId);
+            if (food) {
+                this.foods.delete(foodId);
+                food.bob?.destroy();
+            }
+
+            // Tahmin yolu yemi this.foods'tan ÇIKARIP eatingFoods'a taşır;
+            // yalnızca this.foods'a bakan bir muhafaza uçuştaki yemi ıskalar.
+            // DİKKAT: değer bir NESNEDİR ({ sprite, targetSnake, ... }) —
+            // doğrudan .destroy() çağırmak TypeError atar ve döngüyü kırarak
+            // kalan id'leri tahliye edilmemiş bırakırdı.
+            const flight = this.eatingFoods.get(foodId);
+            if (flight) {
+                this.eatingFoods.delete(foodId);
+                flight.sprite?.destroy();
+            }
+        }
+    }
+
     onSelfPosition(selfPosition) {
         const entityId = this.toId(selfPosition?.entityId ?? selfPosition?.clientId);
         if (entityId === null) return;
@@ -1609,7 +1781,11 @@ export class Game extends Phaser.Scene {
         // Her yem tek bir Bob. colorFrame, yem yenirken Sprite'a dönüştürmek
         // (Bob'lar setScale desteklemez — bkz. _beginFoodEatingFlight) ve
         // reddedilen tahminde yemi birebir geri getirmek için saklanır.
-        this.foods.set(foodId, { bob, value, colorFrame, shimmerPhase });
+        // Sektör etiketi: sektör kapsamlı değiştirmenin (onFoodSectorBootstrap)
+        // "S'deki TÜM yerel düğümleri yok et" adımı buna dayanır. Yem asla
+        // hareket etmediği için bir kez hesaplanır ve bir daha değişmez.
+        const sectorId = this._foodSectorIdFromPx(targetX, targetY);
+        this.foods.set(foodId, { bob, value, colorFrame, shimmerPhase, sectorId });
         return foodId;
     }
 
@@ -1696,7 +1872,7 @@ export class Game extends Phaser.Scene {
         // Ölçek çöküşü ZAMANA bağlıdır (mesafeye değil): elapsedMs 0'dan
         // FOOD_EAT_SHRINK_MS'e sayar, scale = 1 - elapsed/süre → kafa uzaklaşsa
         // bile yem asla yeniden büyümez, ~100ms içinde garantili yok olur.
-        this.eatingFoods.set(foodId, { sprite, targetSnake, elapsedMs: 0 });
+        this.eatingFoods.set(foodId, { sprite, targetSnake, elapsedMs: 0, sectorId: food.sectorId });
     }
 
     // Yenen yem SAYACI. SKOR BURADAN YAZILMAZ.
@@ -1725,6 +1901,9 @@ export class Game extends Phaser.Scene {
         this.foods.clear();
         this.eatingFoods.clear();
         this.pendingConsumption.clear();
+        // Bağlantı koptu: sunucudaki abonelik durumu da yok oldu. Kuşakları
+        // tutmak, yeniden bağlanmada tüm bootstrap'leri reddettirirdi.
+        this.foodSectorGeneration.clear();
     }
 
     // Tek havuzlanmış Blitter — TÜM yemler (tek daire dokusu) tek draw call'da
