@@ -3,6 +3,28 @@ import { EntityInterpolator } from '../net/EntityInterpolator.js';
 import * as SnakeSkin from '../render/SnakeSkin.js';
 import { SnakeTexture } from '../render/SnakeSkin.js';
 
+// ── NICKNAME TYPOGRAPHY (High-DPI) ──────────────────────────────────────────
+// Nicknames are sized in CSS px ON SCREEN, independent of camera zoom:
+//
+//   screenPx  = clamp(NICK_FONT_PX · cssZoom, NICK_MIN_SCREEN_PX, NICK_FONT_PX)
+//   objScale  = screenPx / (NICK_FONT_PX · cssZoom)     // counter-scale in world
+//
+// The glyph canvas is rasterized at `resolution = D` (render density), so one
+// glyph texel covers 1/D CSS px. Drawn by the world camera at zoom cssZoom·D:
+//   buffer px per texel = objScale · cssZoom · D / D = screenPx / NICK_FONT_PX
+// → between 12/14 and 1.0: never magnified, at most ~14% minified. Crisp.
+//
+// WHY WORLD CAMERA (not UI camera + world→screen projection): the world
+// camera follows the head with lerp, and Phaser computes that scroll inside
+// Camera.preRender — i.e. AFTER update(). A UI-space label positioned in
+// update() would trail the camera by one frame and visibly jitter against
+// the head at boost speed. Counter-scaling in world space keeps the label in
+// the same transform as the head (zero lag) and costs no texture redraw:
+// only setScale changes per frame, the glyph canvas is redrawn on setText.
+const NICK_FONT_PX = 14;          // raster size and max on-screen size (CSS px)
+const NICK_MIN_SCREEN_PX = 12;    // legibility floor regardless of zoom
+const NICK_GAP_PX = 4;            // screen gap between head edge and label (CSS px)
+
 const SnakeConfig = {
     // ── Boyut senkronu (SUNUCU ile BIREBIR) ─────────────────────────────
     // Sunucu: game-server com/common/SnakeGeometryConfig.java →
@@ -17,8 +39,23 @@ const SnakeConfig = {
     BASE_SPEED_FACTOR: 3.75,
     SPEED_REDUCTION_PER_SCALE: 0.5 / 106,
     BOOST_SPEED_FACTOR: 7.5,
-    BOOST_DRAIN_INTERVAL_MS: 400,
-    BOOST_MIN_SEGMENTS: 10,
+
+    // ── BOOST UYGUNLUGU: SKOR ESIGI + HISTEREZIS BANDI ──────────────────
+    // SUNUCU AYNASI — game-server com/common/ScoreConfig.java
+    //   BOOST_ENTRY_SCORE / BOOST_EXIT_SCORE. Ayrisirlarsa client tahmini ile
+    //   sunucu otoritesi taban civarinda FARKLI kararlar verir ve her tur
+    //   ~225 px/sn ile hata biriktirir.
+    //
+    // ESKI KAPI segment sayisi uzerindeydi (BOOST_MIN_SEGMENTS = 10). Dogum
+    // 5 segment oldugundan gercek giris bedeli 300 puandi ve esigi yeni gecen
+    // oyuncunun toplam rezervi 400 ms (~90 px) idi — taktik degeri olmayan
+    // bir kilit. Artik esik dogrudan SKOR uzerinde.
+    //
+    // IKI ESIK SART: tek esikle tabanda duran oyuncu her kare ac/kapa yapar
+    // (60 Hz kare dalga). Ayni kalip asagida reconciliation esiklerinde de
+    // kullanilir (RECON_START_THRESHOLD / RECON_STOP_THRESHOLD).
+    BOOST_ENTRY_SCORE: 150,   // boost'u BASLATMAK icin gereken skor
+    BOOST_EXIT_SCORE: 120,    // boost'un ACIK KALABILECEGI skor
     TURN_ANGLE_BASE: 3.3,
     TURN_SPEED_INFLUENCE: 4.8,
     INITIAL_SEGMENT_COUNT: 32,
@@ -78,10 +115,17 @@ const SnakeConfig = {
     // The body path is sampled from a low-pass "follower" of the head, not
     // the head itself. Reconciliation micro-corrections on the head are
     // high-frequency signals — the follower filters them out, so the body
-    // no longer magnifies head snapping. 0.5 @60fps ≈ 3-4 px constant
-    // trailing lag (invisible: it only shifts the body back a hair) while
-    // per-frame alternating corrections are attenuated ~3x.
-    PATH_SMOOTHING_FACTOR: 0.5,
+    // no longer magnifies head snapping.
+    //
+    // UZAMSAL FİLTRE: follower zamana göre değil KAFANIN KAT ETTİĞİ MESAFEYE
+    // göre ilerler:  a = 1 − exp(−Δs / L),  follower += (head − follower)·a.
+    // Böylece süzme miktarı kare hızından (60/120/144 Hz) ve yılan hızından
+    // (taban/boost/ölçek) BAĞIMSIZDIR; kararlı gecikme ≈ L px'te sabit kalır
+    // ve kafa→path[0] stub'ı tarafından soğurulur. Uzak yılanlar da artık bu
+    // filtreden geçer: interpolasyon uzlaşma tümsekleri (paket gecikmesi →
+    // ekstrapolasyon → ofset sönümü) eskiden gövde path'ine OLDUĞU GİBİ
+    // yazılıyor ve gövde boyunca ilerleyen bir dalga olarak görünüyordu.
+    PATH_SPATIAL_SMOOTHING_PX: 10.0,  // px — dar dönüşte (r≈68) iç sapma ≤0.7 px
 
     // ── DOGUM DOKUNULMAZLIGI GORSELI ────────────────────────────────────────
     //
@@ -106,45 +150,102 @@ const SnakeConfig = {
     INVULN_MIN_ALPHA: 0.55,      // nabzin en saydam ani
     INVULN_FILL_COLOR: 0xffffff,
 
-    // ── GÖRSEL DECIMATION (mantıksal sct'den BAĞIMSIZ) ───────────────────
-    // Gövde, yarıçapı `SEGMENT_RADIUS * scale` olan dairelerin `spacing`
-    // aralıklarla dizilmesiyle çizilir. spacing scale ile BÜYÜMEZ (12.5→16.9)
-    // ama yarıçap büyür (24→144) — yani yılan büyüdükçe komşu sprite'lar
-    // katlanarak üst üste biner: scale=1'de ~4×, scale=6'da ~17×. Bu fazlalık
-    // saf israftır. Çizilen sprite aralığı (stride*spacing) yarıçapı aşmadığı
-    // sürece siluet KATI kalır, dolayısıyla stride ölçekle birlikte güvenle
-    // artırılabilir: scale=1 → 1 (değişiklik yok), scale=6 → 8 (8× az sprite).
+    // ── VARLIK-DUYARLI ÇİZİM ARALIKLARI (salt görsel, sürekli) ────────────
+    // Mantıksal spacing (getSegmentSpacing) SUNUCUYLA SÖZLEŞMEDİR
+    // (SnakeHeadPathManager.getSegmentSpacingMeters): gövde uzunluğu
+    // L = sct·spacing hitbox'la birebirdir ve DEĞİŞMEZ. Sprite'ların bu uzunluk
+    // üzerindeki dizilimi ise salt görseldir ve kuşanılan karakterin GERÇEK
+    // doku ölçülerinden türetilir (SnakeSkin.getSkinMetrics: pişirme anında
+    // opak sınır kutusundan ölçülür, sprite merkezine göre front/back/halfWidth;
+    // hepsi ×scale). Varlıklar özgün oranlarını korur; ortak olan tek şey gövde
+    // tüpünün 48·scale px'e (sunucu çarpışma çapı) oturmasıdır.
     //
-    // KRİTİK: bu YALNIZCA çizim katmanıdır. `sct`, path uzunluğu, spacing ve
-    // sunucu hitbox'ı hiç DEĞİŞMEZ — çarpışma/ölüm senkronu birebir korunur.
-    RENDER_DECIMATION_ENABLED: true,
-    RENDER_MAX_DRAWN_SPACING_RATIO: 1.0, // çizilen aralık ≤ 1.0 × yarıçap (≥2× binme)
-    RENDER_MAX_STRIDE: 8,
+    //   bodyLen    = body.front + body.back
+    //   bodyExtent = min(bodyLen, 2·body.halfWidth)      // dönüşte de kaplama
+    //
+    //   GÖVDE↔GÖVDE  renderSpacing = max(spacing, overlap(scale) · bodyExtent)
+    //                overlap = MIN + (MAX − MIN) · smoothstep((scale−1)/RANGE)
+    //   KAFA↔BOYUN   neck = head.back + body.front − NECK_TUCK · bodyLen
+    //                (boyun sprite'ının ön kenarı kafanın arka kenarının
+    //                 NECK_TUCK·bodyLen kadar ALTINDA)
+    //   GÖVDE↔KUYRUK kuyruk ön kenarı = L − (1+H)·renderSpacing + body.back
+    //                                   − TAIL_TUCK · tailLen
+    //                (H: sayım histerezisi → son gövde sprite'ının EN GERİDE
+    //                 olabileceği konum; kuyruk sapı her durumda onun altında)
+    //
+    // DİKİŞ GARANTİLERİ (her karakter için):
+    //   • boyun kafanın altında: NECK_TUCK > 0
+    //   • gövde kesintisiz: renderSpacing ≤ MAX·bodyExtent < bodyLen
+    //   • kuyruk sapı gövdenin altında: TAIL_TUCK > 0
+    //   • kuyruk ucu görünür: tailLen·(1 − TAIL_TUCK) > (1+H)·renderSpacing
+    //     (MAX=0.4 → ≤0.46·48·scale; en kısa kuyruk ~52·scale → sağlanır)
+    //
+    // Kalibrasyon: character-1'de sonuçlar sabit oranlı eski sürümle aynıdır
+    // (bodyExtent 48 → 0.25·48=12 … 0.4·48=19.2 = eski 0.5R … 0.8R; kuyruk
+    // ofseti scale=1'de ≈ eski 0.75R).
+    //
+    // SÜREKLİLİK: üç değer de scale'e VE karakter ölçülerine bağlıdır; her biri
+    // kare kare yumuşatılır (SPACING_LERP_RATE) → büyümede ve karakter
+    // değişiminde konum sıçraması yok. Sprite sayısı gövde ucunda birer birer
+    // (büyüme/çöküş animasyonuyla) değişir.
+    BODY_OVERLAP_MIN: 0.25,
+    BODY_OVERLAP_MAX: 0.4,
+    BODY_OVERLAP_SCALE_RANGE: 5,
+    NECK_TUCK_RATIO: 0.5,
+    TAIL_TUCK_RATIO: 0.41,
+    // Karakter değişiminde parça ölçüleri eskiden yeniye smoothstep ile bu
+    // sürede geçer (üstel yumuşatmanın ilk karelerdeki hızlı kaymasını önler).
+    // Gövde aralığı değişimi k. sprite'ı k·Δ kadar kaydırdığı için uzun
+    // yılanlarda süre kısa tutulursa gövde ucu hızlı "akordeon" yapar.
+    // İlk kareden ÖNCE uygulanan karakter (doğum) geçişsiz oturur.
+    SKIN_TRANSITION_MS: 900,
+    // Sprite sayısı eşiğinde (L/renderSpacing ≈ tamsayı) ekle/çıkar titremesini
+    // önler: son aralık (1 + H)·renderSpacing'e kadar esneyebilir.
+    RENDER_COUNT_HYSTERESIS: 0.15,
     SEGMENT_POOL_MAX: 512,               // havuz tavanı (üstü gerçekten destroy)
-
-    // ── STRIDE GEÇİŞ ANİMASYONU (eşik "pop"u önleme) ─────────────────────
-    // Yukarıdaki stride formülü bir BASAMAK fonksiyonudur (Math.floor): sct
-    // bir eşiği geçtiği anda çıktı 2→3 sıçrar ve TEK KAREDE hem sprite'lar
-    // arası mesafe bir `spacing` açılır hem de sprite sayısı ~%33 düşer.
-    // Çözüm: basamak çıktısı (_targetStride) ÇİZİM stride'ından (_renderStride)
-    // ayrıştırılır; çizim değeri hedefe üstel LERP ile yaklaşır ve KESİRLİ
-    // kalabilir (yay-uzunluğu örneklemesi zaten sürekli — bkz.
-    // _positionSegmentsByPath). Böylece aralık ~400 ms boyunca açılır/kapanır.
-    STRIDE_LERP_RATE: 7.0,        // 1/s — τ≈143 ms, %95 yakınsama ≈ 430 ms
-    // Eşiğin tam dibinde salınan sct (yem yerken/boost drain) hedefi her
-    // pakette ileri-geri çevirmesin: yön değiştirmek için bu kadar aşım gerekir.
-    STRIDE_HYSTERESIS: 0.18,
-    STRIDE_SNAP_EPSILON: 0.002,   // bu farkın altında hedefe kilitlen (asimptot kesme)
-    // Decimation nedeniyle fazlalık kalan sprite anında gizlenmez; kuyrukta
-    // path'i takip etmeye devam ederek bu sürede 1→0 solar (ve tersi yönde
-    // yarım kalmışsa aynı yerden geri büyür).
-    SEGMENT_RETIRE_MS: 300,
 
     // ── Viewport culling ────────────────────────────────────────────────
     // Kamera görüş dikdörtgeninin dışındaki segmentler için transform yazımı
     // ve çizim atlanır. Padding, segment yarıçapı ÜSTÜNE eklenir; kenardan
     // giren gövdenin bir kare geç belirmesini önler.
     CULL_PADDING_PX: 96,
+
+    // ── SEGMENT ROTASYONU (doku parıltısı / shimmer önleme) ─────────────
+    // Sprite açısı eskiden TEK bir path parçasının (1.25–4 px) kirişinden
+    // alınıyordu: 0.1 px yanal gürültü ~4.6° dönüş gürültüsü demekti ve
+    // desenli gövde dokusunda titreme olarak görünüyordu. Açı artık
+    // d ± ROTATION_SPAN_FACTOR·spacing noktaları arasındaki geniş kirişten
+    // türetilir, ardından kare-hızından bağımsız üstel filtreden geçer.
+    //
+    // AÇIKLIK: yarım açıklık max(SPAN_FACTOR·spacing, RADIUS_FACTOR·yarıçap).
+    // Simetrik kiriş sabit eğrilikli bir yayda orta noktadaki teğete TAM
+    // paraleldir → açıklığı büyütmek dönüşte sapma üretmez, yalnızca gürültüyü
+    // böler. Kafaya yakın sprite'larda açıklık d'ye kelepçelenir (asimetrik
+    // kiriş kafa gürültüsünü doğrudan açıya taşırdı).
+    ROTATION_SPAN_FACTOR: 0.5,
+    ROTATION_SPAN_RADIUS_FACTOR: 0.6,
+    // FİLTRE: adaptif (One-Euro) alçak geçiren. Kesim frekansı hedef açının
+    // yumuşatılmış açısal hızıyla büyür:
+    //   fc = MIN_CUTOFF_HZ + BETA · |ω̂|      α = 1 − exp(−2π·fc·dt)
+    // Düz/neredeyse düz gidişte ω̂≈0 → fc≈MIN (güçlü süzme, mikro-titreme
+    // emilir); dönüşte fc büyür → gecikme sınırlı kalır. Sabit oranlı eski
+    // filtre (35/s) gürültüyü yalnızca ~%70 bastırıyordu.
+    ROTATION_MIN_CUTOFF_HZ: 2.0,
+    ROTATION_BETA: 2.5,            // Hz / (rad/s)
+    ROTATION_DERIV_CUTOFF_HZ: 5.0, // ω̂ tahmininin kendi kesimi
+    ROTATION_SNAP_RAD: 1.2,        // bu üstü fark filtrelenmez (respawn / teleport)
+
+    // ── SPACING YUMUŞATMASI ─────────────────────────────────────────────
+    // getSegmentSpacing sct ve scale'e SÜREKLİ bağlıdır; her segment ekleme/
+    // çıkarmada k. segment k·Δspacing kadar TEK KAREDE kayıyordu (sct=200'de
+    // kuyruk ~3 px). Çizimde kullanılan spacing hedefe üstel yaklaşır; hard
+    // reset'lerde (_initPathWarmup) anında hedefe oturur.
+    SPACING_LERP_RATE: 4.0,        // 1/s — τ=250ms
+    SPACING_SNAP_EPSILON: 0.0005,  // px
+
+    // Kuyruk görsel ofseti (bkz. ÇİZİM ARALIKLARI). Kuyruk
+    // kimliği değişince ofset bu hızla geçiş yapar.
+    TAIL_OFFSET_BLEND_RATE: 12,    // 1/s — kuyruk kimliği değişince ofset geçişi
 
     // DEBUG: render a ghost marker at the raw server-authoritative head
     // position (player snake only). Visual overlay only — no effect on
@@ -172,9 +273,37 @@ export class Snake {
         // minimumu ~1.28 iken yılanı yarı boyutta çizip boyut asimetrisi
         // yaratıyordu; sonraki paketler zaten sunucu scale'ini uygular.)
         this.scale = Snake.calculateScaleFromSegmentCount(this.sct);
+        // M01 — SUNUCUDAN gelen son kanonik olcek. NaN = "sunucu olcegi henuz
+        // alinmadi"; NaN !== NaN oldugu icin ilk gercek deger daima uygulanir.
+        // Yukaridaki this.scale yalnizca YEREL bir baslangic tahminidir ve
+        // buraya YAZILMAZ — aksi halde sunucunun ayni degeri gonderdigi ilk
+        // paket "degismedi" sayilip gorsel baglama hic kurulmazdi.
+        this._canonicalScale = NaN;
         this.speed = 0;
         this.turnSpeed = 0;
         this.isBoosting = false;
+
+        // ── BOOST UYGUNLUGU: OTORITER SKOR ──────────────────────────────────
+        // Kapi artik segment sayisina degil SKORA bakar (sunucu ile birebir).
+        // Skor TAHMIN EDILMEZ; sunucu her tick SelfPosition.total_score
+        // gonderir ve Game.onSelfPosition bunu buraya yazar. Ilk paket
+        // gelene kadar 0'dir, yani boost dogal olarak kapalidir — dogru
+        // ve guvenli varsayilan.
+        this.authoritativeScore = 0;
+
+        // ── TAHMIN AYRISMASI TESPITI ────────────────────────────────────────
+        // serverBoostActive: sunucunun bildirdigi ETKIN boost (SelfPosition.
+        //   boost_active). Tahmine GECIKME EKLEMEK icin kullanilmaz.
+        // _boostDenied: sunucu, bizim boost ettigimizi iddia ettigimiz halde
+        //   bir tam gidis-donusten uzun sure "boost yok" diyorsa kurulur;
+        //   tahmin birakilir. Niyet birakildiginda veya sunucu boost'u
+        //   onayladiginda temizlenir (bkz. applyAuthoritativeBoost).
+        // _lastBoostChangeAtMs: son YEREL boost gecisinin zamani. Bundan
+        //   once yola cikmis paketler BAYATTIR ve tespit icin kullanilamaz.
+        this.serverBoostActive = false;
+        this._boostDenied = false;
+        this._lastBoostChangeAtMs = -Infinity;
+
         this.nickname = nickname;
         this.lastReconciledSequenceId = 0;
         
@@ -222,23 +351,12 @@ export class Snake {
         this._smoothedError = { x: 0, y: 0 }; // EMA of time-aligned prediction error
         this._correcting = false;             // hysteresis latch
         // this.segments artık MANTIKSAL segment listesi DEĞİL — ÇİZİLEN sprite
-        // listesidir. Uzunluğu ceil(sct / _stride) kadardır; mantıksal uzunluk
-        // her zaman this.sct'tir (sunucu otoritesi, hitbox ile birebir).
+        // listesidir. Uzunluğu her zaman this.sct'tir (1:1; sunucu otoritesi,
+        // hitbox ile birebir).
         this.segments = [];
         // Çıkış animasyonundaki (çökmekte olan) segmentler — this.segments'ten
         // ÇIKARILMIŞ ama henüz görsel olarak yok olmamış ghost'lar: { sprite, t }.
         this._despawningSegments = [];
-        // ── Stride: HEDEF (basamak) vs ÇİZİM (yumuşatılmış) ──────────────
-        // _targetStride  : eşik/basamak fonksiyonunun tamsayı çıktısı (≥1).
-        // _renderStride  : gerçekten çizimde kullanılan KESİRLİ değer; her kare
-        //                  _updateStrideAnimation ile hedefe üstel yaklaşır.
-        // Bu ikisinin ayrışması, eşik geçişindeki tek-kare sıçramasını ~400 ms'ye
-        // yayar (bkz. SnakeConfig.STRIDE_LERP_RATE).
-        this._targetStride = 1;
-        this._renderStride = 1;
-        // _syncVisualSegments'in en son uzlaştırdığı sprite sayısı — kesirli
-        // stride ilerlerken gereksiz (O(n)) resync'leri elemek için önbellek.
-        this._wantSpriteCount = 0;
         // Son karede gerçekten çizilen (cull edilmemiş) sprite sayısı — teşhis.
         this._visibleSegmentCount = 0;
         // Sprite havuzu: büyüyen/küçülen yılanların her karede sprite
@@ -252,7 +370,7 @@ export class Snake {
         this._invulnerable = false;
         this._invulnPhase = 0;
         // Su an KUYRUK dokusunu tasiyan sprite. Cizilen segment sayisi her
-        // karede degisebildigi icin (decimation stride, buyume, retire) kuyruk
+        // karede degisebildigi icin (buyume, kisalma) kuyruk
         // kimligi de degisir; referansi tutmak, degisim OLMADIGI karelerde
         // hicbir setTexture cagrisi yapmamayi saglar.
         this._tailSprite = null;
@@ -277,6 +395,27 @@ export class Snake {
         this.eyeL = null; this.eyeR = null;
         this.pupilL = null; this.pupilR = null;
         this._lookVec = new Phaser.Math.Vector2(1, 0);
+        // Çizimde kullanılan yumuşatılmış spacing (bkz. SPACING_LERP_RATE).
+        // null → henüz kurulmadı, getSegmentSpacing hedefi döner.
+        this._smoothedSpacing = null;
+        // Varlık-duyarlı çizim aralıkları (salt görsel, yumuşatılmış) — bkz.
+        // ÇİZİM ARALIKLARI. null → henüz kurulmadı.
+        this._smoothedRenderSpacing = null;
+        this._smoothedNeck = null;
+        this._smoothedTailOffset = null;
+        // Kuşanılan karakter. Dokular ve ölçüler SnakeSkin'den bu id ile gelir.
+        this.skinId = SnakeSkin.DEFAULT_SKIN_ID;
+        this._requestedSkinId = this.skinId;
+        // Karakter değişimindeki ölçü geçişi (bkz. _advanceSkinBlend); null → yok.
+        this._skinBlend = null;
+        // _positionSegmentsByPath yürüyüş imleci + tekrar kullanılan örnek
+        // nesneleri (kare başına tahsis yok).
+        this._walkIdx = 0;
+        this._walkBase = 0;
+        this._walkStub = 0;
+        this._sampleA = { x: 0, y: 0 };
+        this._sampleB = { x: 0, y: 0 };
+        this._sampleC = { x: 0, y: 0 };
         this.create(x, y, initialAngle);
     }
 
@@ -308,25 +447,380 @@ export class Snake {
      * isBoosting parametresi opsiyoneldir: girdi katmani, o karede GONDERILECEK
      * boost durumunu bilir ve henuz setBoost() calismamis olabilir, bu yuzden
      * niyet edilen durumu disaridan verebilir.
+     *
+     * SALT OKUNUR: bu metot ve cagirdigi _resolveBoostActive HICBIR durum
+     * yazmaz. Kac kez, hangi argumanla cagrilirsa cagrilsin yilanin durumu
+     * degismez — ozellikle _boostDenied kilidi. (Eski surumde bu garanti
+     * yoktu ve kilit her karede sessizce siliniyordu.)
      */
     getTurnRateRadPerSec(isBoosting = this.isBoosting) {
-        const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
-        const speed = (isBoosting && canBoost)
+        // Kapi, simulasyonun kullandigi kapinin TA KENDISIDIR (_resolveBoostActive).
+        // Girdi kelepcesi ile simulasyon kelepcesinin ayni esikten gecmesi sart.
+        const speed = this._resolveBoostActive(isBoosting)
             ? this.calculateBoostSpeed()
             : this.calculateBaseSpeed();
         const speedTurnFactor = Math.min(1, speed / this.config.TURN_SPEED_INFLUENCE);
         return this.config.TURN_ANGLE_BASE * this.calculateScaleTurnFactor() * speedTurnFactor;
     }
 
+    // Çizim/path katmanının kullandığı spacing: hedefin (formül) yumuşatılmış
+    // hali. Kararlı durumda formülle BİREBİR aynıdır.
     getSegmentSpacing() {
+        return this._smoothedSpacing ?? this._computeTargetSegmentSpacing();
+    }
+
+    // Sunucu formülünün aynası — anlık (yumuşatılmamış) hedef.
+    _computeTargetSegmentSpacing() {
         const base = this.config.SEGMENT_SPACING_BASE;
         const lenF = Phaser.Math.Clamp((this.sct - 30) / 200, 0, 1);
         const scF = Phaser.Math.Clamp((this.scale - 1) / 5, 0, 1);
         const extra = 0.35 * (0.7 * lenF + 0.3 * scF);
         return base * (1 + extra);
     }
+    // ── VARLIK-DUYARLI ÇİZİM ARALIKLARI ──────────────────────────────────
+    // Tüm hedefler scale'e ve kuşanılan karakterin ÖLÇÜLEN ölçülerine bağlıdır;
+    // çizimde yumuşatılmış halleri kullanılır (bkz. _updateSpacingAnimation).
+
+    // Karakter ölçüleri × scale. Kare başına birkaç kez okunur; nesne yalnızca
+    // ölçüler (karakter/geçiş) ya da scale değiştiğinde yeniden hesaplanır.
+    _skinExtents() {
+        const blend = this._skinBlend;
+        const m = blend ? blend.out : SnakeSkin.getSkinMetrics(this.skinId);
+        const version = blend ? blend.version : 0;
+        const s = this.scale;
+        const c = this._extentsCache ?? (this._extentsCache = {});
+        if (c.metrics === m && c.version === version && c.scale === s) return c;
+        c.metrics = m;
+        c.version = version;
+        c.scale = s;
+        c.headBack = m.head.back * s;
+        c.bodyFront = m.body.front * s;
+        c.bodyBack = m.body.back * s;
+        c.bodyLen = (m.body.front + m.body.back) * s;
+        c.bodyExtent = Math.min(c.bodyLen, 2 * m.body.halfWidth * s);
+        c.tailFront = m.tail.front * s;
+        c.tailLen = (m.tail.front + m.tail.back) * s;
+        c.maxExtent = Math.max(m.body.front, m.body.back, m.body.halfWidth,
+            m.tail.front, m.tail.back, m.tail.halfWidth) * s;
+        return c;
+    }
+
+    // GÖVDE↔GÖVDE hedefi.
+    _computeTargetRenderSpacing() {
+        const cfg = this.config;
+        const t = Phaser.Math.Clamp((this.scale - 1) / cfg.BODY_OVERLAP_SCALE_RANGE, 0, 1);
+        const eased = t * t * (3 - 2 * t);
+        const overlap = cfg.BODY_OVERLAP_MIN + (cfg.BODY_OVERLAP_MAX - cfg.BODY_OVERLAP_MIN) * eased;
+        return Math.max(this._computeTargetSegmentSpacing(), overlap * this._skinExtents().bodyExtent);
+    }
+
+    // KAFA↔BOYUN hedefi: kafa merkezinden ilk gövde sprite'ının merkezine.
+    _computeTargetNeckDistance() {
+        const e = this._skinExtents();
+        const neck = e.headBack + e.bodyFront - this.config.NECK_TUCK_RATIO * e.bodyLen;
+        // Çok büyük gövde / çok küçük kafa: boyun kafanın önüne geçmesin.
+        return Math.max(this._computeTargetSegmentSpacing(), neck);
+    }
+
+    // GÖVDE↔KUYRUK hedefi: kuyruk sprite merkezinin L'ye göre ofseti (px,
+    // negatif olabilir). Hesap hedef renderSpacing ile yapılır; yumuşatma
+    // ikisini birlikte yürütür.
+    _computeTargetTailOffset() {
+        if (!SnakeSkin.isReady()) return 0;
+        const cfg = this.config;
+        const e = this._skinExtents();
+        const lastGapMax = (1 + cfg.RENDER_COUNT_HYSTERESIS) * this._computeTargetRenderSpacing();
+        const tailFrontEdge = -lastGapMax + e.bodyBack - cfg.TAIL_TUCK_RATIO * e.tailLen;
+        return tailFrontEdge + e.tailFront;
+    }
+
+    // Çizimde kullanılan (yumuşatılmış) sprite aralığı. Mantıksal spacing'in
+    // altına ASLA inmez → sprite sayısı hiçbir zaman sct'yi aşmaz.
+    getRenderSpacing() {
+        const target = this._smoothedRenderSpacing ?? this._computeTargetRenderSpacing();
+        return Math.max(this.getSegmentSpacing(), target);
+    }
+
+    getNeckDistance() {
+        return this._smoothedNeck ?? this._computeTargetNeckDistance();
+    }
+
+    _snapSpacingToTarget() {
+        this._smoothedSpacing = this._computeTargetSegmentSpacing();
+        this._smoothedRenderSpacing = this._computeTargetRenderSpacing();
+        this._smoothedNeck = this._computeTargetNeckDistance();
+        this._smoothedTailOffset = this._computeTargetTailOffset();
+    }
+
+    _updateSpacingAnimation(dtMs) {
+        this._advanceSkinBlend(dtMs);
+        const dtSec = Math.min(dtMs, this.config.MAX_SIM_DT_MS) / 1000;
+        const alpha = 1 - Math.exp(-this.config.SPACING_LERP_RATE * dtSec);
+        this._smoothedSpacing = this._easeToward(
+            this._smoothedSpacing, this._computeTargetSegmentSpacing(), alpha);
+        // Görsel aralıklar scale'e (sunucudan ~1/106'lık adımlar) ve karakter
+        // ölçülerine bağlıdır. Yumuşatılmazsa k. sprite k·Δ kadar tek karede
+        // kayardı.
+        this._smoothedRenderSpacing = this._easeToward(
+            this._smoothedRenderSpacing, this._computeTargetRenderSpacing(), alpha);
+        this._smoothedNeck = this._easeToward(
+            this._smoothedNeck, this._computeTargetNeckDistance(), alpha);
+        this._smoothedTailOffset = this._easeToward(
+            this._smoothedTailOffset, this._computeTargetTailOffset(), alpha);
+    }
+
+    _easeToward(cur, target, alpha) {
+        if (cur === null || !Number.isFinite(cur)) return target;
+        if (Math.abs(target - cur) <= this.config.SPACING_SNAP_EPSILON) return target;
+        return cur + (target - cur) * alpha;
+    }
+
+    // Gövde boyunca çizilecek sprite sayısı, histerezisli. Sprite i,
+    // d = neck + i·renderSpacing'de; son sprite (kuyruk) L'dedir:
+    //   n = ceil((L − neck) / renderSpacing) + 1
+    // L = sct·spacing mantıksal gövde uzunluğudur (sunucu hitbox'ı).
+    _desiredSpriteCount() {
+        if (!(this.sct > 0)) return 0;
+        const bodyLen = this.sct * this.getSegmentSpacing();
+        const raw = Math.max(0, bodyLen - this.getNeckDistance()) / this.getRenderSpacing() + 1;
+        const exact = Phaser.Math.Clamp(Math.ceil(raw - 1e-6), 1, this.sct);
+        const cur = this.segments.length;
+        if (cur <= 0) return exact;
+        const h = this.config.RENDER_COUNT_HYSTERESIS;
+        // Ekleme: son aralık (1 + H)·renderSpacing'i aşana kadar bekle.
+        if (exact > cur && raw <= cur + h) return Phaser.Math.Clamp(cur, 1, this.sct);
+        // Çıkarma: gövde bir aralık + H kadar kısalana kadar bekle.
+        if (exact < cur && raw > cur - 1 - h && cur <= this.sct) return cur;
+        return exact;
+    }
+
+    // Kuyruk sprite'ının path boyunca görsel ofseti (px, negatif olabilir).
+    // Daire dokusu geri düşüşünde kuyruk ayrı bir sanat değildir → ofset yok.
+    _tailVisualOffset() {
+        if (!SnakeSkin.isReady()) return 0;
+        return this._smoothedTailOffset ?? this._computeTargetTailOffset();
+    }
+
+    // Path tamponunun mantıksal gövdenin ÖTESİNDE kapsaması gereken ek uzunluk:
+    // kuyruk ofseti + rotasyon örneklemesinin yarım açıklığı.
+    _visualPathOverhang() {
+        return Math.max(0, this._tailVisualOffset(), this._computeTargetTailOffset())
+            + this._rotationHalfSpan();
+    }
+
+    // Rotasyon kirişinin yarım açıklığı (px) — bkz. ROTATION_SPAN_* notu.
+    _rotationHalfSpan() {
+        const cfg = this.config;
+        return Math.max(
+            this.getSegmentSpacing() * cfg.ROTATION_SPAN_FACTOR,
+            cfg.SEGMENT_RADIUS * this.scale * cfg.ROTATION_SPAN_RADIUS_FACTOR);
+    }
+
+    _copyMetrics(m) {
+        const part = (p) => ({ front: p.front, back: p.back, halfWidth: p.halfWidth });
+        return { head: part(m.head), body: part(m.body), tail: part(m.tail) };
+    }
+
+    // Karakter ölçü geçişini ilerletir: out = from + (to − from)·smoothstep(t).
+    // Ölçüler karakterden karaktere farklı olduğu için geçiş ŞART: aksi halde
+    // aralıklar tek karede yeni değerlerine sıçrar ve gövde "kayar".
+    _advanceSkinBlend(dtMs) {
+        const b = this._skinBlend;
+        if (!b) return;
+        b.t += Math.max(0, dtMs) / Math.max(1, this.config.SKIN_TRANSITION_MS);
+        if (b.t >= 1) {
+            this._skinBlend = null;
+            return;
+        }
+        const e = b.t * b.t * (3 - 2 * b.t);
+        for (const part of ['head', 'body', 'tail']) {
+            const o = b.out[part], f = b.from[part], g = b.to[part];
+            o.front = f.front + (g.front - f.front) * e;
+            o.back = f.back + (g.back - f.back) * e;
+            o.halfWidth = f.halfWidth + (g.halfWidth - f.halfWidth) * e;
+        }
+        b.version++;
+    }
+
+    // ── KARAKTER (SKIN) DEĞİŞİMİ ─────────────────────────────────────────
+    // Karakter gerekiyorsa tembel yüklenir; hazır olduğunda tüm sprite'ların
+    // dokusu ve normalizasyon çarpanı değişir. Aralıklar ANINDA değişmez: yeni
+    // ölçülerden türeyen hedeflere kare kare yaklaşır (konum sıçraması yok).
+    // Yükleme başarısızsa mevcut karakterde kalınır.
+    setSkin(skinId) {
+        const id = Number(skinId);
+        if (!Number.isInteger(id) || !SnakeSkin.SKIN_IDS.includes(id)) return false;
+        this._requestedSkinId = id;
+        if (id === this.skinId) return true;
+        SnakeSkin.ensureSkin(this.scene, id).then((ok) => {
+            // Bu arada yok edildiyse ya da başka bir karakter istendiyse uygulama.
+            if (!ok || this._destroyed || this._requestedSkinId !== id) return;
+            this._applySkinTextures(id);
+        });
+        return true;
+    }
+
+    _applySkinTextures(skinId) {
+        // Ölçü geçişi: şu an KULLANILAN ölçülerden (gerekirse yarım kalmış bir
+        // geçişin ara değerinden) yeni karakterinkine.
+        const from = this._copyMetrics(this._skinBlend
+            ? this._skinBlend.out
+            : SnakeSkin.getSkinMetrics(this.skinId));
+        this.skinId = skinId;
+        if (!this._framesRendered) {
+            // Henüz hiç çizilmedi (doğumda karakter atandı): geçiş yok, yeni
+            // ölçülere doğrudan otur.
+            this._skinBlend = null;
+            this._snapSpacingToTarget();
+        } else {
+            this._skinBlend = {
+                from,
+                to: SnakeSkin.getSkinMetrics(skinId),
+                out: this._copyMetrics(from),
+                t: 0,
+                version: (this._skinBlend?.version ?? 0) + 1,
+            };
+        }
+        if (this.head) {
+            SnakeSkin.applyTexture(this.head, SnakeTexture.HEAD, skinId);
+            SnakeSkin.setSpriteScale(this.head, this.scale);
+        }
+        for (const seg of this.segments) {
+            if (!seg || !seg.active) continue;
+            SnakeSkin.applyTexture(seg, seg._texKey === SnakeTexture.TAIL ? SnakeTexture.TAIL : SnakeTexture.BODY, skinId);
+            SnakeSkin.setSpriteScale(seg, this.scale, seg._animScale ?? 1);
+        }
+        for (const d of this._despawningSegments) {
+            if (!d?.sprite?.active) continue;
+            SnakeSkin.applyTexture(d.sprite, SnakeTexture.BODY, skinId);
+            SnakeSkin.setSpriteScale(d.sprite, this.scale, d.t);
+        }
+        // Havuzdaki sprite'lar edinimde (_acquireSegmentSprite) yeniden dokulanır.
+    }
+
     getSampleMinStep() { return Math.max(this.config.PATH_SAMPLE_MIN_STEP, this.getSegmentSpacing() * 0.1); }
-    setBoost(b) { this.isBoosting = b; }
+    /**
+     * ETKIN boost durumunu yazar ve gecis ANINI kaydeder.
+     *
+     * Gecis ani, sunucudan gelen otoriter bayragin BAYAT olup olmadigina karar
+     * vermek icin gereklidir: biz durumu degistirdikten sonra yola cikmis ilk
+     * paketler hala eski durumu tasir (bkz. applyAuthoritativeBoost).
+     */
+    setBoost(b) {
+        const next = !!b;
+        if (next !== this.isBoosting) {
+            this.isBoosting = next;
+            this._lastBoostChangeAtMs = (typeof performance !== 'undefined')
+                ? performance.now()
+                : Date.now();
+        }
+    }
+
+    /**
+     * BOOST UYGUNLUK KAPISI — sunucunun SnakeDynamicsSystem.resolveBoostActive
+     * fonksiyonunun aynasidir (skor esigi + histerezis), arti YALNIZCA
+     * client'ta bulunan bir ayrisma kilidi.
+     *
+     * @param {boolean} requested Oyuncunun o karedeki NIYETI (tus basili mi).
+     * @returns {boolean} ETKIN boost.
+     *
+     * SAF FONKSIYON — HICBIR DURUM YAZMAZ.
+     *
+     * NEDEN KRITIK: bu metot yalnizca girdi isleme gecisinden degil,
+     * getTurnRateRadPerSec uzerinden SALT-OKUNUR sorgu yolundan da cagrilir
+     * (Game._applySteeringLimiter ve updateFromInput'un kendi turnSpeed
+     * hesabi). Onceki surumde burada `if (!requested) this._boostDenied = false`
+     * vardi ve kilit ETKIN durumu okumak icin yapilan her cagrida siliniyordu:
+     * updateFromInput once kapiyi cagirip effectiveBoosting=false aliyor
+     * (kilitli oldugu icin), hemen ardindan getTurnRateRadPerSec(false)
+     * cagiriyordu → `requested=false` "tus birakildi" sanilip kilit
+     * temizleniyordu. Yani kilit gercek oyun dongusunde TEK KARE bile
+     * yasamiyordu; oyuncu tusu basili tutarken bile her karede sifirlaniyordu.
+     *
+     * Kilit artik YALNIZCA iki yerde degistirilir; ikisi de acik, tekil
+     * gecislerdir:
+     *   • updateFromInput  — girdi isleme gecisi (tus birakildiginda temizler)
+     *   • applyAuthoritativeBoost — snapshot isleyicisi (kurar / onayla temizler)
+     */
+    _resolveBoostActive(requested) {
+        if (!requested) return false;
+        if (this._boostDenied) return false;
+
+        const score = this.authoritativeScore;
+
+        return this.isBoosting
+            ? score >= this.config.BOOST_EXIT_SCORE
+            : score >= this.config.BOOST_ENTRY_SCORE;
+    }
+
+    /**
+     * Sunucunun ETKIN boost durumunu uygular (SelfPosition.boost_active).
+     *
+     * ONEMLI — BU BIR GECIKME KAYNAGI DEGILDIR. Bayragi dogrudan isBoosting'e
+     * yazmak, boost basiminin tam bir gidis-donus kadar gecikmesi demek
+     * olurdu; oysa mevcut mimari boost'u zaten girdi gecikmesiyle HIZALIYOR
+     * (Game.js _inputDelayQueue), yani client ve sunucu ayni simulasyon
+     * aninda basliyor. Normal durumda iki taraf ayni karari verdigi icin bu
+     * fonksiyon HICBIR SEY yapmaz.
+     *
+     * Yaptigi tek sey AYRISMA TESPITIDIR:
+     *   • Sunucu "boost var" diyorsa → tahmin dogrulandi, kilit kalkar.
+     *   • Sunucu "boost yok" diyor, biz boost ediyoruz VE paket son yerel
+     *     gecisimizden SONRAKI bir duruma ait (bayat degil) → tahmin
+     *     gercekten yanlis; kilit kurulur, tahmin birakilir.
+     *
+     * Kilit burada TEMIZLENMEZ (sunucu onayi disinda): temizleme kosullari
+     * _resolveBoostActive'de toplanmistir. Burada da temizlenseydi, kilit
+     * kurulur kurulmaz isBoosting false'a dusecegi ve bir sonraki paket
+     * "anlasmazlik yok" goruecegi icin kilit her defasinda tek tick yasar,
+     * ardindan tahmin yeniden acilirdi — snapshot frekansinda salinim.
+     *
+     * @param {boolean} serverActive Sunucunun etkin boost durumu.
+     * @param {number}  staleWindowMs Bir tam gidis-donus + pay.
+     */
+    applyAuthoritativeBoost(serverActive, staleWindowMs) {
+        this.serverBoostActive = !!serverActive;
+
+        if (this.serverBoostActive) {
+            this._boostDenied = false;
+
+            // ── HISTEREZIS LATCH'INI SUNUCUDAN DEVRAL ───────────────────────
+            // Histerezis DURUMLUDUR: "zaten acik" iken taban 120, "kapali"
+            // iken 150'dir. Iki taraf ayni skoru gorse bile LATCH bitleri
+            // ayrisabilir ve o zaman ayni skor farkli kararlar uretir.
+            //
+            // Somut ayrisma: skor 140 (banda ait), sunucu boost ediyor
+            // (latch acik, 140 >= 120). Client latch'i kapaliysa 140 < 150
+            // oldugu icin boost'u REDDEDER → client taban hizda, sunucu boost
+            // hizinda; fark ~225 px/sn ile birikir ve reconciliation bunu
+            // gorunmeyen kalici bir kafa ofseti olarak sabitler.
+            //
+            // Sunucu otoritedir: bayragi latch olarak DEVRALIRIZ, boylece bir
+            // sonraki _resolveBoostActive CIKIS dalindan (>= 120) gecer.
+            // Bu boost'u ZORLAMAZ — niyet hala gereklidir: oyuncu tusu
+            // birakmissa _resolveBoostActive(false) yine false doner.
+            //
+            // setBoost KULLANILMAZ: o, _lastBoostChangeAtMs'i gunceller ve o
+            // damga "benim YEREL kararim" anlamina gelir. Burada yaptigimiz
+            // sey bir karar degil, sunucunun kararini benimsemektir; damgayi
+            // ilerletmek mesru bir ayrisma tespitini bir pencere geciktirirdi.
+            this.isBoosting = true;
+            return;
+        }
+        if (!this.isBoosting) {
+            // Anlasmazlik yok — degerlendirilecek bir sey de yok. Kilit
+            // (varsa) KORUNUR; bkz. yukaridaki javadoc.
+            return;
+        }
+
+        const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+        const staleWindow = Number.isFinite(staleWindowMs) ? staleWindowMs : 250;
+        if (now - this._lastBoostChangeAtMs < staleWindow) {
+            // Bu paket biz durumu degistirmeden ONCE yola cikmis olabilir.
+            return;
+        }
+        this._boostDenied = true;
+    }
 
     _normalizeSegmentCount(rawCount) {
         const count = Math.round(Number(rawCount));
@@ -343,8 +837,7 @@ export class Snake {
     }
 
     // ── Sprite havuzu ────────────────────────────────────────────────────
-    // Yılan sürekli büyüyüp küçüldüğü (ve stride değiştikçe görsel sprite
-    // sayısı oynadığı) için sprite'lar destroy edilmez, havuza iade edilir.
+    // Yılan sürekli büyüyüp küçüldüğü için sprite'lar destroy edilmez, havuza iade edilir.
     // Böylece steady-state'te sıfır tahsis → GC spike yok.
     _acquireSegmentSprite(x, y, animateIn = false) {
         let seg = this._spritePool.pop();
@@ -357,7 +850,7 @@ export class Snake {
             // registerWorld: world-space objects render via the zoomed main camera
             // only — the zoom-1 UI camera must ignore them (see Game.js).
             seg = this.scene.registerWorld(
-                this.scene.add.sprite(x, y, SnakeSkin.textureKey(SnakeTexture.BODY)).setOrigin(0.5)
+                this.scene.add.sprite(x, y, SnakeSkin.textureKey(SnakeTexture.BODY, this.skinId)).setOrigin(0.5)
             );
         }
         // HAVUZDAN GELEN SPRITE KUYRUK OLMUS OLABILIR: havuza iade edilirken
@@ -365,7 +858,7 @@ export class Snake {
         // hem yanlis doku hem YANLIS OLCEK carpani tasirdi (kuyruk 0.122,
         // govde 0.166). Her edinimde dokuyu govdeye geri almak bu sinifi
         // hatayi tamamen kapatir.
-        SnakeSkin.applyTexture(seg, SnakeTexture.BODY);
+        SnakeSkin.applyTexture(seg, SnakeTexture.BODY, this.skinId);
         // Havuzdan gelen sprite eski turdan tint/blend/alpha tasiyor olabilir.
         // Alpha asagida buyume animasyonuna gore yeniden yazilir.
         if (SnakeSkin.isReady()) SnakeSkin.resetAppearance(seg);
@@ -373,9 +866,12 @@ export class Snake {
         // animateIn=true → 0'dan başlar, _updateSegmentLifecycle ile 1'e büyür.
         seg._animScale = animateIn ? 0 : 1;
         seg._growing = animateIn;
-        // _retiring: decimation yoğunlaşınca (stride ↑) fazlalık kalan sprite.
-        // this.segments'ten ÇIKARILMAZ — kuyrukta path'i takip ederek solar.
-        seg._retiring = false;
+        // Rotasyon filtresi ilk konumlandırmada filtresiz oturur; kuyruk ofseti
+        // sıfırdan başlar (havuzdan gelen sprite eski yaşamın değerini taşımasın).
+        seg._rotInit = false;
+        seg._rotTarget = 0;
+        seg._rotDx = 0;
+        seg._tailBlend = 0;
         SnakeSkin.setSpriteScale(seg, this.scale, animateIn ? 0 : 1);
         seg.setAlpha(animateIn ? 0 : 1);
         return seg;
@@ -386,11 +882,10 @@ export class Snake {
         // Sahneden kopmuş/yok edilmiş sprite havuza girmemeli.
         if (!seg.scene) { seg.destroy?.(); return; }
         seg._growing = false;
-        seg._retiring = false;
         seg._animScale = 1;
         // Kuyruk dokusu havuza SIZMASIN (bkz. _acquireSegmentSprite notu).
         if (seg._texKey === SnakeTexture.TAIL) {
-            SnakeSkin.applyTexture(seg, SnakeTexture.BODY);
+            SnakeSkin.applyTexture(seg, SnakeTexture.BODY, this.skinId);
         }
         if (this._tailSprite === seg) this._tailSprite = null;
         if (this._spritePool.length >= this.config.SEGMENT_POOL_MAX) {
@@ -402,148 +897,42 @@ export class Snake {
         this._spritePool.push(seg);
     }
 
-    // Kaç mantıksal düğümde bir sprite çizilebileceğinin SÜREKLİ (kesirli)
-    // ölçütü. Çizilen aralık (stride*spacing) segment YARIÇAPINI aşmadığı
-    // sürece komşu daireler en az 2× biner ve siluet katı kalır — bu yüzden
-    // tavan yarıçaptan türetilir. scale=1'de sonuç ~1'dir: küçük yılanlarda
-    // davranış BİREBİR decimation'sız haldeki gibi.
+    // Görsel sprite sayısını gövde uzunluğu / render aralığı ile uzlaştırır
+    // (bkz. _desiredSpriteCount). sct'yi ASLA yazmaz — tek yönlü bağımlılık
+    // (mantık → görsel).
     //
-    // NOT: buradan DÖNEN DEĞER kesirlidir ve doğrudan çizime GİTMEZ; eşik
-    // (floor + histerezis) _refreshStrideTarget'ta, yumuşatma
-    // _updateStrideAnimation'da yapılır.
-    _computeRawStrideRatio() {
-        if (!this.config.RENDER_DECIMATION_ENABLED) return 1;
-        const spacing = this.getSegmentSpacing();
-        if (!(spacing > 0.0001)) return 1;
-        const radius = this.config.SEGMENT_RADIUS * this.scale;
-        const maxDrawnSpacing = radius * this.config.RENDER_MAX_DRAWN_SPACING_RATIO;
-        const ratio = maxDrawnSpacing / spacing;
-        return Number.isFinite(ratio) ? Math.max(1, ratio) : 1;
-    }
-
-    // Histerezissiz tamsayı stride (ilk kurulum / hard snap için).
-    _computeRenderStride() {
-        return Phaser.Math.Clamp(
-            Math.floor(this._computeRawStrideRatio()),
-            1,
-            this.config.RENDER_MAX_STRIDE
-        );
-    }
-
-    // ── EŞİK DEĞERLENDİRME (histerezisli basamak) ────────────────────────
-    // Ham oran eşiğin tam dibinde salınırken (yem yeme ↔ boost drain) çıplak
-    // Math.floor her pakette 2↔3 arası çevirirdi; her çevirme yeni bir geçiş
-    // animasyonu başlatır ve titreme olarak görünürdü. Yön değiştirmek için
-    // STRIDE_HYSTERESIS kadar aşım şart koşulur.
-    _refreshStrideTarget() {
-        const raw = this._computeRawStrideRatio();
-        const current = this._targetStride > 0 ? this._targetStride : 1;
-        const h = this.config.STRIDE_HYSTERESIS;
-
-        let next = current;
-        if (raw >= current + 1 + h) next = Math.floor(raw);        // yoğunlaştır
-        else if (raw < current - h) next = Math.floor(raw);        // seyrelt
-
-        this._targetStride = Phaser.Math.Clamp(next, 1, this.config.RENDER_MAX_STRIDE);
-    }
-
-    // Geçiş animasyonunu ATLA — yalnızca yılanın görsel sürekliliğinin zaten
-    // koptuğu anlarda (create / respawn / hard resync) meşrudur.
-    _snapStrideToTarget() {
-        this._targetStride = this._computeRenderStride();
-        this._renderStride = this._targetStride;
-    }
-
-    // Güncel (kesirli) stride ile kaç sprite çizilmeli. Kesirli stride sayıyı
-    // da SÜREKLİ kaydırır: 2→3 geçişinde sct=64 için 32→31→…→22, teker teker.
-    _desiredSpriteCount() {
-        if (!(this.sct > 0)) return 0;
-        const stride = this._renderStride > 0 ? this._renderStride : 1;
-        // 1e-6: ceil'in kayan nokta gürültüsüyle bir fazla sprite üretmesini
-        // engeller (stride tam bölen olduğunda tek sprite'lık titreme).
-        return Math.max(1, Math.ceil(this.sct / stride - 1e-6));
-    }
-
-    // ── KARE BAŞINA STRIDE YUMUŞATMASI ───────────────────────────────────
-    // renderStride ← renderStride + (targetStride − renderStride)·(1 − e^(−λ·Δt))
-    // Kare hızından bağımsız (60/120/144 Hz'de aynı süre) ve simetrik: kütle
-    // kaybında (boost drain / ölüm yemi) hedef düşerken aynı eğriyle geri açılır.
-    _updateStrideAnimation(dtMs) {
-        this._refreshStrideTarget();
-
-        const target = this._targetStride;
-        let render = this._renderStride > 0 ? this._renderStride : target;
-
-        if (Math.abs(target - render) > this.config.STRIDE_SNAP_EPSILON) {
-            const dtSec = Math.min(dtMs, this.config.MAX_SIM_DT_MS) / 1000;
-            const alpha = 1 - Math.exp(-this.config.STRIDE_LERP_RATE * dtSec);
-            render += (target - render) * alpha;
-            // Üstel asimptotu kes — aksi halde sprite sayısı sonsuza dek
-            // "neredeyse" eşikte kalıp her kare resync tetikleyebilirdi.
-            if (Math.abs(target - render) <= this.config.STRIDE_SNAP_EPSILON) render = target;
-        } else {
-            render = target;
-        }
-        this._renderStride = render;
-
-        // Sprite sayısı ancak GERÇEKTEN değiştiğinde uzlaştırılır: geçiş
-        // boyunca ~10 kez, kare başına değil (depth/tint yazımı O(n)).
-        if (this._desiredSpriteCount() !== this._wantSpriteCount) {
-            this._syncVisualSegments(true);
-        }
-    }
-
-    // Fazlalık sprite'ı diziden ÇIKARMADAN solmaya alır. Dizide kaldığı için
-    // _positionSegmentsByPath onu konumlandırmaya devam eder; mantıksal indeksi
-    // sct'ye kelepçelendiğinden kuyrukta gerçek kuyruk sprite'ının üstünde
-    // durur ve oradan söner — ekranda "düşen nokta" bırakmaz.
-    _retireSegmentSprite(seg) {
-        if (!seg || seg._retiring) return;
-        seg._retiring = true;
-        seg._growing = false;
-        if (typeof seg._animScale !== 'number') seg._animScale = 1;
-    }
-
-    // Emekliliği geri alır (stride tekrar seyreldi → sprite yeniden gerekli).
-    // Sıfırdan değil, KALDIĞI ölçekten 1'e büyür — yön değiştiren bir geçiş
-    // ortasında sprite'ın önce yok olup sonra yeniden doğması engellenir.
-    _reviveSegmentSprite(seg) {
-        if (!seg || !seg._retiring) return;
-        seg._retiring = false;
-        seg._growing = (seg._animScale ?? 1) < 0.999;
-    }
-
-    // Görsel sprite sayısını mantıksal sct + güncel KESİRLİ stride'a göre
-    // uzlaştırır. sct'yi ASLA yazmaz — tek yönlü bağımlılık (mantık → görsel).
+    // @param {boolean} animateIn  yeni sprite'lar 0'dan büyüsün (segment ekleme)
+    // @param {boolean} animateOut fazlalık sprite'lar yerinde çöksün (segment
+    //        silme). false iken fazlalık ANINDA havuza döner (sert senkron).
     _syncVisualSegments(animateIn = false, animateOut = false) {
-        this._refreshStrideTarget();
         const want = this._desiredSpriteCount();
-        this._wantSpriteCount = want;
+        const segs = this.segments;
 
-        if (animateOut) {
-            // Sunucu segment SİLDİ → gövde gerçekten kısalıyor: kuyruk
-            // sprite'ı diziden çıkıp yerinde 1→0 çöker (ghost).
-            while (this.segments.length > want) {
-                this._beginSegmentDespawn(this.segments.pop());
-            }
-        } else {
-            // Yalnızca yeniden bölmeleme (stride) → sprite diziden ÇIKARILMAZ;
-            // kuyrukta path'i takip ederek solar (bkz. _retireSegmentSprite).
-            for (let i = want; i < this.segments.length; i++) {
-                this._retireSegmentSprite(this.segments[i]);
-            }
+        // KUYRUK SPRITE'I KALICIDIR: ekleme/çıkarma kuyruğun HEMEN ÖNÜNDEKİ
+        // gövde yuvasında yapılır. Kuyruk dizinin sonunda kalır ve konumu
+        // min(n·renderSpacing, L) = L olduğundan hiç kıpırdamaz; yeni gövde
+        // sprite'ı (n−1)·renderSpacing'de, yani zaten gövdenin içinde büyür.
+        // (Sona eklemek kuyruk kimliğini yeni, 0 ölçekli sprite'a devrederdi:
+        // eski kuyruk gövde dokusuyla ofset kadar dışarıda kalıp geri kayar,
+        // yeni kuyruk ise sıfırdan büyürdü — her eklemede görünür bir boşluk.)
+        while (segs.length > want) {
+            const idx = segs.length >= 2 ? segs.length - 2 : segs.length - 1;
+            const seg = segs.splice(idx, 1)[0];
+            if (animateOut) this._beginSegmentDespawn(seg);
+            else this._releaseSegmentSprite(seg);
         }
 
-        // Geçiş yön değiştirdiyse önce EMEKLİLERİ dirilt — havuzdan yeni
-        // sprite almak, yarı solmuş olanı yerinde geri büyütmekten kötüdür.
-        const revivable = Math.min(want, this.segments.length);
-        for (let i = 0; i < revivable; i++) {
-            this._reviveSegmentSprite(this.segments[i]);
-        }
-
-        while (this.segments.length < want) {
-            const spawn = this._resolveSegmentSpawnPositionBehindTail();
-            this.segments.push(this._acquireSegmentSprite(spawn.x, spawn.y, animateIn));
+        while (segs.length < want) {
+            if (segs.length === 0) {
+                const spawn = this._resolveSegmentSpawnPositionBehindTail();
+                segs.push(this._acquireSegmentSprite(spawn.x, spawn.y, animateIn));
+                continue;
+            }
+            // Yeni gövde sprite'ı kuyruğun konumunda doğar; aynı karede
+            // _positionSegmentsByPath onu (n−1)·renderSpacing'e oturtur.
+            const tail = segs[segs.length - 1];
+            const seg = this._acquireSegmentSprite(tail.x, tail.y, animateIn);
+            segs.splice(segs.length - 1, 0, seg);
         }
 
         this._refreshSegmentDepths();
@@ -568,15 +957,10 @@ export class Snake {
             this.pupilL?.setDepth(this.head.depth + 2);
             this.pupilR?.setDepth(this.head.depth + 2);
         }
-        const stride = this._renderStride > 0 ? this._renderStride : 1;
         for (let i = 0; i < this.segments.length; i++) {
             // Derinlik mantıksal indekse göre (kafa üstte, kuyruk altta).
-            // Kesirli stride'da da KESİN AZALAN kalır — sıralama bozulmaz.
-            this.segments[i].setDepth(this.sct - i * stride);
-            // Şerit rengi ÇİZİLEN indekse göre: mantıksal indeks kullanılsaydı
-            // stride, şerit periyodunu (segmentStripeWidth) örnekleyerek moire
-            // üretirdi. Çizilen indeksle bantlar stride'dan bağımsız olarak
-            // decimation'sız haldeki görünümü korur.
+            this.segments[i].setDepth(this.sct - i);
+            // Şerit rengi sprite indeksine göre (1:1 = mantıksal indeks).
             // Serit rengi YALNIZCA daire dokusu yolunda uygulanir. Sprite
             // skin'de serit, sanatin kendi deseninden gelir; ayrica burada
             // uygulanan 0x2B2B2B (43,43,43) carpani dokuyu %83 karartiyordu.
@@ -637,10 +1021,9 @@ export class Snake {
             return { x: anchorX, y: anchorY };
         }
 
-        // Komşu SPRITE'lar arası mesafe stride*spacing'dir; yeni sprite kuyruğun
-        // o kadar arkasında doğar. (Konum aynı karede _positionSegmentsByPath
-        // tarafından kesinleştirilir — bu yalnızca doğuş anındaki başlangıç.)
-        const spacing = this.getSegmentSpacing() * (this._renderStride > 0 ? this._renderStride : 1);
+        // Yeni sprite kuyruğun bir render aralığı arkasında doğar. (Konum aynı
+        // karede _positionSegmentsByPath tarafından kesinleştirilir.)
+        const spacing = this.getRenderSpacing();
         return {
             x: anchorX + (dirX / length) * spacing,
             y: anchorY + (dirY / length) * spacing
@@ -656,7 +1039,7 @@ export class Snake {
         const spacing = this.getSegmentSpacing();
         // MANTIKSAL uzunluk (sct) üzerinden — path, çizilen sprite sayısını
         // değil gövdenin GERÇEK yay uzunluğunu kapsamalıdır.
-        const requiredLength = (this.sct + 2) * spacing + 600;
+        const requiredLength = (this.sct + 2) * spacing + 600 + this._visualPathOverhang();
 
         while (this.totalPathLen < requiredLength) {
             const tail = this.path[this.path.length - 1];
@@ -689,9 +1072,8 @@ export class Snake {
         const normalizedAddCount = Math.floor(Number(addedSegmentCount));
         if (!Number.isFinite(normalizedAddCount) || normalizedAddCount <= 0) return;
 
-        // Mantıksal uzunluk her zaman TAM eklenen kadar artar; kaç sprite
-        // ekleneceğine (stride'a göre 0 da olabilir) _syncVisualSegments karar
-        // verir. animateIn=true: yeni sprite 0 ölçek/opaklıktan yumuşakça büyür
+        // Mantıksal uzunluk ve sprite sayısı TAM eklenen kadar artar (1:1).
+        // animateIn=true: yeni sprite 0 ölçek/opaklıktan yumuşakça büyür
         // (Issue #3 — ani "pop" yerine üstel yaklaşım).
         this.sct += normalizedAddCount;
         this._syncVisualSegments(true);
@@ -719,9 +1101,6 @@ export class Snake {
         if (!seg) return;
         if (!seg.active) { this._releaseSegmentSprite(seg); return; }
         seg._growing = false;
-        // Ghost listesine geçen sprite artık this.segments'te değil; emeklilik
-        // bayrağı burada temizlenmezse havuza dönene kadar bayat kalırdı.
-        seg._retiring = false;
         // NOT: görünürlük ZORLANMAZ. Cull edilmiş (ekran dışı) bir segment
         // burada görünür yapılsaydı, bayat konumunda bir kare için belirirdi.
         this._despawningSegments.push({ sprite: seg, t: seg._animScale ?? 1 });
@@ -734,29 +1113,9 @@ export class Snake {
 
         // Büyüme: scale = 1 - exp(-k·t) — artımlı, kare-bağımsız üstel yaklaşım.
         const growAlpha = 1 - Math.exp(-this.config.SEGMENT_GROW_RATE * dtSec);
-        // Emeklilik (decimation fazlalığı): 1→0 doğrusal solma.
-        const retireStep = dtMs / Math.max(1, this.config.SEGMENT_RETIRE_MS);
-
-        // TERSTEN: emekliliği biten sprite diziden splice edilir. Emekliler her
-        // zaman kuyruk bölgesindedir (indeks ≥ want), bu yüzden splice AKTİF
-        // sprite indekslerini kaydırmaz — geriye kalan gövde yerinde kalır.
         for (let i = this.segments.length - 1; i >= 0; i--) {
             const seg = this.segments[i];
-            if (!seg || !seg.active) continue;
-
-            if (seg._retiring) {
-                seg._animScale -= retireStep;
-                if (seg._animScale <= 0) {
-                    this.segments.splice(i, 1);
-                    this._releaseSegmentSprite(seg);
-                    continue;
-                }
-                SnakeSkin.setSpriteScale(seg, this.scale, seg._animScale);
-                seg.setAlpha(seg._animScale);
-                continue;
-            }
-
-            if (!seg._growing) continue;
+            if (!seg || !seg.active || !seg._growing) continue;
             seg._animScale += (1 - seg._animScale) * growAlpha;
             if (seg._animScale > 0.995) {
                 seg._animScale = 1;
@@ -812,8 +1171,8 @@ export class Snake {
         // Doku SnakeSkin uzerinden atanir: anahtarla BIRLIKTE o dokuya ait
         // normalizasyon carpani da sprite'a yazilir (bkz. applyTexture).
         this.head = this.scene.registerWorld(
-            this.scene.add.sprite(x, y, SnakeSkin.textureKey(SnakeTexture.HEAD)).setOrigin(0.5));
-        SnakeSkin.applyTexture(this.head, SnakeTexture.HEAD);
+            this.scene.add.sprite(x, y, SnakeSkin.textureKey(SnakeTexture.HEAD, this.skinId)).setOrigin(0.5));
+        SnakeSkin.applyTexture(this.head, SnakeTexture.HEAD, this.skinId);
         if (SnakeSkin.isReady()) SnakeSkin.resetAppearance(this.head);
         SnakeSkin.setSpriteScale(this.head, this.scale);
         // head.rotation MANTIKSAL hareket acisidir ve kod tabaninin her yerinde
@@ -826,11 +1185,7 @@ export class Snake {
         // adımı 120Hz+ ekranlarda merdiven aliasing'i (micro-tremor) üretiyordu.
         // Entegrasyon artık updateFromInput içinde manuel (capped dt) yapılır,
         // sprite pozisyonu postPhysicsUpdate'te sim'den görsel yumuşatmayla türetilir.
-        // Görsel sprite'lar mantıksal sct'den stride ile türetilir (decimation).
-        // SPAWN: geçiş animasyonu yok — görsel süreklilik zaten yok, yılan ilk
-        // karede doğru yoğunlukta çizilmeli (yoksa 400 ms boyunca "toparlanan"
-        // bir gövde görünürdü).
-        this._snapStrideToTarget();
+        // SPAWN: büyüme animasyonu yok — yılan ilk karede tam gövdeyle çizilir.
         this._syncVisualSegments(false);
         // İlk kare dahil doğru boyut: constructor'da hesaplanan (sunucu
         // formülüne eş) scale sprite'lara hemen uygulanır — daha önce ilk
@@ -847,7 +1202,7 @@ export class Snake {
         this.scene.registerWorld(this.trail);
         // ── PROSEDUREL GOZLER: SPRITE KAFADA GEREKSIZ ───────────────────────
         // Daire dokusu ozelliksiz oldugu icin gozler ayri sprite'lar olarak
-        // ciziliyordu. snake_head.png'nin KENDI gozleri var; ustune ikinci bir
+        // ciziliyordu. 1x1.png'nin KENDI gozleri var; ustune ikinci bir
         // goz cifti bindirmek ejderha yuzunu bozar. Sprite hazirsa gozler
         // yaratilmaz — yaratilmayan nesne gizlenmeye, guncellenmeye ve yok
         // edilmeye de ihtiyac duymaz (_updateEyes zaten null-guard'li).
@@ -921,9 +1276,6 @@ export class Snake {
         // için gelecek EntityFull tamamen boş tuvalden inşa edilir.
         this.segments = [];
         this.sct = 0;
-        this._targetStride = 1;
-        this._renderStride = 1;
-        this._wantSpriteCount = 0;
         this.path = [];
         this.pathSegLens = [];
         this.totalPathLen = 0;
@@ -1027,22 +1379,72 @@ export class Snake {
         if (this.nicknameText) {
             this.nicknameText.setText(nickname);
         } else {
-            this.nicknameText = this.scene.registerWorld(this.scene.add.text(this.head.x, this.head.y - 35 * this.scale, nickname, {
+            this.nicknameText = this.scene.registerWorld(this.scene.add.text(this.head.x, this.head.y, nickname, {
                 fontFamily: 'Outfit, Inter, Arial, sans-serif',
-                fontSize: '14px',
+                fontSize: `${NICK_FONT_PX}px`,
                 fontStyle: 'bold',
                 fill: '#ffffff',
                 stroke: '#000000',
-                strokeThickness: 3
+                strokeThickness: 3,
+                // Rasterize at backing-buffer density (bkz. NICKNAME TYPOGRAPHY).
+                // Default 0 → 1 would be upscaled D× by the camera and blur.
+                resolution: this.scene.renderDensity ?? 1
             }).setOrigin(0.5).setDepth(2000));
+            this._nickDensity = this.scene.renderDensity ?? 1;
         }
+        this._layoutNickname();
+    }
+
+    /**
+     * Places + counter-scales the nickname for the CURRENT camera zoom
+     * (formulas: NICKNAME TYPOGRAPHY block at the top of this file).
+     */
+    _layoutNickname() {
+        const text = this.nicknameText;
+        if (!text || !this.head) return;
+
+        // Density changed (monitor switch): re-rasterize once at the new D.
+        const density = this.scene.renderDensity ?? 1;
+        if (density !== this._nickDensity) {
+            this._nickDensity = density;
+            text.setResolution(density);
+        }
+
+        const cssZoom = Math.max(1e-3, this.scene.cssZoom ?? this.scene.cameras.main.zoom);
+        const screenPx = Phaser.Math.Clamp(NICK_FONT_PX * cssZoom, NICK_MIN_SCREEN_PX, NICK_FONT_PX);
+        const objScale = screenPx / (NICK_FONT_PX * cssZoom);
+        if (text.scaleX !== objScale) text.setScale(objScale);
+
+        // Vertical offset: the original 35·scale world px, but never closer than
+        // (head radius + gap + half label height) — once the label stops
+        // shrinking with zoom it would otherwise overlap the head. The CSS-px
+        // terms are converted to world units by dividing by cssZoom.
+        const halfLabelWorld = (text.height * objScale) / 2;
+        const minOffset = this.config.HEAD_RADIUS * this.scale + NICK_GAP_PX / cssZoom + halfLabelWorld;
+        const offset = Math.max(35 * this.scale, minOffset);
+        text.setPosition(this.head.x, this.head.y - offset);
     }
 
     updateFromInput(targetAngleRad, isBoosting, delta, sequenceId = 0) {
         if (!this.alive || !this.isPlayerControlled || !this.head) return;
 
-        const canBoost = this.sct > this.config.BOOST_MIN_SEGMENTS;
-        const effectiveBoosting = isBoosting && canBoost;
+        // isBoosting = oyuncunun NIYETI. Etkin durum, sunucunun kapisiyla
+        // BIREBIR ayni fonksiyondan gecer (skor esigi + histerezis + ayrisma
+        // kilidi). Eski kapi segment sayisina bakiyordu ve sunucunun skor
+        // tabanli kapisiyla ayrisabiliyordu; ustelik segment sayisi sunucudan
+        // ~RTT gecikmeli geldigi icin kapi taban civarinda daima yanlis
+        // taraftaydi.
+        // ── KILIT TEMIZLEME: TEK GIRDI ISLEME NOKTASI ───────────────────────
+        // Tus birakildiginda ayrisma kilidi kalkar. Bu, kapinin ICINDE
+        // yapilamaz: kapi salt-okunur sorgu yolundan da cagrilir ve orada
+        // "etkin durum false" ile "oyuncu tusu birakti" birbirine karisir
+        // (bkz. _resolveBoostActive javadoc). Burasi niyetin GERCEKTEN
+        // okundugu tek yerdir, dolayisiyla dogru yer burasidir.
+        if (!isBoosting) {
+            this._boostDenied = false;
+        }
+
+        const effectiveBoosting = this._resolveBoostActive(isBoosting);
         this.setBoost(effectiveBoosting);
 
         const baseSpeed = this.calculateBaseSpeed();
@@ -1136,9 +1538,6 @@ export class Snake {
                 this.head.setPosition(this.head.x + gapX * alpha, this.head.y + gapY * alpha);
             }
 
-            const k = this._frameAdjustedFactor(this.config.PATH_SMOOTHING_FACTOR, dMs);
-            this._pathFollower.x += (this.head.x - this._pathFollower.x) * k;
-            this._pathFollower.y += (this.head.y - this._pathFollower.y) * k;
 
             // Record the final post-correction SIM position into the prediction
             // history ring — server packets are compared against the LOGICAL
@@ -1150,17 +1549,22 @@ export class Snake {
             while (this._predHistory.length > 0 && this._predHistory[0].t < cutoff) {
                 this._predHistory.shift();
             }
-        } else {
-            this._pathFollower.x = this.head.x;
-            this._pathFollower.y = this.head.y;
         }
 
-        // Eşik geçişi yumuşatması — KONUMLANDIRMADAN ÖNCE: bu kare için geçerli
-        // kesirli _renderStride burada üretilir ve sprite sayısı gerekiyorsa
-        // (tek adım) uzlaştırılır. Aksi halde stride bir kare bayat kalırdı.
-        this._updateStrideAnimation(this._delta || 16.67);
+        // Gövde path'ini besleyen follower — oyuncu ve uzak yılanlar için AYNI
+        // uzamsal filtre (bkz. PATH_SPATIAL_SMOOTHING_PX).
+        this._advancePathFollower();
+
+        // Spacing yumuşatması KONUMLANDIRMADAN ÖNCE: bu karenin spacing'i.
+        this._updateSpacingAnimation(this._delta || 16.67);
+        this._framesRendered = (this._framesRendered || 0) + 1;
+        // Render aralığı kare kare kaydığı için sprite sayısı gövde ucunda
+        // birer birer değişebilir — büyüme/çöküş animasyonuyla uzlaştırılır.
+        if (this._desiredSpriteCount() !== this.segments.length) {
+            this._syncVisualSegments(true, true);
+        }
         this._sampleHeadToPath();
-        this._positionSegmentsByPath();
+        this._positionSegmentsByPath(true);
         // Segment büyüme/çöküş/emeklilik animasyonları (Issue #3) —
         // konumlandırmadan sonra, ölçeği/opaklığı bu karenin dt'siyle ilerlet.
         this._updateSegmentLifecycle(this._delta || 16.67);
@@ -1183,8 +1587,40 @@ export class Snake {
             this._updateEyes(worldPoint.x, worldPoint.y);
         }
         if (this.nicknameText) {
-            this.nicknameText.setPosition(this.head.x, this.head.y - 35 * this.scale);
+            this._layoutNickname();
         }
+    }
+
+    // ── UZAMSAL PATH FOLLOWER ────────────────────────────────────────────
+    // Follower, kafanın bu karede KAT ETTİĞİ MESAFE kadar ilerleyen üstel bir
+    // filtredir: a = 1 − exp(−Δs / L). Zaman tabanlı filtrenin aksine süzme
+    // miktarı kare hızına ve yılan hızına bağlı değildir; dalga boyu ~2πL'den
+    // kısa kafa titreşimleri (uzlaşma düzeltmeleri, interpolasyon tümsekleri)
+    // gövde path'ine ulaşmadan sönümlenir. Kararlı gecikme ≈ L px'tir ve
+    // _positionSegmentsByPath'in kafa→path[0] stub'ı tarafından soğurulur,
+    // yani boyun mesafesi değişmez.
+    _advancePathFollower() {
+        const f = this._pathFollower;
+        const head = this.head;
+        if (!f || !head) return;
+
+        const last = this._followerHeadPrev;
+        const moved = last ? Math.hypot(head.x - last.x, head.y - last.y) : 0;
+        if (last) { last.x = head.x; last.y = head.y; }
+        else this._followerHeadPrev = { x: head.x, y: head.y };
+
+        const L = this.config.PATH_SPATIAL_SMOOTHING_PX;
+        const gap = Math.hypot(head.x - f.x, head.y - f.y);
+        // Işınlanma / hard resync: filtre geçmişi anlamsız → otur.
+        if (!(L > 0) || gap > this.config.VISUAL_SNAP_DISTANCE) {
+            f.x = head.x;
+            f.y = head.y;
+            return;
+        }
+        if (!(moved > 0)) return;
+        const a = 1 - Math.exp(-moved / L);
+        f.x += (head.x - f.x) * a;
+        f.y += (head.y - f.y) * a;
     }
 
     _frameAdjustedFactor(baseFactor, delta) {
@@ -1514,9 +1950,12 @@ export class Snake {
         this.path = [new Phaser.Math.Vector2(x, y)];
         this.pathSegLens = [];
         this.totalPathLen = 0;
+        // Hard reset: görsel süreklilik zaten kopuk → spacing geçişi atlanır.
+        this._snapSpacingToTarget();
         const spacing = this.getSegmentSpacing();
-        // MANTIKSAL uzunluk (sct) — decimation path'i KISALTMAZ.
-        const needLen = (this.sct + 1) * spacing + 400;
+        // MANTIKSAL uzunluk (sct) — decimation path'i KISALTMAZ. Kuyruk ofseti
+        // ve rotasyon açıklığı için görsel taşma payı eklenir.
+        const needLen = (this.sct + 1) * spacing + 400 + this._visualPathOverhang();
         const angle = this.head ? this.head.rotation : 0;
         const dir = new Phaser.Math.Vector2(-Math.cos(angle), -Math.sin(angle));
         for (let carried = 0; carried < needLen; carried += spacing) {
@@ -1545,7 +1984,7 @@ export class Snake {
             this.pathSegLens.unshift(dist);
             this.totalPathLen += dist;
             const spacing = this.getSegmentSpacing();
-            const maxNeeded = (this.sct + 2) * spacing + 600;
+            const maxNeeded = (this.sct + 2) * spacing + 600 + this._visualPathOverhang();
             while (this.totalPathLen > maxNeeded && this.path.length > 2) {
                 const rem = this.pathSegLens.pop();
                 if (rem !== undefined) this.totalPathLen -= rem;
@@ -1556,9 +1995,9 @@ export class Snake {
 
     // Gövdenin her karedeki SICAK DÖNGÜSÜ. Üç optimizasyon içerir:
     //
-    //  1. DECIMATION — sprite i, mantıksal düğüm min((i+1)*stride, sct)'e
-    //     yerleşir. Son sprite her zaman TAM kuyrukta (sct*spacing) durur, yani
-    //     gövdenin görsel uzunluğu decimation'dan bağımsız olarak DEĞİŞMEZ.
+    //  1. VARLIK-DUYARLI DİZİLİM — sprite i, d = min(neck + i·renderSpacing, L)
+    //     konumuna yerleşir; son sprite (kuyruk) TAM gövde ucundadır (L) ve
+    //     kuyruk ofsetiyle ötelenir.
     //
     //  2. TEK GEÇİŞLİ YÜRÜYÜŞ — eski kod her segment için
     //     _pointAndAngleAtDistance ile path'i BAŞTAN yürüyordu: O(sprite × path).
@@ -1568,7 +2007,12 @@ export class Snake {
     //
     //  3. CULLING — kamera görüş dikdörtgeni dışındaki sprite için transform
     //     yazımı ve çizim atlanır (setVisible(false) → render listesinden düşer).
-    _positionSegmentsByPath() {
+    // @param {boolean} [frameStep=false] true YALNIZCA kare döngüsünden
+    //        (postPhysicsUpdate) çağrılırken: rotasyon filtresi bu karenin dt'si
+    //        ile ilerler. Diğer tüm çağrılar (seed, respawn, heading, resync)
+    //        kopuk anlardır → açılar filtresiz oturur, bayat dt ile fazladan
+    //        filtre adımı atılmaz.
+    _positionSegmentsByPath(frameStep = false) {
         if (this.path.length < 2) return;
         const segs = this.segments;
         if (segs.length === 0) return;
@@ -1576,23 +2020,35 @@ export class Snake {
         const head = this.head;
         if (!head) return;
 
-        const spacing = this.getSegmentSpacing();
-        // KESİRLİ stride: yay-uzunluğu sorgusu (d) zaten sürekli bir büyüklük
-        // ve aşağıdaki yürüyüş path parçaları arasında lerp ediyor — yani
-        // 2.37 gibi bir stride tamamen geçerli bir örnekleme adımıdır. Eşik
-        // geçişinin tek-kare sıçraması tam BURADA soğurulur.
-        const stride = this._renderStride > 0 ? this._renderStride : 1;
+        const cfg = this.config;
+        // Mantıksal gövde uzunluğu (hitbox) ve sprite dizilim aralığı.
+        const bodyLen = this.sct * this.getSegmentSpacing();
+        const renderSpacing = this.getRenderSpacing();
+        const neck = Math.min(this.getNeckDistance(), bodyLen);
+        const lastIndex = segs.length - 1;
+
+        // Kuyruk kimliği KONUMLANDIRMADAN ÖNCE güncellenir: kuyruk ofseti bu
+        // karenin kuyruk sprite'ına uygulanmalı (bir kare bayat değil).
+        this._syncTailTexture();
+        const tailSprite = this._tailSprite;
+        const tailOffset = this._tailVisualOffset();
+        const dtSec = Math.min(this._delta || 16.67, cfg.MAX_SIM_DT_MS) / 1000;
+        const tailBlendAlpha = 1 - Math.exp(-cfg.TAIL_OFFSET_BLEND_RATE * dtSec);
+        const halfSpan = this._rotationHalfSpan();
+        const twoPiDt = 2 * Math.PI * dtSec;
+        const derivAlpha = 1 - Math.exp(-twoPiDt * cfg.ROTATION_DERIV_CUTOFF_HZ);
 
         // ── Culling penceresi (dünya uzayı) ──────────────────────────────
-        // Padding'e segment YARIÇAPI eklenir: merkezi hemen dışarıda olan ama
-        // gövdesi hâlâ görünen büyük segmentler kırpılmamalı.
+        // Padding'e segment YARIÇAPININ İKİ KATI eklenir: kuyruk dokusu
+        // merkezinden ~1.84·yarıçap uzanır; merkezi hemen dışarıda olan ama
+        // gövdesi/kuyruğu hâlâ görünen sprite'lar kırpılmamalı.
         // AYRICA: worldView kameranın BİR ÖNCEKİ karedeki görüşüdür (burası
         // render'dan önce, update fazında çalışır). CULL_PADDING_PX bu bir
-        // karelik gecikmeyi de soğuracak kadar cömert tutulmuştur — boost
-        // hızında (~7.5 px/kare) 96 px ≈ 12 kare pay.
+        // karelik gecikmeyi de soğuracak kadar cömert tutulmuştur.
         const view = this.scene?.cameras?.main?.worldView;
         const cullActive = !!(view && view.width > 0 && view.height > 0);
-        const pad = this.config.CULL_PADDING_PX + this.config.SEGMENT_RADIUS * this.scale;
+        // Padding'e karakterin en uzun gövde/kuyruk uzantısı (×1.1 pay) eklenir.
+        const pad = cfg.CULL_PADDING_PX + this._skinExtents().maxExtent * 1.1;
         const minX = cullActive ? view.x - pad : 0;
         const maxX = cullActive ? view.right + pad : 0;
         const minY = cullActive ? view.y - pad : 0;
@@ -1604,82 +2060,167 @@ export class Snake {
         const p0 = this.path[0];
         let stubLen = p0 ? Math.hypot(p0.x - head.x, p0.y - head.y) : 0;
         if (!(stubLen > 0.0001)) stubLen = 0;
+        this._walkIdx = 0;
+        this._walkBase = 0;
+        this._walkStub = stubLen;
 
-        const lens = this.pathSegLens;
-        const lastPathPoint = this.path[this.path.length - 1];
-        let walkIdx = 0;
-        let walkBase = 0;
+        const pos = this._sampleA;
+        const front = this._sampleB;
+        const back = this._sampleC;
         let visibleCount = 0;
+        // Path tükendiğinde / dejenere kirişte kullanılacak son geçerli açı.
+        // Gövde açı kuralı: kafaya yakın noktadan KUYRUĞA doğru (geri yön).
+        let lastAngle = head.rotation + Math.PI;
 
         for (let i = 0; i < segs.length; i++) {
             const seg = segs[i];
             if (!seg || !seg.active) continue;
 
-            // Mantıksal düğüm eşlemesi — kuyruk sprite'ı tam sct'ye kelepçelenir.
-            // Kelepçe aynı zamanda EMEKLİ (solmakta olan) sprite'ları da kuyruğa
-            // toplar: indeksleri ≥ want olduğundan (i+1)*stride ≥ sct'tir, yani
-            // gövdeden kopmadan gerçek kuyruğun üstünde sönerler.
-            const logicalIndex = Math.min((i + 1) * stride, this.sct);
-            const d = logicalIndex * spacing;
+            // Sprite i: neck + i·renderSpacing. Son sprite (kuyruk) gövde UCUNA
+            // (L) oturur → görsel uzunluk her zaman sct·spacing'dir.
+            let d = i === lastIndex ? bodyLen : Math.min(neck + i * renderSpacing, bodyLen);
 
-            let px, py, pa;
-
-            if (stubLen > 0 && d <= stubLen) {
-                const t = d / stubLen;
-                px = Phaser.Math.Linear(head.x, p0.x, t);
-                py = Phaser.Math.Linear(head.y, p0.y, t);
-                pa = Phaser.Math.Angle.Between(head.x, head.y, p0.x, p0.y);
-            } else {
-                const dd = d - stubLen;
-                // İmleci ileri taşı (d monoton arttığı için asla geri gitmez).
-                while (walkIdx < lens.length && walkBase + lens[walkIdx] < dd) {
-                    walkBase += lens[walkIdx];
-                    walkIdx++;
-                }
-                const a = this.path[walkIdx];
-                const b = this.path[walkIdx + 1];
-                if (walkIdx >= lens.length || !a || !b) {
-                    // Path tükendi → kuyruk noktasına yasla (eski davranış).
-                    const tail = lastPathPoint ?? head;
-                    px = tail.x;
-                    py = tail.y;
-                    pa = head.rotation;
-                } else {
-                    const segLen = lens[walkIdx];
-                    const t = segLen > 0.0001 ? (dd - walkBase) / segLen : 0;
-                    px = Phaser.Math.Linear(a.x, b.x, t);
-                    py = Phaser.Math.Linear(a.y, b.y, t);
-                    pa = Phaser.Math.Angle.Between(a.x, a.y, b.x, b.y);
-                }
+            // Kuyruk ofseti — yalnızca çizim. Kuyruk kimliği değiştiğinde
+            // (büyüme/kısalma) ofset sıçramasın diye sprite başına
+            // 0↔1 arasında üstel geçiş yapar.
+            const blendTarget = (seg === tailSprite && tailOffset !== 0) ? 1 : 0;
+            let blend = seg._tailBlend ?? 0;
+            if (blend !== blendTarget) {
+                blend += (blendTarget - blend) * tailBlendAlpha;
+                if (Math.abs(blendTarget - blend) < 0.001) blend = blendTarget;
+                seg._tailBlend = blend;
             }
+            if (blend > 0) d = Math.max(0, d + tailOffset * blend);
+
+            if (!this._samplePathAt(d, pos)) {
+                // Path tükendi → kuyruk noktasına yaslan (eski davranış).
+                const tail = this.path[this.path.length - 1] ?? head;
+                pos.x = tail.x;
+                pos.y = tail.y;
+            }
+            const px = pos.x;
+            const py = pos.y;
 
             // ── Culling ──────────────────────────────────────────────────
             // Ekran dışında: transform YAZILMAZ (konum bir sonraki görünür
             // karede zaten yeniden hesaplanıp yazılır, bayatlık kalıcı değil).
+            // Rotasyon filtresi de sıfırlanır: görünür olduğunda filtresiz oturur.
             if (cullActive && (px < minX || px > maxX || py < minY || py > maxY)) {
                 if (seg.visible) seg.setVisible(false);
+                seg._rotInit = false;
                 continue;
             }
+
+            // ── GENİŞ AÇIKLIKLI ROTASYON ─────────────────────────────────
+            // Tek path parçasının kirişi yerine d ± halfSpan arasındaki kiriş:
+            // alt-piksel yanal gürültünün açıya etkisi ~spacing/parça oranında
+            // (≈3–10×) azalır ve açı path köşelerinde basamak yapmaz.
+            // Yürüyüş imleci geri sarabildiği için sorgular monoton olmak
+            // zorunda değil; geri sarma her zaman birkaç parçayla sınırlıdır.
+            const h = Math.min(halfSpan, d);
+            this._samplePathAt(d - h, front);
+            this._samplePathAt(d + h, back);
+            const cx = back.x - front.x;
+            const cy = back.y - front.y;
+            let targetAngle = lastAngle;
+            if (cx * cx + cy * cy > 1e-6) {
+                targetAngle = Math.atan2(cy, cx);
+                lastAngle = targetAngle;
+            }
+
             if (!seg.visible) seg.setVisible(true);
             seg.setPosition(px, py);
-            seg.rotation = pa;
+
+            // ── Adaptif (One-Euro) rotasyon filtresi ─────────────────────
+            // Filtre durumu sprite üzerinde (sarılmamış çıktı = seg.rotation,
+            // önceki ham hedef, yumuşatılmış açısal hız). Kopuk anlarda ve
+            // büyük sıçramalarda filtresiz oturur.
+            const jump = seg._rotInit
+                ? Math.abs(Phaser.Math.Angle.Wrap(targetAngle - seg.rotation))
+                : Infinity;
+            if (!frameStep || !(dtSec > 0) || jump > cfg.ROTATION_SNAP_RAD) {
+                seg.rotation = targetAngle;
+                seg._rotTarget = targetAngle;
+                seg._rotDx = 0;
+                seg._rotInit = true;
+            } else {
+                const rawDx = Phaser.Math.Angle.Wrap(targetAngle - seg._rotTarget) / dtSec;
+                seg._rotTarget = targetAngle;
+                seg._rotDx += (rawDx - seg._rotDx) * derivAlpha;
+                const cutoff = cfg.ROTATION_MIN_CUTOFF_HZ + cfg.ROTATION_BETA * Math.abs(seg._rotDx);
+                const alpha = 1 - Math.exp(-twoPiDt * cutoff);
+                const diff = Phaser.Math.Angle.Wrap(targetAngle - seg.rotation);
+                // Sarılı tutulur: sürekli aynı yönde dönen yılanda değer sınırsız büyümesin.
+                seg.rotation = Phaser.Math.Angle.Wrap(seg.rotation + diff * alpha);
+            }
             visibleCount++;
         }
 
         this._visibleSegmentCount = visibleCount;
-        this._syncTailTexture();
         // Konum entegrasyonundan SONRA rijit boyun kısıtı (bkz. _enforceNeckJoint).
-        // Hedef mesafe stride ile ölçeklenir: segments[0] artık mantıksal
-        // düğüm `stride`'a karşılık gelir, `1`'e değil.
-        this._enforceNeckJoint(spacing * stride);
+        this._enforceNeckJoint(segs.length > 1 ? neck : bodyLen);
+    }
+
+    // Kafadan yay uzunluğu `d`'deki path noktasını `out`'a yazar.
+    // _positionSegmentsByPath'in kurduğu imleci (_walkIdx/_walkBase/_walkStub)
+    // kullanır; imleç hem ileri hem GERİ hareket edebilir (rotasyon örneklemesi
+    // d - halfSpan sorgusu ile bir önceki sorgunun gerisine düşebilir).
+    // Sonuçlar _pointAndAngleAtDistance ile aynı geometriyi izler.
+    // @returns {boolean} path tükenmediyse true.
+    _samplePathAt(d, out) {
+        const head = this.head;
+        const stubLen = this._walkStub;
+        if (!(d > 0)) {
+            out.x = head.x;
+            out.y = head.y;
+            return true;
+        }
+        if (stubLen > 0 && d <= stubLen) {
+            const p0 = this.path[0];
+            const t = d / stubLen;
+            out.x = head.x + (p0.x - head.x) * t;
+            out.y = head.y + (p0.y - head.y) * t;
+            return true;
+        }
+
+        const dd = d - stubLen;
+        const lens = this.pathSegLens;
+        let idx = this._walkIdx;
+        let base = this._walkBase;
+        // Geri sar.
+        while (idx > 0 && dd < base) {
+            idx--;
+            base -= lens[idx];
+        }
+        if (base < 0) base = 0;   // kayan nokta birikimi koruması
+        // İleri taşı.
+        while (idx < lens.length && base + lens[idx] < dd) {
+            base += lens[idx];
+            idx++;
+        }
+        this._walkIdx = idx;
+        this._walkBase = base;
+
+        const a = this.path[idx];
+        const b = this.path[idx + 1];
+        if (idx >= lens.length || !a || !b) {
+            const tail = this.path[this.path.length - 1] ?? head;
+            out.x = tail.x;
+            out.y = tail.y;
+            return false;
+        }
+        const segLen = lens[idx];
+        const t = segLen > 0.0001 ? (dd - base) / segLen : 0;
+        out.x = a.x + (b.x - a.x) * t;
+        out.y = a.y + (b.y - a.y) * t;
+        return true;
     }
 
     /**
      * KUYRUK DOKUSUNU son cizilen segmente tasir.
      *
      * <p>NEDEN HER KARE HESAPLANIR: "son segment" sabit bir indeks DEGILDIR.
-     * Yilan buyudukce/kisaldikca, decimation stride'i degistikce ve retire olan
-     * sprite'lar kuyrukta soldukca dizinin sonu surekli el degistirir. Sabit bir
+     * Yilan buyudukce/kisaldikca dizinin sonu surekli el degistirir. Sabit bir
      * indekse kuyruk dokusu atamak, govdenin ortasinda kuyruk gorunmesine yol
      * acardi.
      *
@@ -1687,9 +2228,8 @@ export class Snake {
      * kimlik degismediginde HICBIR setTexture cagrilmaz — steady-state maliyeti
      * bir karsilastirmadir.
      *
-     * <p>RETIRE OLANLAR ATLANIR: solmakta olan bir sprite'a kuyruk dokusu
-     * vermek, o sprite kaybolurken kuyrugun bir anligina yanip sonmesine yol
-     * acardi. Kuyruk her zaman KALICI son segmenttir.
+     * <p>Cokmekte olan (despawn) sprite'lar this.segments'te bulunmadigi icin
+     * kuyruk her zaman KALICI son segmenttir.
      */
     _syncTailTexture() {
         if (!SnakeSkin.isReady()) return;
@@ -1698,20 +2238,20 @@ export class Snake {
         let tail = null;
         for (let i = segs.length - 1; i >= 0; i--) {
             const seg = segs[i];
-            if (seg && seg.active && !seg._retiring) { tail = seg; break; }
+            if (seg && seg.active) { tail = seg; break; }
         }
 
         if (tail === this._tailSprite) return;   // degisim yok — cikis
 
         // Eski kuyrugu govdeye geri al (hala canliysa).
         if (this._tailSprite && this._tailSprite.scene && this._tailSprite.active) {
-            SnakeSkin.applyTexture(this._tailSprite, SnakeTexture.BODY);
+            SnakeSkin.applyTexture(this._tailSprite, SnakeTexture.BODY, this.skinId);
             SnakeSkin.setSpriteScale(this._tailSprite, this.scale, this._tailSprite._animScale ?? 1);
         }
 
         this._tailSprite = tail;
         if (tail) {
-            SnakeSkin.applyTexture(tail, SnakeTexture.TAIL);
+            SnakeSkin.applyTexture(tail, SnakeTexture.TAIL, this.skinId);
             // Doku degisti => normalizasyon carpani da degisti; olcek YENIDEN
             // yazilmalidir, aksi halde kuyruk bir kare boyunca govde olceginde
             // (yani ~%36 buyuk) cizilirdi.
@@ -1730,6 +2270,9 @@ export class Snake {
     _enforceNeckJoint(spacing) {
         const neck = this.segments[0];
         if (!neck || !neck.active || !this.head?.active) return;
+        // Tek sprite'lık gövdede boyun aynı zamanda KUYRUKTUR ve görsel kuyruk
+        // ofsetiyle bilerek daha geride durur — kilitlemek ofseti silerdi.
+        if (neck === this._tailSprite && (neck._tailBlend ?? 0) > 0) return;
         // Cull edilmiş boyun: konumu bu karede yazılmadığı için bayattır ve
         // salt görsel olan bu kısıtın ekran dışında bir karşılığı yok.
         if (!neck.visible) return;
@@ -1760,7 +2303,7 @@ export class Snake {
     //
     // KÖK NEDEN (boost'ta boyun esnemesi): path[0], kafayı üstel olarak izleyen
     // _pathFollower'dır. Bu alçak-geçiren filtre kararlı durumda kafanın
-    // GERİSİNDE v·dt kadar sabit bir gecikme taşır (PATH_SMOOTHING_FACTOR=0.5)
+    // GERİSİNDE sabit bir gecikme taşır (eski zaman tabanlı filtrede v·dt; uzamsal filtrede ≈ L)
     // ve bu gecikme HIZLA ORANTILIDIR: taban hızda ~3.75px, boost'ta (2× hız)
     // ~7.5px. Segmentler yay uzunluğuyla path[0]'dan ölçüldüğünden segment↔
     // segment aralıkları tam `spacing` kalıyor, ama kafa↔segment[0] aralığı
@@ -1825,13 +2368,40 @@ export class Snake {
         return { x: tail.x, y: tail.y, angle: this.head.rotation };
     }
 
+    /**
+     * M01 — ScaleGuard: otoriter olcegin TEK uygulama noktasi.
+     *
+     * DEGISMEMISSE HICBIR SEY YAPILMAZ. Bu bir mikro-optimizasyon degil,
+     * tasarimin GEREGIDIR: sunucu donen keyframe'de degismemis degerleri
+     * KASITLI olarak yeniden gonderir (kacirilmis gecersizlestirmeyi onarmak
+     * icin). Guard olmasaydi keyframe, M01'in ortadan kaldirmak icin var
+     * oldugu sprite-transform maliyetini geri getirirdi.
+     *
+     * KARSILASTIRMA `_canonicalScale` UZERINDEN, `this.scale` UZERINDEN DEGIL:
+     * this.scale'i baska yollar da yazar (kurucu, buyume, hardResync), oysa
+     * _canonicalScale yalnizca SUNUCUDAN gelen son degeri tutar. Karsilastirma
+     * TAM esitliktir — epsilon YOK: olcek adimlari ~1/106'dir ve bir epsilon,
+     * formul ileride daha ince adimlara ayarlanirsa mesru degisiklikleri
+     * gizlerdi.
+     *
+     * NOT: yalnizca AG kaynakli olcek gecisini eler. Buyume/cokus animasyonu
+     * (_updateSegmentLifecycle) ve yeni sprite baslatma (_acquireSegmentSprite)
+     * AYRI cagri noktalaridir ve kare kare calismaya DEVAM eder.
+     */
+    applyCanonicalScale(canonical) {
+        if (!Number.isFinite(canonical) || canonical <= 0) return;
+        if (canonical === this._canonicalScale) return;   // keyframe / tekrar
+        this._canonicalScale = canonical;
+        this.scale = canonical;
+        this._updateSegmentScaling();
+    }
+
     updateFromServerState(entityData) {
         if (this.isPlayerControlled) return;
 
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
         const rawAngle = Number(entityData?.angle);
-        const scaleVal = Number(entityData?.scale);
 
         if (Number.isFinite(x)) {
             this.networkTarget.x = x;
@@ -1842,10 +2412,10 @@ export class Snake {
         if (Number.isFinite(rawAngle)) {
             this.networkTarget.angle = this._decodeServerAngle(rawAngle);
         }
-        if (Number.isFinite(scaleVal) && scaleVal > 0) {
-            this.scale = scaleVal;
-            this._updateSegmentScaling();
-        }
+        // M01: olcek ARTIK BURADA UYGULANMAZ — seyrek kanaldan gelir ve
+        // applyCanonicalScale (ScaleGuard) uzerinden gecer. Eski kod, sunucu
+        // olcegi her tick kosulsuz gonderdigi icin uzak yilan basina TUM cizili
+        // segment sprite'larinin transformunu 60 Hz'de yeniden yaziyordu.
 
         // ── Ring buffer besleme ─────────────────────────────────────────
         // Paket doğrudan sprite'a UYGULANMAZ; damgalanıp tampona yazılır.
@@ -1860,14 +2430,6 @@ export class Snake {
 
     _updateSegmentScaling() {
         if (this.head) SnakeSkin.setSpriteScale(this.head, this.scale);
-
-        // Stride yarıçaptan (= SEGMENT_RADIUS * scale) türediği için sunucudan
-        // gelen her scale değişimi decimation yoğunluğunu değiştirebilir.
-        // Burada YALNIZCA hedef güncellenir; çizim stride'ı ve sprite sayısı
-        // _updateStrideAnimation tarafından kare kare yaklaştırılır. (Eskiden
-        // burada anında _syncVisualSegments çağrılıyordu — bir scale paketi
-        // tek karede onlarca sprite'ı yok edip aralığı sıçratıyordu.)
-        this._refreshStrideTarget();
 
         this.segments.forEach(seg => {
             // Büyüme animasyonundaki segmentin ölçeği _animScale ile çarpılır —
@@ -2025,13 +2587,12 @@ export class Snake {
     updateSelfPositionFromServer(entityData) {
         const x = Number(entityData?.x);
         const y = Number(entityData?.y);
-        const scaleVal = Number(entityData?.scale);
         const serverSeqId = Number(entityData?.lastProcessedSequenceId ?? entityData?.last_processed_sequence_id);
 
-        if (Number.isFinite(scaleVal) && scaleVal > 0) {
-            this.scale = scaleVal;
-            this._updateSegmentScaling();
-        }
+        // M01: olcek ARTIK BURADA UYGULANMAZ. SelfPosition.scale `optional`
+        // oldugu icin varlik kontrolu cagiranda yapilir ve deger tek kapidan
+        // (Game.applyAuthoritativeScale -> applyCanonicalScale) gecer.
+        // Eski kod her tick kosulsuz _updateSegmentScaling() cagiriyordu.
 
         // ── İLK OTORİTER KARE: LERP YOK, IŞINLA ─────────────────────────────
         // Baseline kurulup çıkılır; bu karede hata ÖLÇÜLMEZ (ölçecek geçmiş

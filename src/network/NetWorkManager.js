@@ -1,5 +1,6 @@
 import { client, server } from './bundle.js';
 import { resolveWsUrl } from './endpoint.js';
+import { PingSampler } from './PingSampler.js';
 
 
 export class NetworkManager {
@@ -35,14 +36,6 @@ export class NetworkManager {
         this.pingTimer = null;
         this.pingNonce = 0;
         this.pendingPings = new Map();   // nonce -> performance.now() @ send
-        this.pingEmaMs = null;           // yumuşatılmış RTT (EMA)
-        // RTT SAPMASI (jitter) — |rtt - ema|'nın EMA'sı, RFC 3550 ruhunda.
-        // Adaptif interpolasyon buffer'ı (EntityInterpolator) bunu doğrudan
-        // tüketir: buffer derinliğini belirleyen şey ortalama gecikme DEĞİL,
-        // gecikmenin oynaklığıdır. Heartbeat 2.5 s'de bir örneklendiği için
-        // burası yavaş bir taban terimdir; hızlı tepki paket-varış jitter'ından
-        // (interpolatörün kendi ölçümü) gelir.
-        this.pingJitterMs = 0;
 
         // ── Kalibrasyon (ilk ping spike düzeltmesi) ──────────────────────────
         // İlk pong, bağlantı ısınması yüzünden şişkin ölçülür (~200ms görünüp
@@ -55,8 +48,35 @@ export class NetworkManager {
         this.pingCalibDiscard = calCfg.discardSamples ?? 1;
         this.pingCalibMinSamples = calCfg.minSamples ?? 3;
         this.pingCalibIntervalMs = calCfg.intervalMs ?? 500;
-        this.pingSamplesSeen = 0;
         this.pingCalibrated = false;
+
+        // ── ÖLÇÜM İSTATİSTİĞİ: TEK ALGORİTMA, İKİ ÇAĞIRAN ────────────────────
+        // Aynı sınıfı menüdeki ölçüm de kullanır (ServerProbe). Formül iki
+        // yerde ayrı ayrı yazılsaydı, menüde 60ms gösterip oyuna girince 90ms
+        // gösteren bir arayüz kaçınılmazdı — ve fark ağdan değil, iki farklı
+        // yumuşatmadan gelirdi. Ayrıntılar: PingSampler.
+        this.pingSampler = new PingSampler({
+            discardSamples: this.pingCalibDiscard,
+            minSamples: this.pingCalibMinSamples,
+        });
+    }
+
+    /**
+     * Yumuşatılmış RTT (ms) — Snake.js tahmin/telafi zincirinin okuduğu alan.
+     * Getter'dır: tek gerçek kaynak {@link PingSampler}, bu yalnızca vitrin.
+     */
+    get pingEmaMs() {
+        return this.pingSampler.rawValue;
+    }
+
+    /**
+     * RTT SAPMASI (jitter) — |rtt - ema|'nın hareketli ortalaması.
+     * Adaptif interpolasyon buffer'ı (EntityInterpolator) bunu doğrudan
+     * tüketir: buffer derinliğini belirleyen şey ortalama gecikme DEĞİL,
+     * gecikmenin oynaklığıdır.
+     */
+    get pingJitterMs() {
+        return this.pingSampler.jitterMs;
     }
 
     canSend() {
@@ -74,6 +94,8 @@ export class NetworkManager {
         this.socket.onopen = () => {
             console.log('Sunucuya bağlanıldı.');
             this.connected = true;
+            // Bağlanma ekranının "Connecting to server…" aşamasını tamamlar.
+            this.scene.events.emit('socket_open');
 
             // Nickname bilgisini sunucuya gonder
             const nickname = window.gameSettings?.nickname || '';
@@ -125,10 +147,40 @@ export class NetworkManager {
             this.scene.events.emit('food_collection', foodCollection);
         }
 
+        // ── AOI YEM SIRASI: BOOTSTRAP -> MUTASYON -> TAHLIYE ───────────────
+        // Sira KEYFI DEGILDIR:
+        //
+        // 1) BOOTSTRAP ONCE. Yeni abone olunan bir sektorun TABANI kurulmadan o
+        //    sektorun deltasi uygulanirsa, REMOVE bilinmeyen bir id'ye dusup
+        //    no-op olur ve ARDINDAN gelen bootstrap o OLU yemi diriltir —
+        //    kalici hayalet. (Sunucu ayni tick'te ikisini birden gondermemeli;
+        //    bu sira o sozlesmeye DAYANMAYAN bir emniyettir.)
+        // 2) MUTASYON SONRA. Kendi icinde istemci once REMOVE'lari sonra
+        //    ADD'leri uygular (bkz. Game.onFoodMutationCollection).
+        // 3) TAHLIYE EN SON. Bir yem ayni tick'te hem silinip hem tahliye
+        //    edilirse, gorsel onayi olan SILME once uygulanir; tahliye zararsiz
+        //    bir no-op'a duser. Tersi olsaydi yem sessizce yok edilir ve
+        //    oyuncu kendi yedigi yemin animasyonunu goremezdi.
+        const foodSectorBootstraps =
+            envelope.foodSectorBootstraps ?? envelope.food_sector_bootstraps;
+        if (Array.isArray(foodSectorBootstraps)) {
+            for (const bootstrap of foodSectorBootstraps) {
+                this.scene.events.emit('food_sector_bootstrap', bootstrap);
+            }
+        }
+
         const foodMutationCollection =
             envelope.foodMutationCollection ?? envelope.food_mutation_collection;
         if (foodMutationCollection) {
             this.scene.events.emit('food_mutation_collection', foodMutationCollection);
+
+            const sectorEvictions =
+                foodMutationCollection.sectorEvictions ?? foodMutationCollection.sector_evictions;
+            if (Array.isArray(sectorEvictions)) {
+                for (const eviction of sectorEvictions) {
+                    this.scene.events.emit('food_sector_eviction', eviction);
+                }
+            }
         }
 
         // Sıralama: sunucu bunu 5 sn'de birden sık GÖNDERMEZ ve yalnızca
@@ -224,10 +276,8 @@ export class NetworkManager {
 
     _startPingLoop() {
         this._stopPingLoop();
-        this.pingSamplesSeen = 0;
         this.pingCalibrated = false;
-        this.pingEmaMs = null;
-        this.pingJitterMs = 0;
+        this.pingSampler.reset();
         this.sendPing(); // ilk örneği bekletmeden al
         // Kalibrasyon fazı: hızlandırılmış aralık. _handlePong yeterli örnek
         // toplandığında _switchToSteadyPingInterval() ile normale döndürür.
@@ -276,34 +326,17 @@ export class NetworkManager {
         this.pendingPings.delete(nonce);
         const rtt = Math.max(0, performance.now() - sentAt);
 
-        this.pingSamplesSeen++;
-
-        // Kalibrasyon: ilk örnek(ler) bağlantı ısınması artefaktıdır — EMA'yı
-        // kirletmesin diye tamamen atılır (bkz. constructor'daki açıklama).
-        if (this.pingSamplesSeen <= this.pingCalibDiscard) return;
-
-        // Jitter, EMA GÜNCELLENMEDEN ÖNCE ölçülür: sapma, o örneğin mevcut
-        // beklentiden ne kadar saptığıdır (kendi kendini yiyen bir ölçüm değil).
-        if (this.pingEmaMs !== null) {
-            const deviation = Math.abs(rtt - this.pingEmaMs);
-            this.pingJitterMs += (deviation - this.pingJitterMs) / 8;
-        }
-
-        // EMA (0.3): tekil spike'lar UI'da zıplama yaratmasın, yine de
-        // gerçek değişimlere birkaç örnek içinde yakınsasın.
-        this.pingEmaMs = this.pingEmaMs === null
-            ? rtt
-            : this.pingEmaMs * 0.7 + rtt * 0.3;
-
-        // UI'ya ancak minSamples doğru örnek ortalandıktan sonra yayınla.
-        if (this.pingSamplesSeen < this.pingCalibDiscard + this.pingCalibMinSamples) return;
+        // Isınma örneğinin atılması, budanmış pencere ve EMA — hepsi
+        // PingSampler'ın içindedir. Burada yalnızca "yayınlanabilir mi"
+        // sorusu sorulur.
+        if (!this.pingSampler.addSample(rtt)) return;
 
         if (!this.pingCalibrated) {
             this.pingCalibrated = true;
             this._switchToSteadyPingInterval();
         }
 
-        this.scene.events.emit('ping_update', Math.round(this.pingEmaMs));
+        this.scene.events.emit('ping_update', this.pingSampler.value);
     }
     
     /**
@@ -320,17 +353,33 @@ export class NetworkManager {
     }
 
     // angleValue: quantizeAngleDeg ile önceden kuantalanmış 0..250 değeri.
+    // isBoosting: oyuncunun HAM NIYETI (tus basili mi) — uygunluk kapisindan
+    //   GECMIS deger DEGIL. Kapi (skor esigi + histerezis) hem sunucuda
+    //   (SnakeDynamicsSystem) hem de yerel tahminde (Snake._resolveBoostActive)
+    //   ayrica uygulanir; tele giden sey yalnizca niyettir.
     // sendAngle: girdi katmanindaki deadzone/epsilon guard'i aci gonderimini
-    // bastirdiginda false gelir — bu durumda YALNIZCA boost islenir, aci paketi
-    // uretilmez (mouse head merkezine cok yakinken paket spam'ini onler).
+    //   bastirdiginda false gelir — bu durumda YALNIZCA boost islenir, aci
+    //   paketi uretilmez (mouse head merkezine cok yakinken paket spam'ini
+    //   onler).
     updateAndSendInput(angleValue, isBoosting, delta, sendAngle = true) {
         if (!this.canSend()) return;
 
-        // 1. Boost durumu değiştiğinde anında paket gönder. (Deadzone'da bile
-        //    boost her zaman islenmeli — aci gonderiminden bagimsizdir.)
+        // 1. NIYET degistiginde anında paket gönder. (Deadzone'da bile boost
+        //    her zaman islenmeli — aci gonderiminden bagimsizdir.)
+        //
+        // KENAR TETIKLEMELI GONDERIM — sunucu tarafinda bir on kosulu vardir:
+        // niyet orada KALICI olmalidir. Sunucu eskiden tek bir isBoosting
+        // alani tutuyor ve uygunluk kapisi kapandiginda onu false'a cekiyordu;
+        // yani ETKIYI ifade etmek icin NIYETI siliyordu. Bizim gonderecegimiz
+        // yeni bir kenar OLMADIGI icin (tus durumu degismedi) boost oyuncu
+        // tusu birakip yeniden basana kadar KALICI OLARAK kapali kaliyordu.
+        // Sunucu artik niyeti (boostRequested) ve etkin durumu (boostActive)
+        // ayri alanlarda tutar, dolayisiyla kenar tetikleme yeterlidir ve
+        // periyodik bir "niyet tazeleme" paketine gerek yoktur.
         if (isBoosting !== this.isCurrentlyBoosting) {
             this.isCurrentlyBoosting = isBoosting;
-            const actionValue = isBoosting ? 251 : 252; // 251: Boost Başlat, 252: Boost Bitir
+            // 251: boost NIYETI basladi, 252: boost NIYETI bitti.
+            const actionValue = isBoosting ? 251 : 252;
             this.nextSequenceId++;
             this.sendAction(actionValue, this.nextSequenceId);
         }

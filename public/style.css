@@ -1,4 +1,79 @@
+/* ── Baloo 2 — self-hosted menu/account typeface (public/assets/font/baloo2) ── */
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Baloo 2';
+    src: url('/assets/font/baloo2/Baloo2-ExtraBold.ttf') format('truetype');
+    font-weight: 800;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
+    /* ── Menu palette — "sea" theme (reference: LOGIN SCREEN/index.html) ──
+       The ONE definition shared by the login screen, side panel, servers
+       modal and auth gate. It used to be copied into .ui-layer and
+       .side-panel separately. Token names stay --menu-* so every existing
+       component rule reskins from here. */
+    --sea-light: #28b9e6;
+    --sea-dark: #083367;
+
+    --menu-surface: #083367;            /* sea-dark */
+    --menu-surface-container: #12345b;  /* server list panel (18,52,91) */
+    --menu-surface-high: #1d558a;       /* pill input, top */
+    --menu-surface-highest: #3086ce;    /* dropdown header, bottom */
+    --menu-surface-lowest: #0e2e52;     /* status chip (14,46,82) */
+    --menu-bright: #3688d0;             /* panel border */
+    --menu-accent: #a2ee38;             /* play.top — actions, selection */
+    --menu-accent-deep: #3c8209;        /* play 3D base / text on accent */
+    --menu-accent-shadow: #49930a;      /* play.shadow */
+    --menu-text: #ffffff;
+    --menu-text-soft: #e0f2fe;          /* sky-100 */
+    --menu-text-muted: #bae6fd;         /* sky-200 */
+    --menu-placeholder: #7dd3fc;        /* sky-300 */
+
+    --play-top: #b2f63f;
+    --play-mid: #76db17;
+    --play-bottom: #62bd10;
+    --play-border: #b8ff4b;
+
+    --ping-good: #59e81b;
+    --ping-ok: #a2ee38;
+    --ping-bad: #ff5722;
+    --ping-offline: #94a3b8;
+
+    --font-menu: 'Baloo 2', 'Quicksand', system-ui, sans-serif;
+
     --primary-color: #00ffcc;
     --primary-glow: rgba(0, 255, 204, 0.6);
     --secondary-color: #ff00cc;
@@ -51,19 +126,6 @@ body {
    Palette & layout matched to reference_login_page.html
    ═══════════════════════════════════════════════ */
 .ui-layer {
-    /* Login screen design tokens (scoped — in-game overlays keep the cyan set) */
-    --menu-surface: #1a063b;
-    --menu-surface-container: #271448;
-    --menu-surface-high: #322053;
-    --menu-surface-highest: #3d2b5e;
-    --menu-surface-lowest: #150136;
-    --menu-bright: #412f63;
-    --menu-accent: #b7f700;          /* neon green — actions, focus, selection */
-    --menu-accent-deep: #506e00;     /* 3D button base / text on accent */
-    --menu-accent-shadow: #374e00;
-    --menu-text: #ebddff;
-    --menu-text-muted: #bfb3d6;
-
     position: absolute;
     top: 0;
     left: 0;
@@ -72,29 +134,17 @@ body {
     z-index: 10;
     display: flex;
     flex-direction: column;
+    font-family: var(--font-menu);
+    color: var(--menu-text);
     background-color: var(--menu-surface);
-    background-image:
-        radial-gradient(circle at 20% 30%, var(--menu-surface-highest) 0%, transparent 20%),
-        radial-gradient(circle at 80% 70%, var(--menu-surface-highest) 0%, transparent 20%);
+    background-image: url('/assets/background/main-menu-background.png');
+    background-size: cover;
+    /* The seabed carries the detail; anchoring the bottom keeps it in frame on
+       tall portrait screens where cover crops the sides. */
+    background-position: center bottom;
+    background-repeat: no-repeat;
     transition: opacity 0.5s ease, visibility 0.5s;
     overflow: hidden;
-}
-
-/* Slithering track pattern over the whole screen (reference: .snake-track) */
-.ui-layer::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.05;
-    background-image: url('data:image/svg+xml;utf8,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><path d="M10,50 Q30,10 50,50 T90,50" stroke="%23ecdcff" stroke-width="4" fill="none"/></svg>');
-    background-repeat: repeat;
-    animation: slideTrack 15s linear infinite;
-}
-
-@keyframes slideTrack {
-    from { background-position: 0 0; }
-    to { background-position: -100px 100px; }
 }
 
 .ui-layer.hidden {
@@ -106,31 +156,40 @@ body {
 /* Top Bar */
 .top-bar {
     width: 100%;
-    padding: 24px 32px;
+    padding: clamp(12px, 2.5vh, 20px) clamp(16px, 3vw, 24px);
     display: flex;
     justify-content: flex-end;
 }
 
+/* Reference: a bare white gear with a soft drop shadow — no chip behind it. */
 .icon-btn {
-    background: var(--bg-glass);
-    border: 1px solid var(--border-glass);
+    background: transparent;
+    border: none;
     border-radius: 50%;
-    width: 48px;
-    height: 48px;
+    width: clamp(40px, 5vmin, 48px);
+    height: clamp(40px, 5vmin, 48px);
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-main);
+    color: var(--menu-text);
     cursor: pointer;
-    transition: var(--transition-bounce);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+    transition: transform 0.3s ease;
+}
+
+.icon-btn svg {
+    width: 80%;
+    height: 80%;
 }
 
 .icon-btn:hover {
-    background: var(--bg-glass-hover);
-    transform: scale(1.1) rotate(15deg);
-    border-color: var(--primary-color);
-    box-shadow: 0 0 15px var(--primary-glow);
+    transform: rotate(45deg);
+}
+
+.icon-btn:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
 }
 
 /* Main Content */
@@ -144,7 +203,10 @@ body {
        than the viewport (flex centering + overflow bug) */
     justify-content: safe center;
     width: 100%;
-    padding: 0 20px 10vh; /* side padding keeps card/logo off the edges */
+    /* Rendered WIDTH of the frameless logo; its height follows from the
+       asset's 1376x768 ratio. Breakpoints below override it. */
+    --logo-size: clamp(280px, 35vw, 520px);
+    padding: 0 clamp(16px, 4vw, 40px) clamp(16px, 6vh, 72px); /* side padding keeps card/logo off the edges */
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;   /* never allow horizontal scroll */
@@ -163,7 +225,10 @@ body {
     align-items: center;
     width: 100%;
     max-width: 100%;
-    z-index: 1;
+    position: relative;
+    z-index: 2;
+    /* Frameless logo sits ABOVE the card (it no longer overlaps it). */
+    margin-bottom: clamp(10px, 2vh, 22px);
 }
 
 .float-anim {
@@ -175,60 +240,47 @@ body {
     50% { transform: translateY(-10px); }
 }
 
-.brand-logo-ring {
-    /* Fluid: scales with viewport, never larger than 176px, never overflows */
-    width: clamp(96px, 38vw, 176px);
-    max-width: 100%;
-    aspect-ratio: 1 / 1;
-    height: auto;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 8px solid var(--menu-surface-highest);
-    box-shadow: 0 10px 30px rgba(26, 15, 46, 0.6);
-    margin-bottom: -34px;
-    z-index: 2;
-}
-
-.brand-logo-ring img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+/* Frameless logo: no ring, border, halo or shadow — just the artwork.
+   aspect-ratio matches the asset (logo-final-1.png, 1376x768), so the box is
+   correct before the image loads and the picture can never be distorted;
+   object-fit: contain is the belt-and-braces guard if the asset is swapped
+   for one with a different ratio. */
+.brand-logo {
     display: block;
-}
-
-.brand-title {
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    /* Fluid type: shrinks with viewport so the nowrap title always fits */
-    font-size: clamp(1.4rem, 6.5vw, 2.6rem);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--menu-accent);
-    filter: drop-shadow(0 4px 0 var(--menu-accent-shadow));
-    background: var(--menu-surface-high);
-    border-top: 2px solid var(--menu-bright);
-    border-radius: 24px;
-    padding: 14px clamp(20px, 5vw, 40px);
-    margin: 0;
+    width: var(--logo-size);
     max-width: 100%;
-    box-shadow: 0 8px 20px rgba(26, 15, 46, 0.5);
-    white-space: nowrap;
-    z-index: 3;
+    height: auto;
+    aspect-ratio: 1376 / 768;
+    object-fit: contain;
 }
 
-/* ── Login Card ── */
+/* ── Login Card — reference .ocean-sphere ── */
 .login-card {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    align-items: center;
+    gap: clamp(10px, 1.5vh, 14px);
     width: 100%;
-    max-width: 400px;
-    margin-top: 34px;
-    padding: 26px 24px;
-    background: rgba(39, 20, 72, 0.92);   /* --menu-surface-container, hafif şeffaf */
-    border-top: 1px solid var(--menu-bright);
-    border-radius: 28px;
-    box-shadow: 0 10px 25px rgba(26, 15, 46, 0.5);
+    max-width: clamp(360px, 28vw, 420px);
+    padding:
+        clamp(20px, 3vh, 32px)
+        clamp(18px, 2vw, 28px)
+        clamp(20px, 3vh, 32px);
+    background: radial-gradient(circle at 50% 38%, rgba(68, 178, 237, 0.55) 0%, rgba(17, 102, 185, 0.75) 75%, rgba(6, 68, 142, 0.88) 100%);
+    border: 2.5px solid rgba(255, 255, 255, 0.55);
+    border-radius: clamp(36px, 4vw, 52px);
+    box-shadow: 0 0 35px rgba(45, 170, 240, 0.45), inset 0 0 20px rgba(255, 255, 255, 0.25);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     z-index: 1;
+}
+
+/* Reference: controls sit in a narrower column than the sphere itself.
+   Individual rules below narrow further (servers 220px) or shrink-wrap
+   (the status chip). */
+.login-card > * {
+    width: 100%;
+    max-width: 300px;
 }
 
 button {
@@ -244,6 +296,17 @@ button {
     gap: 8px;
 }
 
+/* Menu, account panel, servers modal and auth gate buttons use Baloo 2;
+   in-game overlays keep the global heading font above. */
+.ui-layer button,
+.side-panel button,
+.servers-modal button,
+.settings-modal button,
+.connecting-overlay button,
+.auth-overlay button {
+    font-family: var(--font-menu);
+}
+
 /* Nickname input */
 .login-input-wrap {
     position: relative;
@@ -253,50 +316,58 @@ button {
 
 .login-input-icon {
     position: absolute;
-    left: 18px;
+    left: 16px;
     color: var(--menu-text-muted);
     pointer-events: none;
 }
 
+/* Reference .pill-input */
 #nickname-input {
     width: 100%;
-    padding: 15px 48px;
-    font-size: 1.1rem;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-weight: 600;
+    height: 48px;
+    padding: 2px 44px 0;
+    font-size: 1.125rem;
+    font-family: var(--font-menu);
+    font-weight: 700;
+    letter-spacing: 0.02em;
     text-align: center;
     color: var(--menu-text);
-    background: var(--menu-surface-lowest);
-    border: none;
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, #174270 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
     border-radius: 999px;
     outline: none;
-    box-shadow: inset 0 4px 6px -1px rgba(0, 0, 0, 0.5), inset 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.2);
     transition: var(--transition-fast);
 }
 
 #nickname-input::placeholder {
-    color: var(--menu-text-muted);
-    font-weight: 500;
+    color: var(--menu-placeholder);
+    font-weight: 600;
 }
 
 #nickname-input:focus {
+    border-color: var(--sea-light);
     box-shadow:
-        inset 0 4px 6px -1px rgba(0, 0, 0, 0.5),
-        0 0 0 4px rgba(183, 247, 0, 0.35);
+        inset 0 3px 6px rgba(0, 0, 0, 0.35),
+        0 0 0 3px rgba(40, 185, 230, 0.35);
 }
 
-/* ── Servers button (login card — reference: yellow secondary action) ── */
+/* ── Servers button — reference .server-dropdown-header (opens the modal) ── */
 .servers-btn {
     width: 100%;
-    padding: 12px 24px;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: #6f5c00;                 /* on-secondary-container */
-    background: #fdd400;            /* secondary-container */
-    border-radius: 999px;
-    border-bottom: 6px solid #6f5c00;
-    transition: all 0.1s;
+    max-width: 220px;
+    height: 40px;
+    padding: 2px 14px 0;
+    font-family: var(--font-menu);
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: lowercase;
+    color: var(--menu-text);
+    background: linear-gradient(180deg, #4fa5ea 0%, var(--menu-surface-highest) 100%);
+    border-radius: 16px;
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 3px 6px rgba(0, 0, 0, 0.25);
+    transition: filter 0.1s, transform 0.1s;
 }
 
 .servers-btn:hover {
@@ -304,8 +375,7 @@ button {
 }
 
 .servers-btn:active {
-    transform: translateY(4px);
-    border-bottom-width: 2px;
+    transform: translateY(2px);
 }
 
 /* ── Auto-selected server readout (login card) ─────────────────────────────
@@ -320,13 +390,17 @@ button {
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px 18px;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
+    gap: 6px;
+    width: auto;                    /* reference .status-chip shrink-wraps */
+    max-width: 100%;
+    padding: 5px 20px 4px;
+    font-family: var(--font-menu);
     font-size: 0.9rem;
-    background: var(--menu-surface-lowest);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: rgba(14, 46, 82, 0.85);     /* --menu-surface-lowest */
     border-radius: 999px;
-    box-shadow: inset 0 3px 5px -1px rgba(0, 0, 0, 0.45);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
     /* Ping degeri degistiginde renk gecisi yumusak olsun. */
     transition: color var(--transition-fast);
 }
@@ -338,8 +412,8 @@ button {
 }
 
 .server-indicator-label {
-    color: var(--menu-text-muted);
-    font-weight: 500;
+    color: var(--menu-text-soft);
+    font-weight: 600;
 }
 
 .server-indicator-name {
@@ -358,17 +432,23 @@ button {
 
 .server-indicator-ping {
     font-weight: 700;
+    /* tabular-nums RAKAM GENİŞLİĞİNİ sabitler, RAKAM SAYISINI değil:
+       "…" -> "98ms" -> "112ms" geçişlerinde metin kutusu büyür ve satırdaki
+       her şey yana kayar. min-width bu kaymayı keser; sağa yaslama sayının
+       basamak eklerken sola doğru büyümesini sağlar (nokta ayracı sabit kalır). */
     font-variant-numeric: tabular-nums;
+    min-width: 5.5ch;
+    text-align: right;
 }
 
 /* Latency tier renkleri — .server-item[data-tier] ile BIREBIR ayni palet.
    Renk .server-indicator uzerinde tanimlanir; globe ikonu, ayirici nokta ve
    ping degeri currentColor uzerinden bunu miras alir. */
-.server-indicator[data-tier="good"]      { color: #b7f700; }  /* primary-container */
-.server-indicator[data-tier="ok"]        { color: #a0d800; }  /* primary-fixed-dim */
-.server-indicator[data-tier="high"]      { color: #fdd400; }  /* secondary-container */
-.server-indicator[data-tier="bad"]       { color: #ffb4ab; }  /* error */
-.server-indicator[data-tier="offline"]   { color: #ffb4ab; }
+.server-indicator[data-tier="good"]      { color: var(--ping-good); }
+.server-indicator[data-tier="ok"]        { color: var(--ping-ok); }
+.server-indicator[data-tier="high"]      { color: var(--ping-bad); }
+.server-indicator[data-tier="bad"]       { color: var(--ping-bad); }
+.server-indicator[data-tier="offline"]   { color: var(--ping-offline); }
 .server-indicator[data-tier="measuring"] { color: var(--menu-text-muted); }
 
 /* Olcum surerken hafif nabiz — "calisiyor" hissi, dikkat dagitmadan. */
@@ -412,7 +492,7 @@ button {
 .servers-modal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(26, 6, 59, 0.8);   /* background/80 */
+    background: rgba(8, 51, 103, 0.7);  /* --sea-dark */
     backdrop-filter: blur(4px);
 }
 
@@ -424,11 +504,11 @@ button {
     flex-direction: column;
     gap: 16px;
     padding: 24px;
-    background: #271448;                            /* surface-container */
-    border: 1px solid rgba(61, 43, 94, 0.5);        /* surface-variant/50 */
+    background: rgba(18, 52, 91, 0.94);             /* reference .server-list-panel */
+    border: 2px solid var(--menu-bright);
     border-radius: 28px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 32px rgba(26, 15, 46, 0.6);
-    font-family: 'Quicksand', sans-serif;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4), 0 0 35px rgba(45, 170, 240, 0.3);
+    font-family: var(--font-menu);
 }
 
 .servers-card-header {
@@ -440,24 +520,24 @@ button {
 .servers-card-header h2 {
     margin: 0;
     font-size: 1.7rem;
-    font-weight: 700;
-    color: #b7f700;
-    filter: drop-shadow(0 2px 0 #374e00);
+    font-weight: 800;
+    color: var(--menu-text);
+    text-shadow: 0 2px 0 var(--sea-dark);
 }
 
 .servers-close-btn {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: #322053;                /* surface-container-high */
-    color: #c2b8d9;
-    border-bottom: 4px solid rgba(0, 0, 0, 0.2);
+    background: var(--menu-surface-high);
+    color: var(--menu-text-muted);
+    border-bottom: 3px solid rgba(0, 0, 0, 0.25);
     transition: transform 0.1s, border-bottom-width 0.1s, background 0.15s, color 0.15s;
 }
 
 .servers-close-btn:hover {
-    background: #412f63;
-    color: #ebddff;
+    background: var(--menu-surface-highest);
+    color: var(--menu-text);
 }
 
 .servers-close-btn:active {
@@ -478,28 +558,28 @@ button {
 }
 
 .servers-cards-list::-webkit-scrollbar { width: 6px; }
-.servers-cards-list::-webkit-scrollbar-track { background: #150136; border-radius: 8px; }
-.servers-cards-list::-webkit-scrollbar-thumb { background: #3d2b5e; border-radius: 8px; }
-.servers-cards-list::-webkit-scrollbar-thumb:hover { background: #412f63; }
+.servers-cards-list::-webkit-scrollbar-track { background: var(--menu-surface-lowest); border-radius: 8px; }
+.servers-cards-list::-webkit-scrollbar-thumb { background: var(--menu-surface-high); border-radius: 8px; }
+.servers-cards-list::-webkit-scrollbar-thumb:hover { background: var(--menu-bright); }
 
 .server-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 16px;
-    background: #322053;                /* surface-container-high */
+    padding: 14px 16px;
+    background: rgba(14, 46, 82, 0.7);  /* --menu-surface-lowest */
     border: 2px solid transparent;
     border-bottom: 4px solid rgba(0, 0, 0, 0.2);
-    border-radius: 20px;
+    border-radius: 16px;
     cursor: pointer;
     transition: transform 0.12s, background 0.15s, border-color 0.15s;
 }
 
 .server-item:hover {
-    background: #412f63;                /* surface-bright */
+    background: var(--menu-surface-high);
     transform: scale(1.02);
-    border-color: rgba(183, 247, 0, 0.3);
+    border-color: rgba(135, 206, 250, 0.5);
 }
 
 .server-item:active {
@@ -507,8 +587,8 @@ button {
 }
 
 .server-item.selected {
-    border-color: #b7f700;
-    background: rgba(183, 247, 0, 0.08);
+    border-color: var(--menu-accent);
+    background: rgba(162, 238, 56, 0.1);
 }
 
 .server-card-left {
@@ -521,19 +601,19 @@ button {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: #231043;                /* surface-container-low */
+    background: var(--menu-surface-lowest);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #c2b8d9;
+    color: var(--menu-text-muted);
     flex-shrink: 0;
     transition: var(--transition-fast);
 }
 
 .server-item:hover .server-globe,
 .server-item.selected .server-globe {
-    background: rgba(183, 247, 0, 0.2);
-    color: #b7f700;
+    background: rgba(162, 238, 56, 0.2);
+    color: var(--menu-accent);
 }
 
 .server-info {
@@ -545,20 +625,20 @@ button {
 
 .server-region {
     font-size: 1.15rem;
-    font-weight: 600;
-    color: #ebddff;
+    font-weight: 700;
+    color: var(--menu-text);
     transition: var(--transition-fast);
 }
 
 .server-item:hover .server-region,
 .server-item.selected .server-region {
-    color: #b7f700;
+    color: var(--menu-accent);
 }
 
 .server-status {
     font-size: 0.82rem;
-    font-weight: 500;
-    color: #c2b8d9;
+    font-weight: 600;
+    color: var(--menu-text-muted);
 }
 
 /* ── Ping + signal, latency-tier colored (set via data-tier in main.js) ── */
@@ -566,21 +646,25 @@ button {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #c2b8d9;
+    color: var(--menu-text-muted);
     flex-shrink: 0;
 }
 
 .server-ping {
     font-size: 0.85rem;
     font-weight: 700;
+    /* Kart listesinde de aynı gerekçe: "…" ile "112ms" arasındaki genişlik
+       farkı, sinyal ikonunu her ölçümde zıplatırdı. */
     font-variant-numeric: tabular-nums;
+    min-width: 5.5ch;
+    text-align: right;
 }
 
-.server-item[data-tier="good"]    .server-ping-wrap { color: #b7f700; }  /* primary-container */
-.server-item[data-tier="ok"]      .server-ping-wrap { color: #a0d800; }  /* primary-fixed-dim */
-.server-item[data-tier="high"]    .server-ping-wrap { color: #fdd400; }  /* secondary-container */
-.server-item[data-tier="bad"]     .server-ping-wrap { color: #ffb4ab; }  /* error */
-.server-item[data-tier="offline"] .server-ping-wrap { color: #ffb4ab; }
+.server-item[data-tier="good"]    .server-ping-wrap { color: var(--ping-good); }
+.server-item[data-tier="ok"]      .server-ping-wrap { color: var(--ping-ok); }
+.server-item[data-tier="high"]    .server-ping-wrap { color: var(--ping-bad); }
+.server-item[data-tier="bad"]     .server-ping-wrap { color: var(--ping-bad); }
+.server-item[data-tier="offline"] .server-ping-wrap { color: var(--ping-offline); }
 .server-item[data-tier="offline"] { opacity: 0.7; }
 
 /* ── Footer ── */
@@ -588,100 +672,118 @@ button {
     display: flex;
     justify-content: flex-end;
     padding-top: 16px;
-    border-top: 1px solid rgba(61, 43, 94, 0.3);
+    border-top: 1px solid rgba(54, 136, 208, 0.35);   /* --menu-bright */
 }
 
+/* Same 3D language as PLAY, one size down. */
 .servers-confirm-btn {
-    padding: 14px 32px;
-    font-family: 'Quicksand', sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: #506e00;                 /* on-primary-container */
-    background: #b7f700;            /* primary-container */
+    padding: 11px 32px 9px;
+    font-family: var(--font-menu);
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
     border-radius: 999px;
-    border-bottom: 4px solid rgba(0, 0, 0, 0.2);
-    transition: transform 0.12s, filter 0.15s, border-bottom-width 0.1s;
+    box-shadow: 0 4px 0 var(--menu-accent-deep), inset 0 2px 3px rgba(255, 255, 255, 0.6);
+    transition: transform 0.1s, filter 0.15s, box-shadow 0.1s;
 }
 
 .servers-confirm-btn:hover {
-    filter: brightness(1.08);
-    transform: scale(1.05);
+    filter: brightness(1.05);
+    transform: translateY(-1px);
 }
 
 .servers-confirm-btn:active {
-    transform: scale(0.95) translateY(2px);
-    border-bottom-width: 2px;
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 var(--menu-accent-deep);
 }
 
-/* ── PLAY button (3D style from reference) ── */
+/* ── PLAY button — reference .btn-play-3d ── */
 .play-btn {
     width: 100%;
-    padding: 16px 32px;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.6rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    color: var(--menu-accent-deep);
-    background: var(--menu-accent);
-    border-radius: 999px;
-    border-bottom: 6px solid var(--menu-accent-deep);
-    transition: all 0.1s;
+    max-width: 295px;
+    height: clamp(52px, 7vh, 64px);
+    padding: 4px 24px 0;             /* Baloo 2 sits high; nudge it to centre */
+    margin-bottom: 8px;              /* room for the 8px 3D base */
+    font-family: var(--font-menu);
+    font-size: clamp(1.75rem, 1.2vw + 1.3rem, 2.25rem);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    color: var(--menu-text);
+    text-shadow: 0 2px 0 rgba(255, 255, 255, 0.45), 0 -1.5px 0 rgba(0, 0, 0, 0.15);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 3px solid var(--play-border);
+    border-radius: 28px;
+    box-shadow: 0 8px 0 var(--menu-accent-deep), 0 14px 18px rgba(0, 0, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.7);
+    transition: all 0.1s ease-in-out;
 }
 
 .play-btn:hover {
-    filter: brightness(1.1);
+    filter: brightness(1.05);
+    transform: translateY(-1px);
 }
 
 .play-btn:active {
-    transform: translateY(4px);
-    border-bottom-width: 2px;
+    transform: translateY(6px);
+    box-shadow: 0 2px 0 var(--menu-accent-deep), 0 5px 8px rgba(0, 0, 0, 0.35);
 }
 
-/* ── Footer ── */
+/* ── Footer — reference: centred brand on a translucent sea-blue bar ── */
 .menu-footer {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 14px 24px;
-    background: var(--menu-surface-lowest);
-    border-top: 4px solid var(--menu-surface-high);
-    z-index: 1;
+    gap: 2px;
+    /* Symmetric 56px side insets clear the fixed fullscreen button
+       (bottom-left) while keeping the centred content centred. */
+    padding: clamp(8px, 1.4vh, 14px) 56px;
+    padding-bottom: max(clamp(8px, 1.4vh, 14px), env(safe-area-inset-bottom, 0px));
+    text-align: center;
+    background: rgba(23, 59, 106, 0.8);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    border-top: 1px solid rgba(56, 189, 248, 0.4);
 }
 
 .menu-footer-brand {
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: var(--menu-accent);
-    filter: drop-shadow(0 2px 0 var(--menu-accent-shadow));
+    font-family: var(--font-menu);
+    font-size: clamp(0.9rem, 0.4vw + 0.8rem, 1.05rem);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: var(--menu-text-muted);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 .menu-footer-links {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 16px;
+    gap: 0 16px;
 }
 
 .menu-footer-links a {
     font-size: 0.72rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--menu-text-muted);
+    opacity: 0.8;
     text-decoration: none;
     transition: var(--transition-fast);
 }
 
 .menu-footer-links a:hover {
-    color: var(--menu-accent);
+    color: var(--menu-text);
+    opacity: 1;
     text-decoration: underline;
 }
 
 .menu-footer-copy {
-    font-size: 0.78rem;
+    font-size: 0.68rem;
     color: var(--menu-text-muted);
+    opacity: 0.65;
 }
 
 /* Modals */
@@ -922,7 +1024,10 @@ button {
    (Connecting + Game Over — src/ui/overlays.js)
    ═══════════════════════════════════════════════ */
 
-/* ── Connecting Overlay ── */
+/* ── Connecting Overlay — reference: connecting-ui/connecting-ui.html ──
+   Circular glass "portal" over a blurred seabed. Opaque on purpose: the game
+   world must stay hidden until Game._revealGameplay has aligned it.
+   Palette: :root --menu-* / --play-* / --ping-*. */
 .connecting-overlay {
     position: absolute;
     inset: 0;
@@ -930,11 +1035,16 @@ button {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #1a063b;
+    padding: 16px;
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
+    font-family: var(--font-menu);
+    color: var(--menu-text);
+    background: var(--menu-surface);
     opacity: 1;
     visibility: visible;
     transition: opacity 0.3s ease, visibility 0.3s;
-    overflow: hidden;
 }
 
 .connecting-overlay.hidden {
@@ -943,307 +1053,283 @@ button {
     pointer-events: none;
 }
 
-/* Decorative background blobs */
-.connecting-overlay-blob {
+/* Blurred seabed — on a pseudo-element with negative inset so the blur
+   doesn't fade into a light halo along the screen edges. */
+.connecting-overlay::before {
+    content: '';
     position: absolute;
-    border-radius: 50%;
+    inset: -24px;
+    background: url('/assets/background/main-menu-background.png') center bottom / cover no-repeat;
+    filter: blur(6px) brightness(1.05);
+}
+
+/* Ocean-depth tint: darker toward the seabed, lighter toward the surface. */
+.connecting-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(8, 51, 103, 0.4) 0%, transparent 50%, rgba(40, 185, 230, 0.2) 100%);
     pointer-events: none;
-    filter: blur(80px);
 }
 
-.connecting-overlay-blob-1 {
-    width: 400px;
-    height: 400px;
-    background: #322053;
-    top: -10%;
-    left: -10%;
-    opacity: 0.4;
-}
-
-.connecting-overlay-blob-2 {
-    width: 500px;
-    height: 500px;
-    background: #ecdcff;
-    bottom: -10%;
-    right: -10%;
-    opacity: 0.2;
-    filter: blur(100px);
-}
-
-.connecting-card {
+/* The portal is a circle sized by the SMALLER viewport side, so it fits
+   portrait phones, short landscape phones and ultra-wide screens alike.
+   Inner sizes use cqi (the portal's own width) so everything scales with the
+   circle instead of the viewport. */
+.connecting-portal {
+    --portal-size: min(470px, 88vw, calc(100vh - 150px));
     position: relative;
-    z-index: 10;
+    z-index: 1;
+    container-type: inline-size;
+    width: var(--portal-size);
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    /* Room for the mascot overhanging the rim (13.6% of the portal). */
+    margin-top: calc(var(--portal-size) * 0.136);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 32px;
-    width: 100%;
-    max-width: 420px;
-    padding: 48px 32px;
-    background: #271448;
-    border: 1px solid #322053;
-    border-radius: 28px;
-    box-shadow: 0 8px 30px rgba(26, 15, 46, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+    justify-content: space-between;
+    /* NOT cqi: container units on the container ITSELF resolve against the
+       nearest ANCESTOR container — there is none, so they fell back to the
+       viewport and squeezed the content on wide-but-short screens. */
+    padding: 0 calc(var(--portal-size) * 0.08) calc(var(--portal-size) * 0.09);
     text-align: center;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    background: linear-gradient(180deg, rgba(40, 185, 230, 0.35) 0%, rgba(48, 134, 206, 0.3) 50%, rgba(8, 51, 103, 0.45) 100%);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow:
+        0 0 0 5px rgba(255, 255, 255, 0.35),
+        0 0 40px rgba(40, 185, 230, 0.25),
+        0 0 45px rgba(255, 255, 255, 0.18),
+        inset 0 0 25px rgba(255, 255, 255, 0.12);
+    animation: connecting-portal-pulse 5s ease-in-out infinite;
 }
 
-/* Egg Loader */
-.egg-loader-container {
+@supports (height: 100dvh) {
+    .connecting-portal {
+        --portal-size: min(470px, 88vw, calc(100dvh - 150px));
+    }
+}
+
+/* Inner concentric highlight ring. */
+.connecting-portal::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+}
+
+@keyframes connecting-portal-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.95; }
+    50%      { transform: scale(1.015); opacity: 1; }
+}
+
+/* Logo badge overlapping the top rim.
+   logo-circle-final.png is ALREADY a circular badge with its own glowing rim
+   and transparent corners, so there is no white disc behind it and no
+   border-radius clipping (which cut that rim off). The shadow is a
+   drop-shadow filter: it follows the artwork's silhouette, where box-shadow
+   would trace the square transparent box instead. */
+.connecting-mascot {
     position: relative;
-    width: 96px;
-    height: 96px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    z-index: 2;
+    width: 60cqi;                 /* ~30% larger than the previous 30cqi badge */
+    aspect-ratio: 1 / 1;
+    margin-top: -13.6cqi;         /* overhang unchanged — .connecting-portal's
+                                     top margin reserves exactly this much */
+    filter: drop-shadow(0 10px 18px rgba(8, 51, 103, 0.55));
 }
 
-.egg-loader-ring {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: rgba(183, 247, 0, 0.2);
-    filter: blur(12px);
-    opacity: 0;
+.connecting-mascot img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
-.egg-loader {
-    position: relative;
-    width: 64px;
-    height: 64px;
-    background: #a0d800;
-    border-radius: 50%;
-    box-shadow: 0 4px 0 #506e00, inset 0 2px 0 rgba(255, 255, 255, 0.1);
-    border: 2px solid #b7f700;
-    animation: rollEgg 2s linear infinite;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-@keyframes rollEgg {
-    0% { transform: rotate(0deg) translateX(0); }
-    25% { transform: rotate(90deg) translateX(10px); }
-    50% { transform: rotate(180deg) translateX(0); }
-    75% { transform: rotate(270deg) translateX(-10px); }
-    100% { transform: rotate(360deg) translateX(0); }
-}
-
-/* Egg Eyes */
-.egg-eye {
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    background: #506e00;
-    border-radius: 50%;
-}
-
-.egg-eye-left {
-    top: 20px;
-    left: 16px;
-}
-
-.egg-eye-right {
-    top: 20px;
-    right: 16px;
-}
-
-/* Egg Blush */
-.egg-blush {
-    position: absolute;
-    width: 8px;
-    height: 5px;
-    background: rgba(255, 107, 91, 0.5);
-    border-radius: 50%;
-    filter: blur(1px);
-}
-
-.egg-blush-left {
-    top: 28px;
-    left: 6px;
-}
-
-.egg-blush-right {
-    top: 28px;
-    right: 6px;
-}
-
-/* Connecting Status */
 .connecting-status {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    align-items: center;
+    gap: 3.4cqi;
+    width: 100%;
 }
 
 .connecting-title {
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.6rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    color: #ebddff;
     margin: 0;
-    animation: pulseSoft 1.5s ease-in-out infinite;
+    font-size: clamp(1.1rem, 6cqi, 1.9rem);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+    color: var(--menu-text);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
-@keyframes pulseSoft {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-}
-
-.connecting-info {
-    display: flex;
+/* Server name | signal + ping */
+.connecting-server {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.75rem;
+    gap: 12px;
+    max-width: 100%;
+    padding: 5px 22px 3px;
+    font-size: clamp(0.8rem, 3.2cqi, 0.95rem);
     font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #c2caad;
+    line-height: 1.3;
+    background: rgba(8, 51, 103, 0.75);            /* --sea-dark */
+    border: 1px solid rgba(125, 211, 252, 0.25);   /* --menu-placeholder */
+    border-radius: 999px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
-.info-label {
-    color: #c2caad;
-}
-
-.info-value {
-    color: #b7f700;
-    font-weight: 700;
-}
-
-.info-separator {
-    opacity: 0.5;
-    margin: 0 4px;
-}
-
-/* Progress Bar with Snake */
-.connecting-progress-bar {
-    width: 100%;
-    height: 16px;
-    background: #150136;
-    border-radius: 8px;
+.connecting-server-name {
+    min-width: 0;
     overflow: hidden;
-    position: relative;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--menu-text);
 }
 
-.snake-animation {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    height: 100%;
-    width: 33%;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 2px;
-    padding-right: 8px;
-    animation: slither 2.5s linear infinite;
-}
-
-@keyframes slither {
-    0% { transform: translateY(-50%) translateX(-100%); }
-    100% { transform: translateY(-50%) translateX(300%); }
-}
-
-.snake-segment {
-    border-radius: 50%;
-    background: #b7f700;
-    animation: wiggle 0.5s ease-in-out infinite;
+.connecting-server-divider {
     flex-shrink: 0;
+    width: 1px;
+    height: 1.1em;
+    background: rgba(125, 211, 252, 0.4);
 }
 
-.snake-segment-1 { width: 8px; height: 8px; opacity: 0.4; animation-delay: 0s; }
-.snake-segment-2 { width: 10px; height: 10px; opacity: 0.6; animation-delay: 0.1s; }
-.snake-segment-3 { width: 12px; height: 12px; opacity: 0.8; animation-delay: 0.2s; }
-.snake-segment-4 { width: 14px; height: 14px; animation-delay: 0.3s; }
+.connecting-ping {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    color: var(--ping-good);
+    font-variant-numeric: tabular-nums;
+}
 
-.snake-head {
+.connecting-ping-icon {
     width: 16px;
-    height: 16px;
+    height: 14px;
+    margin-bottom: 2px;
+    fill: currentColor;
+}
+
+/* Reserve the widest value ("999ms") so the pill doesn't resize as it ticks. */
+#conn-ping-value {
+    min-width: 4.5ch;
+    text-align: left;
+}
+
+/* Progress track + fill */
+.connecting-progress {
+    width: min(305px, 72cqi);
+    height: clamp(14px, 4.7cqi, 22px);
+    padding: 3px;
+    background: rgba(14, 46, 82, 0.8);             /* --menu-surface-lowest */
+    border: 1px solid rgba(54, 136, 208, 0.25);    /* --menu-bright */
+    border-radius: 999px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.connecting-progress-fill {
     position: relative;
-    background: #a0d800;
-    border-radius: 50%;
-    animation: wiggle 0.5s ease-in-out infinite, rotateHead 2s linear infinite;
-    animation-delay: 0.4s, 0s;
-    flex-shrink: 0;
+    width: 0%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--sea-light) 0%, var(--ping-good) 100%);
+    box-shadow: 0 0 16px rgba(40, 185, 230, 0.65);
+    transition: width 0.45s ease-out;
 }
 
-@keyframes wiggle {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-2px); }
-}
-
-@keyframes rotateHead {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.snake-eye {
+/* Moving sheen: the bar looks alive while a stage waits on the server. */
+.connecting-progress-fill::after {
+    content: '';
     position: absolute;
-    width: 2px;
-    height: 2px;
-    background: #506e00;
-    border-radius: 50%;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: connecting-shimmer 1.6s linear infinite;
 }
 
-.snake-eye-1 {
-    top: 3px;
-    right: 4px;
+@keyframes connecting-shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
 }
 
-.snake-eye-2 {
-    bottom: 3px;
-    right: 4px;
-}
-
-/* Cancel Button */
+/* Cancel — 3D coral pill (palette: --ping-bad, as the settings close button). */
 .connecting-cancel-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 14px 32px;
-    font-family: var(--font-heading);
-    font-size: 0.95rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: white;
-    background: #ff6b5b;
+    position: relative;
+    z-index: 2;
+    min-width: min(160px, 40cqi);
+    min-height: 44px;
+    padding: 0.5em 1.6em 0.4em;
+    font-size: clamp(1rem, 4cqi, 1.2rem);
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    color: var(--menu-text);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+    background: var(--ping-bad);
     border: none;
-    border-radius: 16px;
-    border-bottom: 4px solid #cc3d30;
-    cursor: pointer;
-    transition: all 0.12s ease;
-    box-shadow: 0 8px 16px rgba(255, 107, 91, 0.3);
+    border-radius: 999px;
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.28), 0 8px 15px rgba(0, 0, 0, 0.25), inset 0 2px 3px rgba(255, 255, 255, 0.4);
+    transition: transform 0.12s ease, filter 0.15s ease, box-shadow 0.12s ease;
 }
 
 .connecting-cancel-btn:hover {
-    filter: brightness(1.1);
-    transform: scale(1.05);
-    box-shadow: 0 12px 24px rgba(255, 107, 91, 0.4);
+    filter: brightness(1.08);
 }
 
 .connecting-cancel-btn:active {
-    transform: translateY(2px) scale(0.98);
-    border-bottom-width: 2px;
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.28), 0 3px 6px rgba(0, 0, 0, 0.25);
 }
 
-.connecting-cancel-btn svg {
-    width: 20px;
-    height: 20px;
+.connecting-cancel-btn:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 3px;
 }
 
-/* ── Game Over Overlay ── */
-/* ═══════════════════════════════════════════════
-   GAME OVER SCREEN (reference: game_over.html — 1:1)
-   Palette: surface-container #271448, surface-container-low #231043,
-   primary-container #b7f700, on-primary #253600,
-   secondary-fixed #ffe170, tertiary-fixed-dim #d5baff
-   ═══════════════════════════════════════════════ */
+/* Short landscape phones: less vertical chrome so the circle can grow. */
+@media (max-height: 500px) {
+    .connecting-overlay { padding-top: 8px; padding-bottom: 8px; }
+    .connecting-portal { --portal-size: min(470px, 88vw, calc(100vh - 90px)); }
+    .connecting-status { gap: 2.6cqi; }
+}
 
+@supports (height: 100dvh) {
+    @media (max-height: 500px) {
+        .connecting-portal { --portal-size: min(470px, 88vw, calc(100dvh - 90px)); }
+    }
+}
+
+/* Ultra-wide / 4K: lift the 470px cap. */
+@media (min-width: 2200px) and (min-height: 1200px) {
+    .connecting-portal { --portal-size: 600px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .connecting-portal,
+    .connecting-progress-fill::after {
+        animation: none;
+    }
+
+    .connecting-progress-fill {
+        transition: none;
+    }
+}
+
+/* ── Game Over Overlay — reference: game_over_ui/game_over.html ──
+   Glass card over the blurred seabed — the same treatment as the connecting
+   overlay, so both transition screens read as one family. Opaque on purpose:
+   the frozen game canvas behind it should not distract.
+   Palette: :root --menu-* / --play-* / --ping-*. */
 .gameover-overlay {
     position: absolute;
     inset: 0;
@@ -1251,11 +1337,13 @@ button {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px; /* container-padding */
-    background: #1a063b; /* background/surface-dim */
-    color: #ebddff;      /* on-background */
-    font-family: 'Quicksand', sans-serif;
-    overflow: hidden;
+    padding: clamp(12px, 3vw, 24px);
+    padding-top: max(clamp(12px, 3vw, 24px), env(safe-area-inset-top, 0px));
+    padding-bottom: max(clamp(12px, 3vw, 24px), env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    font-family: var(--font-menu);
+    color: var(--menu-text);
+    background: var(--menu-surface);
     opacity: 1;
     visibility: visible;
     transition: opacity 0.25s ease, visibility 0.25s;
@@ -1267,303 +1355,269 @@ button {
     pointer-events: none;
 }
 
-/* Animated background decor (blurred blobs) */
-.gameover-decor {
-    position: absolute;
-    border-radius: 9999px;
-    opacity: 0.05;
+.gameover-overlay::before {
+    content: '';
+    position: fixed;
+    inset: -24px;
+    background: url('/assets/background/main-menu-background.png') center bottom / cover no-repeat;
+    filter: blur(6px) brightness(0.9);
+}
+
+.gameover-overlay::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(to top, rgba(8, 51, 103, 0.55) 0%, rgba(8, 51, 103, 0.25) 50%, rgba(40, 185, 230, 0.15) 100%);
     pointer-events: none;
 }
 
-.gameover-decor-1 {
-    top: 80px;
-    left: 40px;
-    width: 256px;  /* w-64 */
-    height: 256px;
-    background: #b7f700; /* primary-container */
-    filter: blur(120px);
-}
-
-.gameover-decor-2 {
-    bottom: 80px;
-    right: 40px;
-    width: 384px;  /* w-96 */
-    height: 384px;
-    background: #ecdcff; /* tertiary-container */
-    filter: blur(150px);
-}
-
-/* Modal cluster: mascot + panel */
-.gameover-cluster {
+/* Glass card. margin:auto keeps it centred when it fits and lets it scroll
+   when a short landscape phone can't show it whole. */
+.gameover-card {
     position: relative;
-    z-index: 10;
+    z-index: 1;
+    margin: auto;
     width: 100%;
-    max-width: 512px; /* max-w-lg */
+    max-width: 500px;
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: clamp(14px, 2.4vh, 22px);
+    padding: clamp(20px, 3vh, 32px) clamp(18px, 4vw, 36px) clamp(20px, 3vh, 32px);
+    text-align: center;
+    background: linear-gradient(180deg, rgba(40, 185, 230, 0.35) 0%, rgba(48, 134, 206, 0.3) 50%, rgba(8, 51, 103, 0.45) 100%);
+    border: 2px solid rgba(255, 255, 255, 0.55);
+    border-radius: clamp(28px, 4vw, 38px);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 20px 50px -10px rgba(8, 51, 103, 0.55), 0 0 35px 2px rgba(40, 185, 230, 0.25);
 }
 
-/* Mascot */
-.gameover-mascot-wrap {
-    position: relative;
-    margin-bottom: -64px; /* -mb-16 */
-    z-index: 20;
+/* Same circular logo (and size) as the connecting screen. */
+.gameover-logo {
+    width: clamp(104px, 22vmin, 176px);
+    aspect-ratio: 1 / 1;
+    filter: drop-shadow(0 10px 18px rgba(8, 51, 103, 0.55));
 }
 
-.gameover-float {
-    animation: gameoverFloat 3s ease-in-out infinite;
-}
-
-@keyframes gameoverFloat {
-    0%   { transform: translateY(0px); }
-    50%  { transform: translateY(-10px); }
-    100% { transform: translateY(0px); }
-}
-
-.gameover-mascot-ring {
-    width: 160px;   /* w-40 */
-    height: 160px;
-    border-radius: 9999px;
-    padding: 8px;   /* p-2 */
-    background: #b7f700; /* primary-container */
-    box-shadow: 0 8px 0 0 #374e00;
-}
-
-@media (min-width: 768px) {
-    .gameover-mascot-ring {
-        width: 224px;  /* md:w-56 */
-        height: 224px;
-    }
-}
-
-.gameover-mascot-ring img {
+.gameover-logo img {
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: contain;
-    border-radius: 9999px;
-    background: #150136; /* surface-container-lowest */
-    display: block;
 }
 
-/* Dizzy stars */
-.gameover-star {
-    position: absolute;
-}
-
-.gameover-star .material-symbols-outlined {
-    color: #ffe170; /* secondary-fixed */
-    font-variation-settings: 'FILL' 1;
-}
-
-.gameover-star-spin {
-    top: -16px;   /* -top-4 */
-    right: -16px; /* -right-4 */
-    animation: gameoverSpin 1s linear infinite;
-}
-
-.gameover-star-spin .material-symbols-outlined {
-    font-size: 36px; /* text-4xl */
-}
-
-@keyframes gameoverSpin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
-}
-
-.gameover-star-pulse {
-    top: 0;
-    left: -24px; /* -left-6 */
-    animation: gameoverPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.gameover-star-pulse .material-symbols-outlined {
-    font-size: 30px; /* text-3xl */
-}
-
-@keyframes gameoverPulse {
-    0%, 100% { opacity: 1; }
-    50%      { opacity: 0.5; }
-}
-
-/* Modal Panel */
-.gameover-panel {
-    width: 100%;
-    background: #271448; /* surface-container */
-    border: 6px solid #b7f700; /* border-primary-container */
-    border-radius: 2rem; /* rounded-lg */
-    padding: 80px 32px 40px; /* pt-20 px-8 pb-10 */
-    text-align: center;
-    /* .bubbly-container */
-    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.1), 0 10px 25px rgba(26, 15, 46, 0.5);
-}
-
+/* White title with a dark outline — legible over both the bright water and
+   the card's own gradient. */
 .gameover-title {
-    font-family: 'Quicksand', sans-serif;
-    font-size: 48px;         /* text-display */
-    line-height: 56px;
-    letter-spacing: -0.02em;
-    font-weight: 700;
-    margin: 0 0 32px;        /* mb-8 */
-    /* .snake-gradient */
-    background: linear-gradient(180deg, #ff5f6d 0%, #ffc371 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.35)); /* drop-shadow-lg */
+    margin: 0;
+    font-size: clamp(1.9rem, 6vw, 2.8rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--menu-text);
+    -webkit-text-stroke: 1.5px var(--sea-dark);
+    text-shadow: 0 3px 0 var(--sea-dark), 0 6px 14px rgba(0, 0, 0, 0.35);
 }
 
-/* Stats Bento Grid */
-.gameover-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;          /* gap-4 */
-    margin-bottom: 40px; /* mb-10 */
+/* Stats bar: score | rank | food eaten, split by hairline dividers. */
+.gameover-stats {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    padding: clamp(10px, 1.6vh, 16px) clamp(6px, 1.5vw, 12px);
+    background: linear-gradient(180deg, rgba(18, 52, 91, 0.95) 0%, rgba(8, 51, 103, 0.95) 100%);
+    border: 1px solid rgba(54, 136, 208, 0.35);
+    border-radius: clamp(16px, 2vw, 22px);
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.1), 0 10px 25px rgba(8, 51, 103, 0.45);
 }
 
 .gameover-stat {
-    background: #231043; /* surface-container-low */
-    padding: 16px;       /* p-4 */
-    border-radius: 2rem; /* rounded-lg */
-    border-bottom: 4px solid #322053; /* border-b-4 surface-container-high */
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 clamp(4px, 1vw, 10px);
 }
 
-.gameover-stat-score {
-    grid-column: span 2 / span 2; /* col-span-2 */
-    padding: 24px; /* p-6 */
+.gameover-stat + .gameover-stat {
+    border-left: 1px solid rgba(125, 211, 252, 0.2);
 }
 
 .gameover-stat-label {
-    font-size: 12px;     /* text-label-bold */
-    line-height: 16px;
-    font-weight: 700;
-    color: #c2caad;      /* on-surface-variant */
-    margin: 0 0 4px;     /* mb-1 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    margin: 0 0 2px;
+    font-size: clamp(0.62rem, 2.2vw, 0.72rem);
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 0.1em; /* tracking-widest */
+    /* One line always: "FOOD EATEN" wrapping made its column taller than the
+       other two and knocked the whole bar out of alignment. */
+    white-space: nowrap;
+    color: var(--menu-text-muted);
 }
 
+.gameover-stat-main .gameover-stat-label {
+    color: var(--menu-placeholder);
+}
+
+.gameover-stat-icon {
+    flex-shrink: 0;
+    width: auto;
+    height: 0.95em;
+    object-fit: contain;
+}
+
+.gameover-stat-value {
+    margin: 0;
+    font-size: clamp(1.15rem, 4.4vw, 1.6rem);
+    font-weight: 800;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-text);
+}
+
+/* The score is the headline number. */
 .gameover-score-value {
-    font-family: 'Quicksand', sans-serif;
-    font-size: 64px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1;      /* leading-none */
-    color: #b7f700;      /* primary-container */
-    filter: drop-shadow(0 0 15px rgba(183, 247, 0, 0.4));
-    margin: 0;
+    font-size: clamp(1.6rem, 6.4vw, 2.3rem);
+    color: var(--ping-good);
+    text-shadow: 0 2px 8px rgba(89, 232, 27, 0.4);
 }
 
-.gameover-rank-value {
-    font-size: 32px;     /* text-headline-lg */
-    line-height: 40px;
-    font-weight: 700;
-    color: #ffe170;      /* secondary-fixed */
-    margin: 0;
-}
-
-.gameover-food-value {
-    font-size: 32px;     /* text-headline-lg */
-    line-height: 40px;
-    font-weight: 700;
-    color: #d5baff;      /* tertiary-fixed-dim */
-    margin: 0;
-}
-
-/* Action Buttons */
+/* Actions */
 .gameover-actions {
     display: flex;
     flex-direction: column;
-    gap: 16px; /* gap-4 */
+    gap: clamp(10px, 1.6vh, 14px);
+    width: 100%;
+}
+
+.gameover-btn-primary,
+.gameover-btn-secondary {
+    width: 100%;
+    font-family: var(--font-menu);
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--menu-text);
+    border: none;
+    border-radius: 999px;
+    transition: transform 0.12s ease, filter 0.15s ease, box-shadow 0.12s ease;
 }
 
 .gameover-btn-primary {
-    width: 100%;
-    background: #b7f700;  /* primary-container */
-    color: #253600;       /* on-primary */
-    padding: 16px 32px;   /* py-button-padding-y px-button-padding-x */
-    border-radius: 2rem;  /* rounded-lg */
-    font-family: 'Quicksand', sans-serif;
-    font-size: 32px;      /* text-headline-lg */
-    line-height: 40px;
-    font-weight: 700;
-    box-shadow: 0 4px 0 0 #374e00;
-    border: none;
-    transition: all 0.1s ease; /* .pressable-button */
-}
-
-.gameover-btn-primary:hover {
-    transform: scale(1.02);
-}
-
-.gameover-btn-primary:active {
-    box-shadow: none;
-    transform: translateY(4px);
+    min-height: 54px;
+    padding: 4px 24px 0;
+    font-size: clamp(1.15rem, 4.5vw, 1.45rem);
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
+    box-shadow: 0 6px 0 var(--menu-accent-deep), 0 10px 18px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.6);
 }
 
 .gameover-btn-secondary {
-    width: 100%;
-    background: #322053;  /* surface-container-high */
-    color: #ebddff;       /* on-surface */
-    padding: 16px 32px;
-    border-radius: 2rem;
-    font-family: 'Quicksand', sans-serif;
-    font-size: 20px;      /* text-title-md */
-    line-height: 28px;
-    font-weight: 600;
-    border: none;
-    border-bottom: 4px solid #3d2b5e; /* surface-container-highest */
-    transition: background-color 0.15s ease, color 0.15s ease;
+    min-height: 46px;
+    padding: 3px 24px 0;
+    font-size: clamp(0.95rem, 3.6vw, 1.1rem);
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, var(--menu-surface-lowest) 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
+    box-shadow: 0 5px 0 var(--sea-dark), 0 10px 18px rgba(0, 0, 0, 0.3);
 }
 
+.gameover-btn-primary:hover,
 .gameover-btn-secondary:hover {
-    background: #412f63; /* surface-bright */
+    filter: brightness(1.06);
+}
+
+.gameover-btn-primary:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 var(--menu-accent-deep), 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .gameover-btn-secondary:active {
-    transform: translateY(2px);
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 var(--sea-dark), 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.gameover-btn-primary:focus-visible,
+.gameover-btn-secondary:focus-visible,
+.gameover-link:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 3px;
 }
 
 /* Bottom links */
 .gameover-links {
-    margin-top: 32px; /* mt-8 */
     display: flex;
     justify-content: center;
-    gap: 24px; /* gap-6 */
+    gap: clamp(20px, 6vw, 32px);
 }
 
 .gameover-link {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    padding: 4px;
+    font-family: var(--font-menu);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--menu-text-soft);
     background: none;
     border: none;
-    padding: 0;
-    color: #c2caad; /* on-surface-variant */
-    transition: color 0.15s ease;
+    opacity: 0.85;
+    transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.gameover-link:hover {
+    color: var(--menu-text);
+    opacity: 1;
 }
 
 .gameover-link .material-symbols-outlined {
-    font-size: 24px;
-    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    font-size: 18px;
 }
 
-.gameover-link-label {
-    font-size: 12px;   /* text-label-bold */
-    line-height: 16px;
-    font-weight: 700;
+/* Very narrow phones (<=360px): the icons cost ~17px per label, which is the
+   difference between "FOOD EATEN" fitting on one line and wrapping. At 375px
+   the labels still fit WITH their icons, so the threshold stays below that. */
+@media (max-width: 360px) {
+    .gameover-stat-icon { display: none; }
+
+    .gameover-stat-label {
+        letter-spacing: 0.04em;
+        font-size: 0.6rem;
+    }
+
+    .gameover-stat { padding: 0 4px; }
 }
 
-.gameover-link-share:hover {
-    color: #b7f700; /* primary-container */
+/* Short landscape phones: trim the vertical rhythm so the card still fits. */
+@media (max-height: 560px) {
+    .gameover-card {
+        gap: 10px;
+        padding: 14px 20px 18px;
+        max-width: 460px;
+    }
+
+    .gameover-logo { width: clamp(72px, 18vmin, 104px); }
+    .gameover-title { font-size: clamp(1.4rem, 4.5vw, 1.9rem); }
+    .gameover-btn-primary { min-height: 46px; }
+    .gameover-btn-secondary { min-height: 40px; }
+    .gameover-links { display: none; }
 }
 
-.gameover-link-board:hover {
-    color: #ffe170; /* secondary-fixed */
+@media (prefers-reduced-motion: reduce) {
+    .gameover-btn-primary,
+    .gameover-btn-secondary {
+        transition: none;
+    }
 }
 
 /* ═══════════════════════════════════════════════
-   SETTINGS MODAL (reference: settings.html)
+   SETTINGS MODAL (reference: LOGIN SCREEN/settings.html)
+   Behaviour: src/main.js. Palette: :root --menu-* / --play-* / --ping-*.
    ═══════════════════════════════════════════════ */
 
 .settings-modal {
@@ -1573,7 +1627,9 @@ button {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: clamp(12px, 3vw, 24px);
+    font-family: var(--font-menu);
+    color: var(--menu-text);
     visibility: visible;
     opacity: 1;
     transition: var(--transition-fast);
@@ -1588,325 +1644,534 @@ button {
 .settings-modal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(26, 6, 59, 0.8);
-    backdrop-filter: blur(4px);
+    background: rgba(8, 51, 103, 0.45);         /* --sea-dark */
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
 }
 
 .settings-card {
     position: relative;
     width: 100%;
-    max-width: 500px;
+    max-width: 490px;
+    /* Header and footer stay put; only the body scrolls on short screens. */
+    max-height: calc(100vh - 2 * clamp(12px, 3vw, 24px));
+    max-height: calc(100dvh - 2 * clamp(12px, 3vw, 24px));
     display: flex;
     flex-direction: column;
-    background: #271448;
-    border: 1px solid rgba(61, 43, 94, 0.5);
-    border-radius: 28px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 32px rgba(26, 15, 46, 0.6);
-    overflow: hidden;
+    padding: 24px clamp(20px, 4vw, 28px) clamp(20px, 4vw, 28px);
+    background: linear-gradient(180deg, var(--sea-light) 0%, var(--menu-surface-highest) 28%, var(--menu-surface-high) 72%, var(--menu-surface) 100%);
+    border: 2.5px solid rgba(255, 255, 255, 0.6);
+    border-radius: 38px;
+    box-shadow:
+        0 25px 50px -12px rgba(8, 51, 103, 0.75),
+        inset 0 3px 6px rgba(255, 255, 255, 0.7),
+        inset 0 -8px 16px rgba(8, 51, 103, 0.6);
+    transition: transform 0.2s ease;
+}
+
+.settings-modal.hidden .settings-card {
+    transform: scale(0.96);
+}
+
+/* Glossy inner highlight along the top edge. */
+.settings-card::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    left: 32px;
+    right: 32px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.4);
+    filter: blur(1px);
+    pointer-events: none;
+}
+
+/* Red 3D close button hanging off the top-right corner. */
+.settings-close-btn {
+    position: absolute;
+    top: -14px;
+    right: -14px;
+    z-index: 2;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    color: var(--menu-text);
+    background: var(--ping-bad);
+    border: 2px solid var(--menu-text);
+    border-radius: 50%;
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35), 0 6px 10px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.45);
+    transition: transform 0.12s ease, filter 0.15s ease, box-shadow 0.12s ease;
+}
+
+.settings-close-btn svg {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+.settings-close-btn:hover {
+    filter: brightness(1.1);
+}
+
+.settings-close-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), 0 3px 5px rgba(0, 0, 0, 0.3);
 }
 
 .settings-header {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 24px;
-    background: rgba(50, 32, 83, 0.5);
-    border-bottom: 1px solid rgba(61, 43, 94, 0.3);
+    flex-shrink: 0;
+    margin: 4px 0 20px;
+    text-align: center;
 }
 
-.settings-header-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.settings-header-title .material-symbols-outlined {
-    color: #b7f700;
-    font-size: 24px;
-}
-
-.settings-header-title h2 {
+.settings-title {
     margin: 0;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #ebddff;
-    letter-spacing: 1px;
+    font-size: clamp(1.9rem, 1vw + 1.5rem, 2.125rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--menu-text);
+    text-shadow: 0 3px 2px rgba(8, 51, 103, 0.85);
 }
 
-.settings-close-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: transparent;
-    color: #c2b8d9;
-    border: none;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.settings-close-btn:hover {
-    background: #322053;
-    color: #ebddff;
+/* White underline bar beneath the title. */
+.settings-title::after {
+    content: '';
+    display: block;
+    width: 112px;
+    height: 6px;
+    margin: 6px auto 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.25);
 }
 
 .settings-body {
-    padding: 24px;
-    max-height: 60vh;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-}
-
-.settings-body::-webkit-scrollbar {
-    width: 6px;
-}
-
-.settings-body::-webkit-scrollbar-track {
-    background: #150136;
-    border-radius: 8px;
-}
-
-.settings-body::-webkit-scrollbar-thumb {
-    background: #3d2b5e;
-    border-radius: 8px;
-}
-
-.settings-body::-webkit-scrollbar-thumb:hover {
-    background: #412f63;
-}
-
-.settings-section-title {
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #b7f700;
-    margin: 0 0 16px 0;
-}
-
-.settings-options {
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    /* Room for the rows' inset shadows and focus rings at the scroll edge. */
+    margin: 0 -6px;
+    padding: 2px 6px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
 }
 
-.settings-option {
+.settings-body::-webkit-scrollbar { width: 6px; }
+.settings-body::-webkit-scrollbar-track { background: transparent; }
+.settings-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.45); border-radius: 8px; }
+
+.settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.settings-section-title {
+    margin: 0 0 8px;
+    padding: 0 0 0 4px;
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--menu-text-soft);
+    text-shadow: 0 1px 1px rgba(8, 51, 103, 0.6);
+}
+
+/* One dark inset pill per control (reference row). */
+.settings-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    min-height: 48px;
+    padding: 4px 8px 4px 18px;
+    background: rgba(14, 46, 82, 0.72);         /* --menu-surface-lowest */
+    border: 1px solid rgba(54, 136, 208, 0.5);  /* --menu-bright */
+    border-radius: 999px;
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(255, 255, 255, 0.2);
+    transition: background 0.15s ease;
 }
 
-.settings-option-label {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: #ebddff;
+.settings-row:hover {
+    background: rgba(14, 46, 82, 0.85);
 }
 
-/* Toggle Switch */
+.settings-row-label {
+    padding-top: 2px;                           /* Baloo 2 sits high in its line box */
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    color: var(--menu-text);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+.settings-row-range {
+    padding-right: 18px;
+}
+
+.settings-row-range .settings-row-label {
+    flex: 0 0 auto;
+    min-width: 7.25rem;
+}
+
+/* ── Toggle switch — native checkbox kept for main.js 'change' + a11y ── */
 .settings-switch {
     position: relative;
+    flex-shrink: 0;
     display: inline-block;
-    width: 52px;
+    width: 56px;
     height: 28px;
+    margin-right: 6px;
+    cursor: pointer;
+}
+
+/* Invisible hit area: the 28px switch still gets a 44px touch target. */
+.settings-switch::after {
+    content: '';
+    position: absolute;
+    inset: -8px -6px;
 }
 
 .settings-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.settings-slider {
     position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #322053;
-    transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 34px;
-}
-
-.settings-slider:before {
-    position: absolute;
-    content: "";
-    height: 20px;
-    width: 20px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 50%;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-input:checked + .settings-slider {
-    background-color: #b7f700;
-}
-
-input:checked + .settings-slider:before {
-    transform: translateX(24px);
-    background-color: #506e00;
-}
-
-/* Range Slider */
-.settings-slider-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.settings-slider-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.95rem;
-}
-
-.settings-slider-header span:first-child {
-    color: #ebddff;
-    font-weight: 600;
-}
-
-.settings-value {
-    color: #b7f700;
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-}
-
-.settings-range {
+    inset: 0;
+    z-index: 1;
     width: 100%;
-    height: 4px;
-    border-radius: 2px;
-    background: #150136;
-    outline: none;
-    accent-color: #b7f700;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
     cursor: pointer;
+}
+
+.settings-switch-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: var(--ping-offline);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    transition: background 0.2s ease;
+}
+
+.settings-switch-track::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, var(--menu-text) 0%, var(--menu-text-soft) 100%);
+    border: 1px solid var(--menu-text);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease-in-out;
+}
+
+.settings-switch input:checked + .settings-switch-track {
+    background: var(--play-mid);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.settings-switch input:checked + .settings-switch-track::before {
+    transform: translateX(28px);
+}
+
+.settings-switch input:focus-visible + .settings-switch-track {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
+}
+
+/* ── Range slider — the filled part comes from --fill (set in main.js) ── */
+.settings-range {
+    --fill: 50%;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 28px;
+    margin: 0;
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+
+.settings-range:focus {
+    outline: none;
+}
+
+.settings-range::-webkit-slider-runnable-track {
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--play-mid) 0%, var(--menu-accent) var(--fill), var(--ping-offline) var(--fill));
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.settings-range::-moz-range-track {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--ping-offline);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.settings-range::-moz-range-progress {
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--play-mid), var(--menu-accent));
 }
 
 .settings-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
     appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
+    margin-top: -5px;
     border-radius: 50%;
-    background: #b7f700;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(183, 247, 0, 0.3);
+    background: linear-gradient(180deg, var(--menu-text) 0%, var(--menu-text-soft) 100%);
+    border: 2px solid var(--menu-text-muted);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+    transition: transform 0.1s ease;
 }
 
 .settings-range::-moz-range-thumb {
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #b7f700;
-    cursor: pointer;
-    border: none;
-    box-shadow: 0 2px 8px rgba(183, 247, 0, 0.3);
+    background: linear-gradient(180deg, var(--menu-text) 0%, var(--menu-text-soft) 100%);
+    border: 2px solid var(--menu-text-muted);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
 }
 
-/* Button Group */
-.settings-joystick {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+.settings-range:hover::-webkit-slider-thumb,
+.settings-range:active::-webkit-slider-thumb {
+    transform: scale(1.15);
 }
 
+.settings-range:focus-visible::-webkit-slider-thumb {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
+}
+
+.settings-range:focus-visible::-moz-range-thumb {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
+}
+
+.settings-value {
+    flex: 0 0 3.25rem;
+    padding-top: 2px;
+    text-align: right;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-text);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Segmented LEFT / RIGHT selector ── */
 .settings-button-group {
     display: flex;
-    gap: 8px;
-    background: #150136;
-    border-radius: 999px;
-    padding: 4px;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 6px;
 }
 
 .settings-group-btn {
-    flex: 1;
-    padding: 8px 16px;
-    border-radius: 999px;
-    border: none;
+    min-width: 64px;
+    height: 34px;
+    padding: 2px 14px 0;
     font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    color: #c2b8d9;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--menu-text-soft);
     background: transparent;
-}
-
-.settings-group-btn.active {
-    background: #b7f700;
-    color: #506e00;
-    box-shadow: 0 2px 8px rgba(183, 247, 0, 0.2);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .settings-group-btn:hover:not(.active) {
-    color: #ebddff;
+    color: var(--menu-text);
+    background: rgba(255, 255, 255, 0.08);
 }
 
-/* Footer */
+.settings-group-btn.active {
+    font-weight: 800;
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 100%);
+    border-color: rgba(184, 255, 75, 0.6);      /* --play-border */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.settings-group-btn:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 2px;
+}
+
+/* ── Footer: 3D SAVE CHANGES + RESET ── */
 .settings-footer {
     display: flex;
-    gap: 12px;
-    padding: 16px 24px;
-    border-top: 1px solid rgba(61, 43, 94, 0.3);
-    background: #150136;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 14px;
+    margin-top: 24px;
+}
+
+.settings-save-btn,
+.settings-reset-btn {
+    height: 50px;
+    padding: 3px 16px 0;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--menu-text);
+    border-radius: 999px;
+    transition: transform 0.1s ease, filter 0.15s ease, box-shadow 0.1s ease;
 }
 
 .settings-save-btn {
-    flex: 1;
-    padding: 12px 24px;
-    background: #b7f700;
-    color: #506e00;
-    border: none;
-    border-radius: 999px;
-    font-weight: 700;
-    font-size: 0.9rem;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.12s ease;
-    box-shadow: 0 4px 12px rgba(183, 247, 0, 0.2);
-}
-
-.settings-save-btn:hover {
-    filter: brightness(1.1);
-    transform: scale(1.02);
-    box-shadow: 0 6px 16px rgba(183, 247, 0, 0.3);
-}
-
-.settings-save-btn:active {
-    transform: translateY(1px) scale(0.98);
+    flex: 1 1 auto;
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
+    box-shadow: 0 6px 0 var(--menu-accent-deep), 0 10px 14px rgba(0, 0, 0, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.6);
 }
 
 .settings-reset-btn {
-    padding: 12px 24px;
-    background: transparent;
-    color: #c2b8d9;
-    border: 1px solid #3d2b5e;
-    border-radius: 999px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.15s ease;
+    flex: 0 0 auto;
+    min-width: 7.5rem;
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, var(--menu-surface-lowest) 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
+    box-shadow: 0 6px 0 var(--sea-dark), 0 10px 14px rgba(0, 0, 0, 0.35);
 }
 
+.settings-save-btn:hover,
 .settings-reset-btn:hover {
-    background: #322053;
-    color: #ebddff;
-    border-color: #412f63;
+    filter: brightness(1.08);
 }
 
-/* ─── Responsive: keep panel on-screen on narrow viewports ─── */
-@media (max-width: 380px) {
-    .settings-panel {
-        width: calc(100vw - 48px);
-        right: -8px;
+.settings-save-btn:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 var(--menu-accent-deep), 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.settings-reset-btn:active {
+    transform: translateY(4px);
+    box-shadow: 0 2px 0 var(--sea-dark), 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.settings-save-btn:focus-visible,
+.settings-reset-btn:focus-visible,
+.settings-close-btn:focus-visible {
+    outline: 3px solid var(--sea-light);
+    outline-offset: 3px;
+}
+
+/* ── Mobile (≤768px): full-screen sheet with ≥44px touch targets ── */
+@media (max-width: 768px) {
+    /* Full-screen sheet sits above the fixed fullscreen toggle (55), which
+       would otherwise cover SAVE CHANGES; auth gate (60) stays on top. */
+    .settings-modal {
+        z-index: 56;
+        padding: 0;
+        align-items: stretch;
+    }
+
+    .settings-card {
+        max-width: none;
+        height: 100%;
+        max-height: none;
+        padding:
+            calc(env(safe-area-inset-top, 0px) + 20px)
+            16px
+            calc(env(safe-area-inset-bottom, 0px) + 20px);
+        border: none;
+        border-radius: 0;
+    }
+
+    .settings-card::before { display: none; }
+
+    .settings-close-btn {
+        top: calc(env(safe-area-inset-top, 0px) + 12px);
+        right: 12px;
+    }
+
+    .settings-header { margin-bottom: 16px; }
+    .settings-body { gap: 20px; }
+    .settings-row { min-height: 56px; }
+    .settings-group-btn { height: 44px; min-width: 72px; }
+    .settings-range { height: 44px; }
+    .settings-footer { margin-top: 16px; }
+
+    .settings-save-btn,
+    .settings-reset-btn { height: 52px; }
+}
+
+/* Narrow phones: slider rows stack — label + value on top, full-width track below. */
+@media (max-width: 420px) {
+    .settings-row { padding-left: 16px; }
+
+    .settings-row-range {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "label  value"
+            "slider slider";
+        row-gap: 0;
+        padding: 10px 18px 2px;
+        border-radius: 24px;
+    }
+
+    .settings-row-range .settings-row-label { grid-area: label; min-width: 0; }
+    .settings-row-range .settings-value { grid-area: value; }
+    .settings-row-range .settings-range { grid-area: slider; width: 100%; }
+}
+
+/* Short landscape phones (wider than 768px, so no full-screen sheet):
+   tighten the vertical rhythm — the body scrolls. */
+@media (max-height: 500px) and (min-width: 769px) {
+    .settings-modal { padding: 8px; }
+
+    .settings-card {
+        max-height: calc(100vh - 16px);
+        max-height: calc(100dvh - 16px);
+        padding: 14px 24px 18px;
+        border-radius: 28px;
+    }
+
+    .settings-close-btn { top: 6px; right: 6px; }
+    .settings-header { margin: 0 0 10px; }
+    .settings-title { font-size: 1.5rem; }
+    .settings-title::after { height: 4px; margin-top: 3px; }
+    .settings-body { gap: 10px; }
+    .settings-row { min-height: 44px; }
+    .settings-footer { margin-top: 14px; }
+
+    .settings-save-btn,
+    .settings-reset-btn { height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .settings-card,
+    .settings-switch-track,
+    .settings-switch-track::before,
+    .settings-range::-webkit-slider-thumb {
+        transition: none;
     }
 }
 
@@ -1915,76 +2180,41 @@ input:checked + .settings-slider:before {
    (tablets & phones held vertically, ≤768px wide)
    ═══════════════════════════════════════════════ */
 @media (max-width: 768px) {
-    .top-bar {
-        padding: 16px 20px;
-    }
-
-    .icon-btn {
-        width: 42px;
-        height: 42px;
-    }
-
+    /* Stacked phone/tablet-portrait layout. Most sizing is already fluid
+       (clamp) — this block only restructures what can't scale: the avatar
+       sizes from width instead of vmin and the sphere takes the full column. */
     .main-menu-content {
-        padding: 0 16px 6vh;
+        --logo-size: min(62vw, 420px);
+        padding: 0 16px 3vh;
     }
 
     .login-card {
-        max-width: min(400px, 100%);
-        gap: 14px;
-        padding: 20px 18px;
+        max-width: min(420px, 100%);
+        border-radius: 40px;
     }
+}
 
-    #nickname-input {
-        padding: 13px 44px;
-        font-size: 1rem;
-    }
-
-    .play-btn {
-        padding: 14px 24px;
-        font-size: 1.4rem;
-    }
-
-    /* Footer: stack vertically and center on narrow screens */
-    .menu-footer {
-        flex-direction: column;
-        justify-content: center;
-        text-align: center;
-        gap: 8px;
-        padding: 12px 16px;
-    }
-
-    .menu-footer-brand {
-        font-size: 1.1rem;
+/* Narrow phones: the logo takes ~72% of the width, which keeps the whole
+   login card (down to the PLAY button) above the fold on a 375x667 phone. */
+@media (max-width: 480px) {
+    .main-menu-content {
+        --logo-size: min(72vw, 330px);
     }
 }
 
 /* Very small phones (≤400px wide) */
 @media (max-width: 400px) {
-    .brand-logo-ring {
-        border-width: 5px;
-        margin-bottom: -24px;
-    }
-
     .login-card {
-        margin-top: 26px;
-        padding: 18px 14px;
-        border-radius: 22px;
-    }
-
-    .play-btn {
-        font-size: 1.25rem;
-    }
-
-    .servers-btn {
-        font-size: 0.95rem;
+        padding-left: 14px;
+        padding-right: 14px;
+        border-radius: 32px;
     }
 
     /* Dar ekranda "Connected to" etiketi satiri kirar; sadece bolge + ping
        kalsin — bilgi yogunlugu korunur, satir tek satirda kalir. */
     .server-indicator {
         font-size: 0.82rem;
-        padding: 9px 14px;
-        gap: 6px;
+        padding: 4px 14px 3px;
     }
 
     .server-indicator-label {
@@ -1992,8 +2222,17 @@ input:checked + .settings-slider:before {
     }
 
     .menu-footer-links {
-        gap: 10px 14px;
+        gap: 0 12px;
     }
+}
+
+/* Ultra-wide / 4K: the clamps above cap for 1080p–1440p; lift the caps so the
+   menu doesn't shrink into a postage stamp in the middle of the screen. */
+@media (min-width: 2200px) and (min-height: 1200px) {
+    .main-menu-content { --logo-size: 620px; }
+    .login-card { max-width: 500px; }
+    .login-card > * { max-width: 360px; }
+    .side-panel { --sp-width: 440px; }
 }
 
 /* ═══════════════════════════════════════════════
@@ -2022,9 +2261,17 @@ input:checked + .settings-slider:before {
         padding: 0 16px;
     }
 
+    /* Beside the card, the logo is limited by WIDTH, not height: a 16:9
+       wordmark at 38vw is ~0.53 * that in height, which clears a 390px-tall
+       viewport with room for the card next to it. */
+    .main-menu-content {
+        --logo-size: min(38vw, 300px);
+    }
+
     .brand {
         width: auto;
         flex-shrink: 0;
+        margin-bottom: 0;
     }
 
     /* Disable the ±10px float so the logo can't bob out of a tight viewport */
@@ -2032,42 +2279,26 @@ input:checked + .settings-slider:before {
         animation: none;
     }
 
-    .brand-logo-ring {
-        width: 96px;
-        border-width: 4px;
-        margin-bottom: -18px;
-    }
-
-    .brand-title {
-        font-size: clamp(1.1rem, 3.2vw, 1.5rem);
-        padding: 8px 20px;
-        border-radius: 14px;
-    }
-
     .login-card {
-        gap: 10px;
-        max-width: min(340px, 48vw);
-        margin-top: 0;
-        padding: 16px;
-        border-radius: 20px;
+        gap: 8px;
+        max-width: min(340px, 50vw);
+        padding: 16px 18px;
+        border-radius: 32px;
     }
 
     #nickname-input {
-        padding: 9px 40px;
-        font-size: 0.95rem;
+        height: 40px;
+        font-size: 1rem;
     }
 
     .servers-btn {
-        padding: 8px 20px;
-        font-size: 0.9rem;
-        border-bottom-width: 4px;
+        height: 34px;
     }
 
     /* Landscape mobilde dikey alan kritik — satiri sikistir ve etiketi gizle. */
     .server-indicator {
-        padding: 7px 14px;
+        padding: 3px 14px 2px;
         font-size: 0.8rem;
-        gap: 6px;
     }
 
     .server-indicator-label {
@@ -2075,9 +2306,10 @@ input:checked + .settings-slider:before {
     }
 
     .play-btn {
-        padding: 9px 24px;
-        font-size: 1.15rem;
-        border-bottom-width: 4px;
+        height: 46px;
+        margin-bottom: 5px;
+        font-size: 1.5rem;
+        box-shadow: 0 5px 0 var(--menu-accent-deep), 0 8px 12px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(255, 255, 255, 0.7);
     }
 
     .menu-footer {
@@ -2171,7 +2403,10 @@ html.pseudo-fullscreen #app {
 }
 
 /* ═══════════════════════════════════════════════
-   GAME HUD — In-game Overlay (Match reference design exactly)
+   GAME HUD — reference: game screen/in-game.html
+   Telemetry pill (top-left) · score capsule (top-centre) · leaderboard
+   card (top-right). The minimap is drawn by Phaser (Game.js drawMinimap).
+   Palette: :root --menu-* / --play-* / --ping-*.
    ═══════════════════════════════════════════════ */
 
 .game-hud {
@@ -2182,285 +2417,338 @@ html.pseudo-fullscreen #app {
     height: 100%;
     z-index: 5;
     pointer-events: none;
-    padding: 24px;
+    padding: 16px;
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    font-family: 'Quicksand', sans-serif;
+    font-family: var(--font-menu);
+    color: var(--menu-text);
 }
 
 .game-hud.hidden {
     display: none;
 }
 
-/* Color system matching reference */
-:root {
-    --hud-surface: #1a063b;
-    --hud-surface-container-high: #322053;
-    --hud-surface-container-highest: #3d2b5e;
-    --hud-surface-container-lowest: #150136;
-    --hud-primary: #ffffff;
-    --hud-primary-container: #b7f700;
-    --hud-secondary-container: #fdd400;
-    --hud-on-surface: #ebddff;
-    --hud-on-surface-variant: #c2caad;
-}
-
-/* Bubbly panel base */
+/* Reference .hud-panel: dark navy glass over the bright seabed. */
 .hud-bubbly-panel {
-    background-color: rgba(50, 32, 83, 0.85);
-    backdrop-filter: blur(8px);
-    border-top: 1px solid rgba(235, 221, 255, 0.1);
-    box-shadow: 0 4px 20px rgba(26, 15, 46, 0.4);
+    background: rgba(18, 52, 91, 0.88);         /* --menu-surface-container */
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 15px rgba(8, 51, 103, 0.3);
     pointer-events: auto;
 }
 
-/* Top HUD Row */
 .hud-top-row {
+    position: relative;                         /* score capsule centres on the full row */
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 12px;
     width: 100%;
-    gap: 24px;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
 }
 
-/* Stats Panel - Rounded pill shape */
+.hud-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* ── Telemetry pill ── */
 .hud-stats-panel {
     display: flex;
     align-items: center;
-    gap: 24px;
-    padding: 8px 16px;
+    gap: 14px;
+    max-width: 100%;
+    padding: 5px 16px 3px;                      /* Baloo 2 sits high in its line box */
+    border: 1px solid rgba(54, 136, 208, 0.5);  /* --menu-bright */
     border-radius: 999px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 16px;
-}
-
-.hud-stats-panel.hud-bubbly-panel {
-    background-color: rgba(50, 32, 83, 0.85);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 18px;
+    letter-spacing: 0.02em;
 }
 
 .stat-item {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 4px;
+    white-space: nowrap;
 }
 
 .stat-label {
-    color: var(--hud-on-surface-variant);
-    font-weight: 700;
+    color: var(--menu-text);
 }
 
+/* No layout shift while numbers tick: tabular digits plus a min-width that
+   reserves the widest expected value, so the pill never changes width. */
 .stat-value {
-    color: var(--hud-primary-container);
-    font-family: 'JetBrains Mono', monospace;
+    color: var(--ping-good);
+    font-variant-numeric: tabular-nums;
 }
 
-/* Score Pod */
-.hud-score-pod {
+#hud-fps   { min-width: 3ch; color: var(--menu-placeholder); }
+#hud-ping  { min-width: 5ch; }
+#hud-coord { min-width: 10ch; text-align: right; }
+
+/* Settings > Show FPS / Show Ping. Iki satir da kapaliysa pilin kendisi
+   gizlenir; bos bir balon ekranda durmamali. Gorunurlugu
+   src/ui/overlays.js -> applyHudTelemetrySettings yazar. */
+.stat-item.hidden,
+.hud-stats-panel.hidden {
+    display: none;
+}
+
+/* ── Koordinat rozeti — MINI HARITAYA HIZALI ────────────────────────────────
+   Rozet DOM'da, mini harita ise Phaser canvas'inda cizilir. Hizayi koruyan
+   sey iki degiskendir: --minimap-size ve --minimap-pad. Ikisini de Phaser
+   tarafi yazar (Game.minimapMetrics tek kaynak), boylece mobil/masaustu
+   olcek farki, yon degisimi ve her resize'da rozet haritayla BIRLIKTE
+   hareket eder. Degiskenler yoksa masaustu olculerine duser.
+
+   NEDEN HARITANIN USTUNDE, ICINDE DEGIL: harita zaten ekranin alt kenarina
+   'padding' kadar yakindir, yani ALTINA bir sey koymak icin yer yoktur.
+   Diskin ustune bindirmek ise gorusu kapatirdi — kucuk mobil haritada
+   (88 px) 18 px'lik bir rozet diskin bes'te birini orter. Ust kenar, hem
+   haritayi hem de sag alttaki boost dugmesini serbest birakan tek yerdir. */
+.hud-coord-pod {
+    position: absolute;
+    right: var(--minimap-pad, 24px);
+    bottom: calc(var(--minimap-pad, 24px) + var(--minimap-size, 160px) + 8px);
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 8px;
-    border-radius: 16px;
-    font-family: 'Quicksand', sans-serif;
-    font-weight: 700;
-}
-
-.hud-score-pod.hud-bubbly-panel {
-    background-color: rgba(50, 32, 83, 0.85);
-}
-
-.score-icon-wrapper {
-    background-color: var(--hud-surface-container-lowest);
+    gap: 6px;
+    padding: 3px 12px 2px;
+    border: 1px solid rgba(54, 136, 208, 0.5);  /* --menu-bright */
     border-radius: 999px;
-    width: 32px;
-    height: 32px;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 18px;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
+    /* Rozet bir OKUMA alanidir: altindaki canvas'a dokunusu gecirmeli, aksi
+       halde mini harita kosesinde olu bir girdi bolgesi olusur. */
+    pointer-events: none;
+}
+
+.hud-coord-pod.hidden {
+    display: none;
+}
+
+.hud-coord-icon {
+    display: flex;
+    color: var(--menu-bright);
+}
+
+/* ── Score capsule ── */
+.hud-score-pod {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    gap: 8px;
+    min-width: 96px;
+    padding: 3px 16px 1px;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    border-radius: 999px;
 }
 
-.score-icon {
-    color: var(--hud-primary-container);
-    font-size: 24px;
-    font-variation-settings: 'FILL' 1;
+/* Glossy food orb (reference .orb-icon). */
+.score-orb {
+    position: relative;
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--play-top) 0%, var(--play-mid) 55%, var(--menu-accent-deep) 100%);
+    box-shadow: 0 0 6px rgba(118, 219, 23, 0.6), inset -1px -2px 3px rgba(0, 0, 0, 0.3);
+}
+
+.score-orb::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.8);
 }
 
 .score-value {
-    font-size: 32px;
-    line-height: 40px;
-    color: var(--hud-primary);
-    font-family: 'Quicksand', sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 26px;
+    letter-spacing: 0.05em;
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-text);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
-/* Leaderboard Pod */
+/* ── Leaderboard card ── */
 .hud-leaderboard-pod {
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    padding: 10px 12px;
-    border-radius: 14px;
-    width: 220px;
-    font-family: 'Quicksand', sans-serif;
+    flex-shrink: 0;
+    width: 224px;
+    padding: 10px 12px 4px;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    border-radius: 16px;
 }
 
 .hud-leaderboard-pod.hud-bubbly-panel {
-    background-color: rgba(39, 20, 72, 0.55);
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid rgba(235, 221, 255, 0.08);
-    box-shadow: 0 2px 12px rgba(26, 15, 46, 0.3);
+    box-shadow: 0 10px 25px rgba(8, 51, 103, 0.4);
 }
 
 .leaderboard-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 4px;
+    justify-content: center;
 }
 
 .leaderboard-title {
-    font-family: 'Quicksand', sans-serif;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 800;
     line-height: 18px;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--hud-primary);
-}
-
-.leaderboard-icon {
-    color: var(--hud-secondary-container);
-    font-size: 16px;
-    font-variation-settings: 'FILL' 1;
+    color: var(--menu-text);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .leaderboard-info {
-    font-size: 10px;
+    padding-bottom: 6px;
+    text-align: center;
+    font-size: 11px;
     font-weight: 700;
     line-height: 14px;
-    color: var(--hud-on-surface-variant);
-    margin-bottom: 4px;
+    color: var(--menu-text-muted);
 }
 
 #hud-players {
-    color: var(--hud-primary-container);
+    color: var(--ping-good);
+    font-variant-numeric: tabular-nums;
 }
 
-/* Leaderboard entries */
 .leaderboard-entries {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 18px;
 }
 
 .leaderboard-entry {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 4px 6px;
-    border-radius: 6px;
+    gap: 8px;
+    padding: 0 4px;
+}
+
+/* Rank + name cell (built by overlays.js): let the name truncate. */
+.leaderboard-entry > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Local player pinned below the top ranks — separated like the reference. */
+.leaderboard-entry.rank-pinned {
+    margin-top: 3px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.rank-number {
+    flex-shrink: 0;
+    min-width: 20px;
     font-size: 11px;
-    line-height: 15px;
-}
-
-.leaderboard-entry.rank-1 {
-    background-color: rgba(21, 1, 54, 0.5);
-}
-
-.leaderboard-entry.rank-you {
-    border-top: 1px solid var(--hud-surface-container-highest);
-    padding-top: 8px;
-    margin-top: 4px;
-}
-
-.rank-number, .rank-crown {
-    min-width: 14px;
-    text-align: center;
-    color: var(--hud-on-surface-variant);
     font-weight: 700;
-    line-height: 15px;
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-text-muted);
 }
 
+/* Rank 1: victory cup (overlays.js leaves the span empty). */
 .rank-crown {
-    font-size: 13px;
+    flex-shrink: 0;
+    display: inline-block;
+    width: 16px;
+    height: 15px;
+    margin-right: 4px;
+    background: url('/assets/leaderboard/victory_cup.png') center / contain no-repeat;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
 
 .player-name {
-    flex: 1;
-    margin-left: 6px;
-    color: var(--hud-on-surface);
-    font-weight: 500;
+    flex: 1 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.leaderboard-entry.rank-1 .player-name {
-    color: var(--hud-primary);
-    font-weight: 700;
+    color: var(--menu-text-soft);
 }
 
 .leaderboard-entry.rank-you .player-name {
-    color: var(--hud-primary);
-    font-weight: 700;
+    color: var(--ping-good);
+    letter-spacing: 0.04em;
 }
 
 .player-score {
-    color: var(--hud-on-surface-variant);
-    font-weight: 700;
-    font-family: 'JetBrains Mono', monospace;
-}
-
-.leaderboard-entry.rank-1 .player-score,
-.leaderboard-entry.rank-you .player-score {
-    color: var(--hud-primary-container);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--ping-good);
 }
 
 /* Boş durum: sıralama paketi henüz gelmedi ya da haritada sıralanacak oyuncu
    yok. Sahte oyuncu satırlarının yerini alan tek, nötr mesaj satırı. */
 .leaderboard-empty {
     padding: 4px;
-    font-size: 10px;
-    line-height: 14px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 15px;
     text-align: center;
-    color: var(--hud-on-surface-variant);
-    opacity: 0.7;
+    color: var(--menu-text-muted);
+    opacity: 0.8;
 }
 
-/* Leaderboard expand/collapse toggle */
+/* Expand/collapse chevron (Top 3 ↔ Top 5) */
 .leaderboard-toggle {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    height: 20px;
+    height: 22px;
     margin-top: 2px;
     padding: 0;
     background: transparent;
     border: none;
-    border-radius: 0 0 8px 8px;
-    color: var(--hud-on-surface-variant);
+    border-radius: 0 0 10px 10px;
+    color: var(--menu-placeholder);
     cursor: pointer;
     pointer-events: auto;
-    transition: color 0.15s ease, background 0.15s ease;
+    transition: color 0.15s ease;
 }
 
 .leaderboard-toggle:hover {
-    color: var(--hud-primary-container);
-    background: rgba(21, 1, 54, 0.4);
+    color: var(--menu-text);
+}
+
+.leaderboard-toggle:focus-visible {
+    outline: 2px solid var(--sea-light);
+    outline-offset: -2px;
 }
 
 .leaderboard-toggle-icon {
-    font-size: 18px;
+    font-size: 20px;
     line-height: 1;
-    transition: transform 0.2s ease;
+    font-variation-settings: 'wght' 700;
 }
-
-/* Minimap: Phaser tarafında çizilir (Game.js drawMinimap) — DOM elemanı yok. */
 
 /* ═══════════════════════════════════════════════
    RESPONSIVE — In-game HUD on mobile
@@ -2469,238 +2757,81 @@ html.pseudo-fullscreen #app {
 @media (max-width: 768px), (max-height: 500px) {
     .game-hud {
         padding: 10px 12px;
+        padding-top: max(10px, env(safe-area-inset-top, 0px));
     }
 
-    .hud-top-row {
-        gap: 10px;
-    }
+    .hud-top-row { gap: 8px; }
 
-    /* Stats pill: smaller type, tighter spacing */
     .hud-stats-panel {
-        gap: 12px;
-        padding: 5px 12px;
-        font-size: 10px;
-        line-height: 14px;
+        gap: 10px;
+        padding: 3px 12px 2px;
+        font-size: 11px;
+        line-height: 15px;
     }
 
-    /* Score pod: was blocking the view — roughly half size */
-    .hud-score-pod {
-        gap: 8px;
-        padding: 5px 10px 5px 5px;
+    /* Telefonda rozet kuculur: mini haritanin SOLUNDA boost dugmesi durur
+       (MobileControls, minimap ayak izini 'minimapReserve' ile bosaltir) ve
+       kontrol olcegi %150'ye cekildiginde iki eleman birbirine yaklasir.
+       Dar rozet bu payi korur. Rozet zaten pointer-events:none oldugu icin
+       gorsel olarak degselerdi bile boost dokunusu engellenmezdi. */
+    .hud-coord-pod {
+        gap: 4px;
+        padding: 2px 9px 1px;
+        font-size: 11px;
+        line-height: 15px;
+    }
+
+    #hud-coord { min-width: 9ch; }
+
+    .score-orb { width: 12px; height: 12px; }
+
+    .score-value {
+        font-size: 16px;
+        line-height: 22px;
+    }
+
+    .hud-leaderboard-pod {
+        width: 164px;
+        padding: 7px 8px 3px;
         border-radius: 12px;
     }
 
-    .score-icon-wrapper {
-        width: 24px;
-        height: 24px;
-    }
-
-    .score-icon {
-        font-size: 16px;
-    }
-
-    .score-value {
-        font-size: 20px;
-        line-height: 24px;
-    }
-
-    /* Leaderboard: compact for mobile field-of-view */
-    .hud-leaderboard-pod {
-        width: 148px;
-        padding: 7px 8px;
-        gap: 3px;
-        border-radius: 10px;
-    }
-
-    .leaderboard-header {
-        margin-bottom: 1px;
-    }
-
-    .leaderboard-title {
-        font-size: 10px;
-        line-height: 14px;
-        letter-spacing: 1px;
-    }
-
-    .leaderboard-icon {
-        font-size: 12px;
-    }
-
-    .leaderboard-info {
-        font-size: 9px;
-        line-height: 12px;
-        margin-bottom: 1px;
-    }
+    .leaderboard-title { font-size: 11px; line-height: 15px; }
+    .leaderboard-info { font-size: 10px; line-height: 13px; padding-bottom: 4px; }
 
     .leaderboard-entries {
         gap: 2px;
+        font-size: 11px;
+        line-height: 15px;
     }
 
-    .leaderboard-entry {
-        padding: 2px 4px;
-        font-size: 9px;
-        line-height: 13px;
-    }
-
-    .leaderboard-entry.rank-you {
-        padding-top: 5px;
-        margin-top: 2px;
-    }
-
-    .leaderboard-toggle {
-        height: 16px;
-        margin-top: 1px;
-    }
-
-    .leaderboard-toggle-icon {
-        font-size: 14px;
-    }
+    .rank-number { min-width: 17px; font-size: 10px; }
+    .rank-crown { width: 13px; height: 12px; }
+    .leaderboard-entry.rank-pinned { margin-top: 2px; padding-top: 4px; }
+    .leaderboard-toggle { height: 18px; }
+    .leaderboard-toggle-icon { font-size: 16px; }
 }
 
-/* ═══════════════════════════════════════════════
-   RESPONSIVE — Game Over & Connecting overlays
-   Overlays must NEVER clip: switch from rigid centering to
-   scrollable + margin:auto (keeps centered when it fits,
-   scrolls when it doesn't), and scale inner elements down.
-   ═══════════════════════════════════════════════ */
-@media (max-width: 768px), (max-height: 640px) {
-    /* ── Game Over ── */
-    .gameover-overlay {
-        padding: 16px;
-        align-items: flex-start;   /* centering handled by margin:auto below */
-        overflow-y: auto;
+/* Portrait phones: telemetry, score and leaderboard don't fit side by side,
+   so the score capsule leaves the centre and stacks under the telemetry pill,
+   and the pill may wrap its items onto two lines. */
+@media (max-width: 768px) {
+    .hud-left { flex: 1 1 auto; }
+
+    .hud-score-pod {
+        position: static;
+        transform: none;
+        min-width: 72px;
+        padding: 2px 12px 0;
     }
 
-    .gameover-cluster {
-        margin: auto;              /* centers when short, scrolls when tall */
-        max-width: 420px;
+    .hud-stats-panel {
+        flex-wrap: wrap;
+        row-gap: 0;
+        border-radius: 14px;
     }
 
-    .gameover-mascot-wrap {
-        margin-bottom: -40px;
-    }
-
-    .gameover-mascot-ring {
-        width: 96px;
-        height: 96px;
-        padding: 5px;
-        box-shadow: 0 5px 0 0 #374e00;
-    }
-
-    .gameover-star-spin .material-symbols-outlined { font-size: 24px; }
-    .gameover-star-pulse .material-symbols-outlined { font-size: 20px; }
-
-    .gameover-panel {
-        padding: 52px 20px 24px;
-        border-width: 4px;
-        border-radius: 1.5rem;
-    }
-
-    .gameover-title {
-        font-size: 30px;
-        line-height: 36px;
-        margin-bottom: 16px;
-    }
-
-    .gameover-stats-grid {
-        gap: 10px;
-        margin-bottom: 20px;
-    }
-
-    .gameover-stat {
-        padding: 10px;
-        border-radius: 1.25rem;
-    }
-
-    .gameover-stat-score {
-        padding: 14px;
-    }
-
-    .gameover-score-value {
-        font-size: 40px;
-    }
-
-    .gameover-rank-value,
-    .gameover-food-value {
-        font-size: 20px;
-        line-height: 26px;
-    }
-
-    .gameover-actions {
-        gap: 10px;
-    }
-
-    .gameover-btn-primary {
-        font-size: 20px;
-        line-height: 26px;
-        padding: 12px 20px;
-        border-radius: 1.25rem;
-    }
-
-    .gameover-btn-secondary {
-        font-size: 15px;
-        line-height: 20px;
-        padding: 10px 20px;
-        border-radius: 1.25rem;
-    }
-
-    .gameover-links {
-        margin-top: 16px;
-        gap: 16px;
-    }
-
-    /* ── Connecting / "Waiting for Server..." ── */
-    .connecting-overlay {
-        padding: 16px;
-        align-items: flex-start;
-        overflow-y: auto;
-    }
-
-    .connecting-card {
-        margin: auto;
-        max-width: 360px;
-        gap: 18px;
-        padding: 24px 20px;
-    }
-
-    .egg-loader-container {
-        width: 64px;
-        height: 64px;
-    }
-
-    .egg-loader {
-        width: 48px;
-        height: 48px;
-    }
-
-    /* Re-align face features to the smaller 48px egg */
-    .egg-eye { width: 6px; height: 6px; }
-    .egg-eye-left  { top: 15px; left: 12px; }
-    .egg-eye-right { top: 15px; right: 12px; }
-    .egg-blush-left  { top: 21px; left: 4px; }
-    .egg-blush-right { top: 21px; right: 4px; }
-
-    .connecting-status {
-        gap: 8px;
-    }
-
-    .connecting-title {
-        font-size: 1.15rem;
-    }
-
-    .connecting-info {
-        font-size: 0.65rem;
-        letter-spacing: 1px;
-    }
-
-    .connecting-progress-bar {
-        height: 12px;
-    }
-
-    .connecting-cancel-btn {
-        padding: 10px 20px;
-        font-size: 0.8rem;
-    }
+    #hud-coord { min-width: 11ch; }
 }
 
 /* Landscape phones with taller-than-768px width still hit the height limit
@@ -2802,8 +2933,15 @@ html.pseudo-fullscreen #app {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
-    background: radial-gradient(circle at 50% 0%, #2a1052 0%, #1a063b 60%, #12042a 100%);
+    padding: clamp(16px, 4vw, 24px);
+    font-family: var(--font-menu);
+    color: var(--menu-text);
+    /* Same seabed as the menu, tinted sea-dark: this is a blocking prompt and
+       should read as sitting on top of the menu. */
+    background:
+        linear-gradient(rgba(8, 51, 103, 0.55), rgba(8, 51, 103, 0.55)),
+        url('/assets/background/main-menu-background.png') center bottom / cover no-repeat,
+        var(--menu-surface);
     opacity: 1;
     visibility: visible;
     transition: opacity 0.3s ease, visibility 0.3s;
@@ -2823,36 +2961,45 @@ html.pseudo-fullscreen #app {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 18px;
+    gap: clamp(12px, 2vh, 18px);
     width: 100%;
-    max-width: 420px;
-    padding: 48px 32px;
-    background: #271448;
-    border: 1px solid #322053;
-    border-radius: 28px;
-    box-shadow: 0 8px 30px rgba(26, 15, 46, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.1);
+    max-width: min(420px, 100%);
+    padding: clamp(32px, 6vh, 48px) clamp(20px, 4vw, 32px);
+    /* Reference .ocean-sphere */
+    background: radial-gradient(circle at 50% 38%, rgba(68, 178, 237, 0.55) 0%, rgba(17, 102, 185, 0.75) 75%, rgba(6, 68, 142, 0.88) 100%);
+    border: 2.5px solid rgba(255, 255, 255, 0.55);
+    border-radius: clamp(36px, 5vw, 52px);
+    box-shadow: 0 0 35px rgba(45, 170, 240, 0.45), inset 0 0 20px rgba(255, 255, 255, 0.25);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
     text-align: center;
 }
 
+/* Same gradient ring as the menu's avatar badge. */
 .auth-logo {
-    font-size: 56px;
-    line-height: 1;
-    filter: drop-shadow(0 4px 12px var(--primary-glow));
+    width: clamp(80px, 12vmin, 104px);
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    padding: 4px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #ffffff 0%, #cffafe 50%, var(--menu-placeholder) 100%);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }
 
 .auth-title {
-    font-family: var(--font-heading);
-    font-size: 26px;
+    font-family: var(--font-menu);
+    font-size: clamp(1.4rem, 1.5vw + 1rem, 1.8rem);
     font-weight: 800;
-    letter-spacing: -0.01em;
-    color: var(--text-main);
+    line-height: 1.15;
+    color: var(--menu-text);
+    text-shadow: 0 3px 0 var(--sea-dark);
 }
 
 .auth-subtitle {
     max-width: 30ch;
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--text-muted);
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: var(--menu-text-soft);
 }
 
 /* Google butonu kendi iframe'ini getirir; slot yalnızca ortalar ve yer açar. */
@@ -2868,7 +3015,7 @@ html.pseudo-fullscreen #app {
     padding: 10px 14px;
     font-size: 13px;
     line-height: 1.45;
-    color: #ffb4a2;
+    color: #ffb4ab;                             /* error — same as .sp-inline-error */
     background: rgba(255, 80, 60, 0.1);
     border: 1px solid rgba(255, 80, 60, 0.25);
     border-radius: 12px;
@@ -2879,19 +3026,9 @@ html.pseudo-fullscreen #app {
 }
 
 .auth-legal {
-    font-size: 11.5px;
-    color: rgba(160, 160, 176, 0.75);
-}
-
-@media (max-width: 480px) {
-    .auth-card {
-        gap: 14px;
-        padding: 36px 22px;
-        border-radius: 22px;
-    }
-
-    .auth-logo { font-size: 44px; }
-    .auth-title { font-size: 22px; }
+    font-size: 0.75rem;
+    color: var(--menu-text-muted);
+    opacity: 0.8;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -2909,9 +3046,11 @@ html.pseudo-fullscreen #app {
     grid-template-columns: 1fr 1fr;
     gap: 4px;
     padding: 4px;
-    background: var(--menu-surface-lowest);
+    /* Reference .pill-input — the strip reads as part of the input family. */
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, #174270 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
     border-radius: 999px;
-    box-shadow: inset 0 3px 5px -1px rgba(0, 0, 0, 0.45);
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 /* Hareketli seçim göstergesi. İKİ sekmeye sabitlenmiştir: solda %4 padding
@@ -2923,9 +3062,9 @@ html.pseudo-fullscreen #app {
     left: 4px;
     width: calc(50% - 6px);
     height: calc(100% - 8px);
-    background: var(--menu-accent);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
     border-radius: 999px;
-    box-shadow: 0 2px 0 var(--menu-accent-shadow), 0 4px 12px rgba(183, 247, 0, 0.25);
+    box-shadow: 0 2px 0 var(--menu-accent-deep), inset 0 1px 2px rgba(255, 255, 255, 0.6);
     transition: transform var(--transition-bounce);
     pointer-events: none;
 }
@@ -2941,15 +3080,20 @@ html.pseudo-fullscreen #app {
     align-items: center;
     justify-content: center;
     gap: 7px;
-    padding: 11px 8px;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.6px;
+    padding: 8px 6px 6px;
+    font-family: var(--font-menu);
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.04em;
     color: var(--menu-text-muted);
     background: transparent;
     border-radius: 999px;
     transition: color var(--transition-fast);
+}
+
+.auth-tab .auth-tab-label {
+    white-space: nowrap;
 }
 
 .auth-tab .auth-tab-icon {
@@ -2963,12 +3107,13 @@ html.pseudo-fullscreen #app {
 
 /* Etkin sekme metni thumb'ın ÜZERİNDE okunur — bu yüzden koyu accent rengi. */
 .auth-tab.is-active {
-    color: var(--menu-accent-deep);
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
 .auth-tab:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(183, 247, 0, 0.45);
+    box-shadow: 0 0 0 3px rgba(40, 185, 230, 0.6);
 }
 
 /* Google oturumu açıkken GUEST sekmesi kilitlenir: hesaplı oyuncuyu tek tıkla
@@ -3024,13 +3169,14 @@ html.pseudo-fullscreen #app {
 .social-btn {
     width: 100%;
     max-width: 320px;
-    padding: 12px 20px;
-    font-family: var(--font-body), sans-serif;
-    font-size: 0.95rem;
-    font-weight: 600;
+    height: 44px;
+    padding: 2px 20px 0;
+    font-family: var(--font-menu);
+    font-size: 1rem;
+    font-weight: 700;
     color: var(--menu-text);
-    background: var(--menu-surface-high);
-    border: 1px solid var(--menu-bright);
+    background: linear-gradient(180deg, var(--menu-surface-high) 0%, #174270 100%);
+    border: 2px solid rgba(135, 206, 250, 0.6);
     border-radius: 999px;
     transition: var(--transition-fast);
 }
@@ -3047,13 +3193,14 @@ html.pseudo-fullscreen #app {
 }
 
 .social-badge {
-    padding: 2px 8px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.6rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: var(--menu-surface-lowest);
-    background: var(--menu-text-muted);
+    padding: 1px 8px 0;
+    font-family: var(--font-menu);
+    font-size: 0.66rem;
+    font-weight: 800;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    color: var(--sea-dark);
+    background: var(--menu-placeholder);
     border-radius: 999px;
 }
 
@@ -3063,8 +3210,8 @@ html.pseudo-fullscreen #app {
     align-items: center;
     gap: 12px;
     padding: 14px 16px;
-    background: var(--menu-surface-lowest);
-    border: 1px solid rgba(183, 247, 0, 0.25);
+    background: rgba(14, 46, 82, 0.85);     /* reference .status-chip */
+    border: 2px solid rgba(89, 232, 27, 0.45);  /* --ping-good */
     border-radius: 18px;
 }
 
@@ -3075,7 +3222,7 @@ html.pseudo-fullscreen #app {
 .social-signed-in-tick {
     flex-shrink: 0;
     font-size: 26px;
-    color: var(--menu-accent);
+    color: var(--ping-good);
 }
 
 .social-signed-in-text {
@@ -3086,8 +3233,8 @@ html.pseudo-fullscreen #app {
 }
 
 .social-signed-in-name {
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.95rem;
+    font-family: var(--font-menu);
+    font-size: 1rem;
     font-weight: 700;
     color: var(--menu-text);
 }
@@ -3112,15 +3259,15 @@ html.pseudo-fullscreen #app {
     right: 14px;
     width: 36px;
     height: 36px;
-    color: var(--text-muted);
+    color: var(--menu-text-muted);
     background: transparent;
     border-radius: 50%;
     transition: var(--transition-fast);
 }
 
 .auth-close-btn:hover {
-    color: var(--text-main);
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--menu-text);
+    background: rgba(255, 255, 255, 0.15);
 }
 
 @media (max-width: 480px) {
@@ -3134,22 +3281,13 @@ html.pseudo-fullscreen #app {
    z-index 40: oyun HUD'unun üstünde ama servers (50) / settings (55) / auth
    (60) modallerinin ALTINDA — bir modal açıkken çekmece onu kesmemeli.
 
-   Menü paleti burada YENİDEN tanımlanır: panel .ui-layer'ın DIŞINDA yaşar
-   (menü gizlendiğinde de var olabilmesi için) ve o yüzden oradaki scoped
-   token'ları miras alamaz.
+   Menü paleti :root'ta tanımlı; panel .ui-layer'ın DIŞINDA yaşasa da
+   token'lara erişir.
    ═══════════════════════════════════════════════════════════════════════════ */
 .side-panel {
-    --menu-surface: #1a063b;
-    --menu-surface-container: #271448;
-    --menu-surface-high: #322053;
-    --menu-surface-highest: #3d2b5e;
-    --menu-surface-lowest: #150136;
-    --menu-bright: #412f63;
-    --menu-accent: #b7f700;
-    --menu-accent-deep: #506e00;
-    --menu-accent-shadow: #374e00;
-    --menu-text: #ebddff;
-    --menu-text-muted: #bfb3d6;
+    /* Drawer width lives in ONE token: the drawer and the collapsed handle's
+       offset must always agree, and both change at each breakpoint. */
+    --sp-width: clamp(300px, 24vw, 380px);
 
     position: absolute;
     top: 0;
@@ -3159,6 +3297,8 @@ html.pseudo-fullscreen #app {
     display: flex;
     align-items: stretch;
     pointer-events: none;           /* boşluk tıklamayı yutmasın */
+    font-family: var(--font-menu);
+    color: var(--menu-text);
 }
 
 .side-panel[hidden] {
@@ -3169,11 +3309,14 @@ html.pseudo-fullscreen #app {
     pointer-events: auto;
     display: flex;
     flex-direction: column;
-    width: min(340px, 86vw);
+    width: var(--sp-width);
     height: 100%;
-    background: var(--menu-surface-container);
-    border-right: 1px solid var(--menu-bright);
-    box-shadow: 6px 0 28px rgba(10, 5, 20, 0.55);
+    /* Reference .server-list-panel fading into sea-dark. */
+    background: linear-gradient(180deg, rgba(18, 52, 91, 0.97) 0%, rgba(8, 51, 103, 0.97) 100%);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    border-right: 2px solid rgba(135, 206, 250, 0.6);
+    box-shadow: 0 0 35px rgba(45, 170, 240, 0.35);
     transition: transform var(--transition-bounce);
     /* Güvenli alan: çentikli cihazlarda panel başlığı çentiğin altında kalsın. */
     padding-top: env(safe-area-inset-top, 0px);
@@ -3194,18 +3337,21 @@ html.pseudo-fullscreen #app {
 .side-panel-toggle {
     pointer-events: auto;
     align-self: center;
-    width: 30px;
-    height: 68px;
+    width: 32px;
+    height: 72px;
     padding: 0;
-    color: var(--menu-surface-lowest);
-    background: var(--menu-accent);
-    border-radius: 0 14px 14px 0;
-    box-shadow: 3px 0 12px rgba(10, 5, 20, 0.45);
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
+    border-left: none;
+    border-radius: 0 18px 18px 0;
+    box-shadow: 0 4px 0 var(--menu-accent-deep), 6px 0 16px rgba(0, 0, 0, 0.3);
     transition: transform var(--transition-bounce), filter var(--transition-fast);
 }
 
 .side-panel.is-collapsed .side-panel-toggle {
-    transform: translateX(calc(-1 * min(340px, 86vw)));
+    transform: translateX(calc(-1 * var(--sp-width)));
 }
 
 .side-panel-toggle:hover {
@@ -3240,8 +3386,9 @@ html.pseudo-fullscreen #app {
     height: 46px;
     overflow: hidden;
     background: var(--menu-surface-high);
-    border: 2px solid var(--menu-accent);
+    border: 3px solid #cffafe;              /* avatar-badge ring, cyan-100 */
     border-radius: 50%;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
 }
 
 .sp-avatar-img {
@@ -3251,10 +3398,11 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-avatar-letter {
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--menu-accent);
+    font-family: var(--font-menu);
+    font-size: 1.4rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--menu-text);
 }
 
 .sp-identity {
@@ -3277,21 +3425,23 @@ html.pseudo-fullscreen #app {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 1.02rem;
-    font-weight: 700;
+    font-family: var(--font-menu);
+    font-size: 1.12rem;
+    font-weight: 800;
+    line-height: 1.2;
     color: var(--menu-text);
 }
 
 .sp-mode-badge {
     flex-shrink: 0;
-    padding: 2px 7px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.55rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: var(--menu-surface-lowest);
-    background: var(--menu-text-muted);
+    padding: 1px 8px 0;
+    font-family: var(--font-menu);
+    font-size: 0.64rem;
+    font-weight: 800;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    color: var(--sea-dark);
+    background: var(--menu-placeholder);
     border-radius: 999px;
 }
 
@@ -3342,7 +3492,7 @@ html.pseudo-fullscreen #app {
 /* ── Cüzdan bölümü ── */
 .sp-section {
     padding: 14px 16px;
-    border-bottom: 1px solid rgba(65, 47, 99, 0.5);
+    border-bottom: 1px solid rgba(54, 136, 208, 0.45);   /* --menu-bright */
 }
 
 .sp-section-head {
@@ -3352,14 +3502,16 @@ html.pseudo-fullscreen #app {
     margin-bottom: 10px;
 }
 
+/* Reference footer label: sky-200, extra-bold, wide tracking. */
 .sp-section-title,
 .sp-subhead {
     margin: 0;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 1.6px;
+    font-family: var(--font-menu);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--menu-accent);
+    color: var(--menu-text-muted);
 }
 
 .sp-subhead {
@@ -3400,9 +3552,10 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-balance-amount {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.95rem;
-    font-weight: 600;
+    font-family: var(--font-menu);
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1.15;
     color: var(--menu-text);
     font-variant-numeric: tabular-nums;
 }
@@ -3430,9 +3583,10 @@ html.pseudo-fullscreen #app {
     align-items: center;
     justify-content: center;
     gap: 7px;
-    padding: 10px 8px;
-    font-family: 'Quicksand', var(--font-heading), sans-serif;
-    font-size: 0.85rem;
+    padding: 9px 8px 7px;
+    font-family: var(--font-menu);
+    font-size: 0.95rem;
+    line-height: 1.2;
     font-weight: 700;
     color: var(--menu-text-muted);
     background: var(--menu-surface-lowest);
@@ -3450,9 +3604,10 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-menu-btn.is-active {
-    color: var(--menu-accent-deep);
-    background: var(--menu-accent);
-    box-shadow: 0 2px 0 var(--menu-accent-shadow);
+    color: var(--menu-text);
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    box-shadow: 0 3px 0 var(--menu-accent-deep), inset 0 1px 2px rgba(255, 255, 255, 0.6);
 }
 
 /* ── Alt menü gövdesi ── */
@@ -3487,9 +3642,9 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-chip {
-    padding: 6px 13px;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.76rem;
+    padding: 5px 13px 3px;
+    font-family: var(--font-menu);
+    font-size: 0.82rem;
     font-weight: 600;
     color: var(--menu-text-muted);
     background: var(--menu-surface-lowest);
@@ -3521,7 +3676,7 @@ html.pseudo-fullscreen #app {
     gap: 11px;
     padding: 10px;
     background: var(--menu-surface-lowest);
-    border: 1px solid rgba(65, 47, 99, 0.6);
+    border: 1px solid rgba(54, 136, 208, 0.55);   /* --menu-bright */
     border-radius: 16px;
 }
 
@@ -3560,8 +3715,9 @@ html.pseudo-fullscreen #app {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.88rem;
+    font-family: var(--font-menu);
+    font-size: 0.95rem;
+    line-height: 1.25;
     font-weight: 600;
     color: var(--menu-text);
 }
@@ -3598,9 +3754,10 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-price-amount {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.76rem;
-    font-weight: 600;
+    font-family: var(--font-menu);
+    font-size: 0.85rem;
+    font-weight: 800;
+    line-height: 1.3;
     color: var(--menu-text);
     font-variant-numeric: tabular-nums;
 }
@@ -3612,9 +3769,10 @@ html.pseudo-fullscreen #app {
 
 .sp-qty {
     flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    font-weight: 600;
+    font-family: var(--font-menu);
+    font-size: 0.9rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
     color: var(--menu-accent);
 }
 
@@ -3632,7 +3790,7 @@ html.pseudo-fullscreen #app {
     gap: 6px;
     padding: 11px 8px;
     background: var(--menu-surface-lowest);
-    border: 1px solid rgba(65, 47, 99, 0.6);
+    border: 1px solid rgba(54, 136, 208, 0.55);   /* --menu-bright */
     border-radius: 16px;
     transition: var(--transition-fast);
 }
@@ -3644,7 +3802,7 @@ html.pseudo-fullscreen #app {
 
 .sp-skin.is-active {
     border-color: var(--menu-accent);
-    box-shadow: 0 0 0 1px var(--menu-accent), 0 4px 14px rgba(183, 247, 0, 0.18);
+    box-shadow: 0 0 0 1px var(--menu-accent), 0 4px 14px rgba(162, 238, 56, 0.25);
     /* Takılı skin tıklanamaz (boş PUT üretirdi) ama SÖNÜK GÖRÜNMEZ — bu bir
        hata durumu değil, seçili durumdur. */
     opacity: 1;
@@ -3673,10 +3831,11 @@ html.pseudo-fullscreen #app {
 }
 
 .sp-skin-state {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.55rem;
-    font-weight: 600;
-    letter-spacing: 0.4px;
+    font-family: var(--font-menu);
+    font-size: 0.66rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.06em;
     color: var(--menu-text-muted);
 }
 
@@ -3698,7 +3857,7 @@ html.pseudo-fullscreen #app {
     line-height: 1.4;
     color: var(--menu-text-muted);
     background: var(--menu-surface-lowest);
-    border: 1px dashed rgba(65, 47, 99, 0.8);
+    border: 1px dashed rgba(54, 136, 208, 0.7);   /* --menu-bright */
     border-radius: 14px;
 }
 
@@ -3723,9 +3882,9 @@ html.pseudo-fullscreen #app {
 
 .sp-state-btn {
     flex-shrink: 0;
-    padding: 5px 12px;
-    font-family: 'Quicksand', var(--font-body), sans-serif;
-    font-size: 0.72rem;
+    padding: 4px 12px 2px;
+    font-family: var(--font-menu);
+    font-size: 0.8rem;
     font-weight: 700;
     color: var(--menu-accent-deep);
     background: var(--menu-accent);
@@ -3811,13 +3970,38 @@ html.pseudo-fullscreen #app {
     }
 }
 
-/* Dar/kısa ekranlar: çekmece tam genişlik alır, dikey ritim sıkışır. */
-@media (max-width: 420px) {
-    .side-panel-drawer { width: min(320px, 88vw); }
-    .side-panel.is-collapsed .side-panel-toggle { transform: translateX(calc(-1 * min(320px, 88vw))); }
-    .side-panel-header { padding: 16px 14px; }
-    .sp-section { padding: 12px 14px; }
-    .sp-body { padding: 0 14px 16px; }
+/* ── Mobile (≤768px): the drawer becomes a full-screen sheet ──
+   A ~340px drawer on a 390px phone left a useless sliver of menu behind it.
+   As a sheet the handle can't sit beside the drawer (it would be off-screen),
+   so while open it docks inside the sheet's top-right corner as a close
+   button; collapsed, it stays a tab on the left edge. */
+@media (max-width: 768px) {
+    .side-panel { --sp-width: 100vw; }
+
+    .side-panel-drawer {
+        border-right: none;
+        box-shadow: none;
+    }
+
+    .side-panel.is-expanded .side-panel-toggle {
+        position: fixed;
+        top: calc(env(safe-area-inset-top, 0px) + 14px);
+        right: 12px;
+        width: 40px;
+        height: 40px;
+        border-left: 2px solid var(--play-border);
+        border-radius: 50%;
+        box-shadow: 0 3px 0 var(--menu-accent-deep);
+        transform: none;
+    }
+
+    /* Right inset leaves room for the docked close handle. */
+    .side-panel-header { padding: 16px 64px 16px 16px; }
+    .sp-section { padding: 12px 16px; }
+    .sp-menu { padding: 10px 16px; }
+    /* Bottom inset clears the fixed fullscreen button (bottom-left). */
+    .sp-body { padding: 0 16px calc(56px + env(safe-area-inset-bottom, 0px)); }
+    .sp-skin-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 }
 
 @media (max-height: 560px) {

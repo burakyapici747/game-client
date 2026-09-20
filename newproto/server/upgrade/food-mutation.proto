@@ -6,7 +6,59 @@ option java_outer_classname = "FoodMutationOuterClass";
 
 import "server/upgrade/food.proto";
 
+// ── FAZ 5 / AOI: BOLGESEL YASAM DONGUSU MESAJLARI ───────────────────────────
+//
+// TAHLIYE (eviction) ile SILME (despawn) AYRI kavramlardir ve karistirilmalari
+// iki yonde de bozulma uretir:
+//
+//   SILME    KURESELDIR — yem sunucuda gercekten yok oldu. Her abone ogrenmeli.
+//            Tasiyicisi: removed_food_ids.
+//   TAHLIYE  GOZLEMCIYE OZELDIR — yem YASIYOR, sadece bu oyuncunun ilgi alani
+//            (AOI) artik o sektoru kapsamiyor. Sunucu durumu DEGISMEZ.
+//            Tasiyicisi: sector_evictions.
+//
+// Tahliye bir silme gibi gonderilseydi tum abonelere "bu yem oldu" denmis
+// olurdu; silme bir tahliye gibi gonderilseydi kimlik geri donusum emniyeti
+// (allocateFoodId) bozulurdu.
+message FoodSectorEviction {
+  uint32 sector_id = 1;
+
+  // ── BAYAT TAHLIYE REDDININ DAYANAGI ───────────────────────────────────────
+  // Gozlemci bir sektorden cikip, tahliye yigini bosalmadan GERI GIRERSE,
+  // sunucu yeni abonelik icin bir FoodSectorBootstrap gonderir. Geriden gelen
+  // tahliye paketi yalnizca sector_id'ye baksaydi, YENI aboneligin kurdugu
+  // dugumleri yok ederdi. Kusak sayaci bunu yapisal olarak imkansiz kilar:
+  // istemci, kusagi guncel aboneliginkiyle BIREBIR esitlemeyen her tahliyeyi
+  // atar.
+  //
+  // uint64: istemcide Number'a cevrilmemelidir (2^53 ustu kusaklar sessizce
+  // ayni degere collapse eder ve bayat tahliye KABUL edilir).
+  uint64 subscription_generation = 2;
+
+  repeated uint32 evicted_food_ids = 3 [packed = true];
+}
+
+// Bir sektore ILK abonelikte gonderilen TAM icerik.
+//
+// FoodCollection KULLANILAMAZ: onun budama adimi KURESELDIR ve gozlemcinin
+// hala abone oldugu DIGER sektorlerin yemlerini de yok ederdi. Bu mesaj
+// SEKTOR KAPSAMLI DEGISTIRME tarifler: "S sektorundeki tum yerel dugumleri
+// yok et, sonra bunlari kur" — upsert DEGIL. Upsert olsaydi istemcinin
+// upsertFood'u mevcut id'ler icin erken donup BAYAT KONUMU korurdu.
+message FoodSectorBootstrap {
+  uint32 sector_id = 1;
+  // Bu abonelige verilen kusak. Istemcinin sayacini ILERLETEN tek alandir;
+  // olmadan bayat tahliye hicbir zaman tanınamaz.
+  uint64 subscription_generation = 2;
+  repeated FoodData foods = 3;
+}
+
 message FoodMutationCollection {
   repeated FoodData added_foods = 1;
   repeated uint32 removed_food_ids = 2;
+
+  // Gozlemciye ozel tahliyeler (yukaridaki FoodSectorEviction notuna bakiniz).
+  // Kuresel yayinda HIC doldurulmaz; yalnizca gozlemci basina abonelik
+  // devreye girdiginde yazilir.
+  repeated FoodSectorEviction sector_evictions = 3;
 }

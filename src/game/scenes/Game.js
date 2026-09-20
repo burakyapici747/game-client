@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import { Snake } from './Snake';
-import { VOID_BACKGROUND_COLOR } from './Preloader';
+import { VOID_BACKGROUND_COLOR, MINIMAP_TEXTURE_KEY } from './Preloader';
 import { TerrainRenderer } from './../render/Terrain';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
+import * as Viewport from './../render/Viewport';
 import {
     showConnectingOverlay,
+    setConnectingStage,
     updateConnectingPing,
     hideConnectingOverlay,
     showGameOverOverlay,
@@ -15,10 +17,14 @@ import {
     updateHUDStats,
     updateHUDScore,
     updateHUDLeaderboard,
+    publishMinimapMetrics,
 } from './../../ui/overlays.js';
 
 // Note: updateHUDLeaderboard is called with empty array [] to trigger
 // the default mockup data initialization in overlays.js
+// Kamera takip lerp'i — 60Hz'de kare basina oran; diger kare hizlarina
+// update() icinde ustel olarak donusturulur.
+const CAMERA_FOLLOW_LERP_60HZ = 0.15;
 const FOOD_COLOR_COUNT = 16; // Preloader'daki renk varyant sayısı
 
 // ── YEM DOKUSU (GÖREV 1: hepsi parlayan DAİRE) ───────────────────────────────
@@ -68,6 +74,23 @@ const FOOD_EAT_DESTROY_DIST = 6;    // px — kafa merkezine bu kadar yaklaşın
 // gelir. Bu yüzden süre aşımında skor geri alınmaz ve yem diriltilmez
 // (bkz. update() içindeki ayrıntılı not).
 const FOOD_PREDICTION_TIMEOUT_MS = 1000;
+
+// ── AOI SEKTOR IZGARASI — SUNUCU AYNASI ────────────────────────────────────
+// KRITIK SUNUCU SENKRONU: bu üç değer sunucudaki MapConfig.WORLD_SIZE_PX ve
+// SECTOR_COUNT_X/Y ile BİREBİR aynı olmalıdır. Sapma, yem düğümlerinin yanlış
+// sektöre etiketlenmesine ve sektör kapsamlı değiştirmenin yanlış düğümleri
+// yok etmesine yol açar. (Aynı ayna deseni: FoodConfig.eatRadiusPx ↔
+// eatRadiusForScale, AOICalculationSystem.AOI_SECTOR_RADIUS ↔ AOIDebugConfig.)
+const AOI_WORLD_SIZE_PX = 20000;
+const AOI_SECTOR_COUNT_X = 30;
+const AOI_SECTOR_COUNT_Y = 30;
+const AOI_SECTOR_WIDTH_PX = AOI_WORLD_SIZE_PX / AOI_SECTOR_COUNT_X;
+const AOI_SECTOR_HEIGHT_PX = AOI_WORLD_SIZE_PX / AOI_SECTOR_COUNT_Y;
+
+// M01 — SUNUCU ILE BIREBIR: SnakeDynamicsSystem.calculateScale doyum noktasi
+// (min(6.0, ...)). Bu esigin uzerindeki bir olcek bozuk paket demektir ve
+// uygulanmaz; mevcut olcek korunur.
+const SCALE_MAX = 6.0;
 
 // ── GİRDİ AÇI SLEW-RATE LIMITER (client ⇄ server hedef-açı sözleşmesi) ──────
 //
@@ -178,6 +201,11 @@ const AOIDebugConfig = {
 // yumuşatmak. Girdi tam da bu süre dolduğunda açılır (bkz. _revealGameplay).
 const REVEAL_FADE_MS = 250;
 
+// mini_map_terrain.png'nin IC diskinin (isaretlerin cizildigi alan) yaricapi,
+// dokunun yari genisligine oranla. Olcum: 255px dokuda ic disk x=17..238
+// → 110.5 / 127.5 = 0.867; 0.85 noktalarin kalin halkaya tasmamasi icin pay.
+const MINIMAP_INNER_RATIO = 0.85;
+
 export class Game extends Phaser.Scene {
     constructor() {
         super('Game');
@@ -188,6 +216,9 @@ export class Game extends Phaser.Scene {
         // yemler. foodId → { predictedAtMs }. Onay (FOOD_REMOVE) gelince silinir;
         // süre aşımında yalnızca kayıt düşer (skor/yem geri alınmaz).
         this.pendingConsumption = new Map();
+        // AOI abonelik kuşakları: sectorId → BigInt kuşak. Bayat sektör
+        // tahliyelerini reddetmenin TEK dayanağıdır (bkz. onFoodSectorEviction).
+        this.foodSectorGeneration = new Map();
         this.foodBlitter = null; // Tüm yemler için tek havuzlanmış Blitter (tek draw call)
         this.pendingSegmentMutations = new Map();
         // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
@@ -202,6 +233,7 @@ export class Game extends Phaser.Scene {
         this.fpsText = null;
         this.terrain = null;
         this.minimapGraphics = null;
+        this.minimapFrame = null;
         this.worldRadius = 0;
 
         // Client-side score tracking: yenen yemin sunucudan gelen value'suna göre puan
@@ -224,6 +256,11 @@ export class Game extends Phaser.Scene {
         this.foods = new Map();
         this.eatingFoods = new Map();
         this.pendingConsumption = new Map();
+        // KRİTİK: kuşak haritası BURADA da sıfırlanmalı. scene.restart()
+        // constructor'ı yeniden çalıştırmaz; harita taşınırsa sunucunun sıfırdan
+        // başlayan kuşakları monotonluk muhafızına takılır ve HİÇBİR sektör
+        // bootstrap'i kabul edilmez — oyuncu yemsiz bir dünyaya düşer.
+        this.foodSectorGeneration = new Map();
         this.pendingSegmentMutations = new Map();
         // İlk karşılaşma path tohumları: tohum, yılanı yaratan EntityCollection
         // emit'inden ÖNCE gelebildiği için entityId → seed olarak beklemeye alınır.
@@ -326,6 +363,8 @@ export class Game extends Phaser.Scene {
         this.events.on('path_seed_collection', this.onPathSeedCollection, this);
         this.events.on('food_collection', this.onFoodCollection, this);
         this.events.on('food_mutation_collection', this.onFoodMutationCollection, this);
+        this.events.on('food_sector_bootstrap', this.onFoodSectorBootstrap, this);
+        this.events.on('food_sector_eviction', this.onFoodSectorEviction, this);
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
@@ -341,6 +380,10 @@ export class Game extends Phaser.Scene {
             updateConnectingPing(ms);
         };
         this.events.on('ping_update', this._onPingUpdate, this);
+
+        // Soket açıldı → bağlanma ekranında "Connecting to server…" tamamlanır.
+        this._onSocketOpen = () => setConnectingStage('connecting', 1);
+        this.events.on('socket_open', this._onSocketOpen, this);
 
         // Restart/kapanışta açık kalan HTML overlay'leri temizle.
         this.events.once('shutdown', () => hideAllGameOverlays());
@@ -366,11 +409,14 @@ export class Game extends Phaser.Scene {
             this.events.off('path_seed_collection', this.onPathSeedCollection, this);
             this.events.off('food_collection', this.onFoodCollection, this);
             this.events.off('food_mutation_collection', this.onFoodMutationCollection, this);
+            this.events.off('food_sector_bootstrap', this.onFoodSectorBootstrap, this);
+            this.events.off('food_sector_eviction', this.onFoodSectorEviction, this);
             this.events.off('remove_entity', this.onRemoveEntity, this);
             this.events.off('disconnected', this.onDisconnected, this);
             this.events.off('death_notification', this.onDeathNotification, this);
             this.events.off('leaderboard_update', this.onLeaderboardUpdate, this);
             this.events.off('ping_update', this._onPingUpdate, this);
+            this.events.off('socket_open', this._onSocketOpen, this);
             this.events.off('postupdate', this._onPostUpdate, this);
         });
 
@@ -386,19 +432,22 @@ export class Game extends Phaser.Scene {
         // We keep the camera viewport in sync with the live game size, and derive
         // a base zoom factor from the screen's pixel area so smaller (mobile)
         // screens zoom OUT to preserve a comparable field of view to desktop.
-        // Self-heal: if the ScaleManager's snapshot has drifted from the real
-        // parent size (e.g. boot raced a keyboard/viewport transition on
-        // mobile), force a re-measure. refresh() emits 'resize', which lands
-        // in handleResize below and re-syncs camera/terrain/controls.
-        const ps = this.scale.parentSize;
-        if (ps.width && ps.height &&
-            (this.scale.width !== ps.width || this.scale.height !== ps.height)) {
-            this.scale.refresh();
-        }
+        // Self-heal: if the parent size drifted since boot (e.g. boot raced a
+        // keyboard/viewport transition on mobile), apply it right now instead
+        // of on the next rAF. A real change emits 'resize' → handleResize,
+        // which is registered below, so the explicit sync-up follows here.
+        Viewport.syncNow(this.game);
 
+        // ── HIGH-DPI CAMERA TRANSFORM (bkz. render/Viewport.js) ─────────────
+        // Camera viewports are in BUFFER px (= CSS px × D). The world must
+        // still show the same number of world units per CSS px, so:
+        //   worldZoom = baseZoom(CSS-derived) × D
+        //   visible world width = bufferW / worldZoom = cssW / baseZoom
+        // → FOV is independent of D; only the sampling density changes.
+        this._renderDensity = this.renderDensity;
         this.cameras.main.setSize(this.scale.width, this.scale.height);
         this.baseZoom = this.computeBaseZoom();
-        this.cameras.main.setZoom(this.baseZoom).setRoundPixels(false);
+        this.cameras.main.setZoom(this.baseZoom * this._renderDensity).setRoundPixels(false);
 
         // Kamera harita dışına çıkabildiği için (bkz. onStartGame →
         // removeBounds) zemin rengi terrain karolarının kenar tonuyla AYNI
@@ -423,8 +472,14 @@ export class Game extends Phaser.Scene {
         // touches only registered inside that rectangle. The fix: a second
         // camera at zoom 1 renders (and hit-tests) HUD objects exclusively.
         // The zoomed main camera ignores HUD; the UI camera ignores the world.
+        //
+        // HIGH-DPI: the UI camera zooms by D around its TOP-LEFT corner, so a
+        // HUD object at (x, y) CSS px lands on buffer px (x·D, y·D). All HUD
+        // code (minimap, joystick, boost, texts) therefore keeps working in
+        // CSS px via viewWidth/viewHeight, and input hit-testing through this
+        // camera inverts the same transform automatically.
         this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
-        this.uiCamera.setScroll(0, 0);
+        this.uiCamera.setOrigin(0, 0).setZoom(this._renderDensity).setScroll(0, 0);
 
         this.scale.on('resize', this.handleResize, this);
         this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
@@ -462,6 +517,15 @@ export class Game extends Phaser.Scene {
         // this.fpsText = this.add.text(4, 4, 'FPS: 0', { ... }).setScrollFactor(0).setDepth(1000);
         this.fpsText = null;
 
+        // Minimap zemini (mini_map_terrain.png) isaretlerin ALTINDA durur.
+        // Doku yuklenemediyse null kalir; drawMinimap duz daire cizer.
+        // (registerHUD argumanlarini DIZI olarak dondurur — nesne ayri tutulur.)
+        this.minimapFrame = this.textures.exists(MINIMAP_TEXTURE_KEY)
+            ? this.add.image(0, 0, MINIMAP_TEXTURE_KEY).setScrollFactor(0).setDepth(1999)
+            : null;
+        if (this.minimapFrame) this.registerHUD(this.minimapFrame);
+        this._minimapLayout = '';
+
         this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(2000);
 
         this.registerHUD(this.minimapGraphics);
@@ -485,6 +549,9 @@ export class Game extends Phaser.Scene {
             window.gameSettings?.serverName,
             window.gameSettings?.menuPingMs ?? null
         );
+        // connect() yukarıda çağrıldı; soket aynı tick'te açılamaz, yani
+        // 'socket_open' (→ aşama tamam) her zaman bundan SONRA gelir.
+        setConnectingStage('connecting', 0);
     }
 
     // ── Camera routing helpers ──────────────────────────────────────────────
@@ -501,6 +568,28 @@ export class Game extends Phaser.Scene {
         return obj;
     }
 
+    // ── High-DPI accessors (single source: render/Viewport.js) ──────────────
+    /** Backing-buffer px per CSS px (min(devicePixelRatio, 2)). */
+    get renderDensity() { return Viewport.renderDensity(this.game); }
+
+    /** Screen width in CSS px — use for ALL HUD layout (UI camera space). */
+    get viewWidth() { return Viewport.cssWidth(this.game); }
+
+    /** Screen height in CSS px — use for ALL HUD layout (UI camera space). */
+    get viewHeight() { return Viewport.cssHeight(this.game); }
+
+    /**
+     * World camera zoom expressed per CSS px (i.e. with the density factor
+     * removed). 1 world px is drawn as {@code cssZoom} CSS px on screen.
+     */
+    get cssZoom() { return this.cameras.main.zoom / (this._renderDensity || 1); }
+
+    /** Pointer position (buffer px) → HUD/CSS px, matching the UI camera. */
+    pointerToView(pointer) {
+        const d = this._renderDensity || 1;
+        return { x: pointer.x / d, y: pointer.y / d };
+    }
+
     // Derives a base camera zoom from the live screen's SMALLER dimension,
     // relative to a 720px desktop-portrait reference. Mobile phones in
     // landscape have a short dimension (height) far below any desktop
@@ -509,13 +598,17 @@ export class Game extends Phaser.Scene {
     // still left the camera noticeably over-zoomed. Using min(width,height)
     // zooms out aggressively on phones while leaving desktop/tablet (where the
     // short dimension is already >= the reference) at zoom 1.0, unchanged.
+    //
+    // HIGH-DPI: measured in CSS px ON PURPOSE. Using the buffer size would make
+    // a DPR-2 phone look like a 1440px-tall desktop and wrongly clamp to 1.0;
+    // the density factor is applied separately on top (worldZoom = base × D).
     computeBaseZoom() {
         const REFERENCE_MIN_DIM = 720;
         const MIN_ZOOM = 0.45;
         const MAX_ZOOM = 1.0;
 
-        const width = this.scale.width;
-        const height = this.scale.height;
+        const width = this.viewWidth;
+        const height = this.viewHeight;
         if (!width || !height) return 1.0;
 
         const minDim = Math.min(width, height);
@@ -531,16 +624,42 @@ export class Game extends Phaser.Scene {
         const height = gameSize.height;
         if (!width || !height) return;
 
+        // gameSize is in BUFFER px → camera viewports; HUD uses CSS px.
         this.cameras.main.setSize(width, height);
         this.uiCamera?.setSize(width, height);
+
+        // Density change (monitor switch / browser zoom): rescale the CURRENT
+        // world zoom by D_new / D_old immediately so the FOV does not visibly
+        // jump while the update-loop lerp would otherwise catch up over ~1s.
+        const prevDensity = this._renderDensity || 1;
+        const density = this.renderDensity;
+        if (density !== prevDensity) {
+            this.cameras.main.setZoom(this.cameras.main.zoom * (density / prevDensity));
+            this._renderDensity = density;
+        }
+        this.uiCamera?.setZoom(density);
+
+        const prevBaseZoom = this.baseZoom;
         this.baseZoom = this.computeBaseZoom();
+        // Before gameplay the update loop does not drive zoom; keep the camera
+        // on the (new) base so the reveal frame already has the right FOV.
+        if (!this._revealStarted && prevBaseZoom !== this.baseZoom) {
+            this.cameras.main.setZoom(this.baseZoom * density);
+        }
 
         // Zemin dunya uzayindadir ve kendi gorunur-hucre araligini kameranin
         // worldView'inden turetir; viewport degisince o aralik onbellegi
         // gecersizdir (yeni ekran orani daha fazla/az karo gerektirebilir).
         this.terrain?.refresh();
 
-        this.mobileControls?.resize(width, height);
+        this.mobileControls?.resize(this.viewWidth, this.viewHeight);
+
+        // Minimap geometry is cached by layout key; CSS size change → redraw.
+        this._minimapLayout = null;
+        // Rozet degiskenleri de yeniden yayinlansin: resize sonrasi olculer
+        // ayni cikabilir, ama ayni cikmadiginda rozet haritayla birlikte
+        // tasinmak ZORUNDADIR.
+        this._hudMinimapMetricsKey = null;
 
         // (Connecting/Game Over ekranları HTML/CSS overlay — CSS kendisi
         // responsive olduğundan burada yeniden konumlandırma gerekmiyor.)
@@ -712,7 +831,30 @@ export class Game extends Phaser.Scene {
 
     onEntityCollection(entityCollection) {
         const entityIds = entityCollection?.entityIds ?? [];
-        if (entityIds.length === 0) return;
+
+        // ── M01: SEYREK OLCEK KANALI ────────────────────────────────────────
+        // Konumsal eslesme: suIds[k] <-> suScales[k]. Uzunluklar uyusmuyorsa
+        // batch'in TAMAMI atilir — kismi uygulama, olcekleri yanlis entity'lere
+        // kaydirmaktan daha kotudur.
+        const su = entityCollection?.scaleUpdates ?? entityCollection?.scale_updates ?? null;
+        let suIds = su?.entityIds ?? su?.entity_ids ?? null;
+        let suScales = su?.scales ?? null;
+        if (suIds && suScales && suIds.length !== suScales.length) {
+            this._warnOnce('scaleUpdatesLengthMismatch',
+                `[M01] scale_updates uzunluk uyusmazligi: ${suIds.length} id / ${suScales.length} olcek — batch atildi.`);
+            suIds = null;
+            suScales = null;
+        }
+        const hasScaleBatch = !!(suIds && suScales && suIds.length > 0);
+
+        // KRITIK (F4): burada eskiden kosulsuz bir erken cikis vardi. Seyrek
+        // kanalla birlikte, YALNIZCA olcek tasiyan (pozisyon dizileri bos)
+        // gecerli bir zarf o cikista SESSIZCE DUSERDI. Bu dalda entity'ler
+        // zaten mevcuttur, dolayisiyla dogrudan uygulanabilir.
+        if (entityIds.length === 0) {
+            if (hasScaleBatch) this._applyScaleUpdates(suIds, suScales);
+            return;
+        }
 
         this.initialDataFlags.entities = true;
         this.checkInitialDataComplete();
@@ -770,7 +912,20 @@ export class Game extends Phaser.Scene {
             const initialX = Number(xs[i]);
             const initialY = Number(ys[i]);
             const angle = Number(angles[i]);
-            const scale = (scales && scales.length > i) ? Number(scales[i]) : 1.0;
+            // ── M01 (F5): 1.0 VARSAYILANI KALDIRILDI ────────────────────────
+            // Yeni sozlesmede olcek YOKLUGU "degismedi" demektir, "1.0" DEGIL.
+            // Eski `: 1.0` yedegi birakilsaydi, buyuk bir yilan seyrek batch'te
+            // yer almadigi HER tick'te asgari boyuta sicrardi.
+            //
+            // Oncelik: seyrek kanal > yogun dizi (geri donus yolu, alan 7) >
+            // hicbir sey. undefined => olcege HIC dokunma.
+            let scale;
+            if (hasScaleBatch) {
+                scale = this._lookupSparseScale(suIds, suScales, lookupId);
+            }
+            if (scale === undefined && scales && scales.length > i) {
+                scale = Number(scales[i]);
+            }
 
             const entitySegmentCount = fullyDataMap.has(lookupId) ? fullyDataMap.get(lookupId) : undefined;
 
@@ -837,7 +992,16 @@ export class Game extends Phaser.Scene {
                 snake.setNickname(fullyDataNicknameMap.get(lookupId));
             }
 
-            snake.updateFromServerState({ x: initialX, y: initialY, angle: angle, scale: scale });
+            // M01: olcek TOPOLOJIDEN SONRA, path tohumundan ONCE uygulanir —
+            // govde araligi olcekten turedigi icin tohum guncel olcegi gormeli.
+            // ScaleGuard degismemis degeri sifir ise ile eler.
+            if (scale !== undefined) {
+                this.applyAuthoritativeScale(snake, scale, entityId);
+            }
+
+            // Olcek artik ayri kanaldan geliyor: pozisyon/aci guncellemesine
+            // DAHIL EDILMEZ (aksi halde her tick kosulsuz sprite gecisi olurdu).
+            snake.updateFromServerState({ x: initialX, y: initialY, angle: angle });
             // Dokunulmazlik bayragi HER tick sunucudan gelir. Liste bossa
             // (invulnerableSet === null) hicbir entity dokunulmaz degildir,
             // dolayisiyla bayrak false'a duser ve efekt temizlenir.
@@ -850,6 +1014,74 @@ export class Game extends Phaser.Scene {
             // geometrisinin her hâlükârda kazanmasını garanti eder.
             this.flushPendingPathSeed(entityId, snake);
         }
+
+        // Dongude karsilanmayan olcek girdileri (nadir: entity_ids'te olmayan
+        // ama batch'te bulunan bir id). ScaleGuard TAM esitlikle eledigi icin
+        // dongude zaten uygulanmis olanlar burada sifir is uretir.
+        if (hasScaleBatch) this._applyScaleUpdates(suIds, suScales);
+    }
+
+    /**
+     * M01 — seyrek batch'te bir entity'nin olcegini arar.
+     *
+     * DOGRUSAL TARAMA, gecici Map DEGIL: batch tipik olarak 0-3 elemanlidir
+     * (yalnizca 1/106'lik olcek esigini gecen yilanlar + keyframe dilimi).
+     * Bu boyutta indexOf hash'lemeyi doveler ve HICBIR SEY ayirmaz; her pakette
+     * 60 Hz'de bir Map kurmak tam da kacinmak istedigimiz cop.
+     *
+     * @returns {number|undefined} bulunursa olcek, yoksa undefined.
+     */
+    _lookupSparseScale(suIds, suScales, entityId) {
+        for (let k = 0; k < suIds.length; k++) {
+            if (Number(suIds[k]) === entityId) return Number(suScales[k]);
+        }
+        return undefined;
+    }
+
+    /** M01 — seyrek batch'i mevcut yilanlara uygular (dogrulama guard'da). */
+    _applyScaleUpdates(suIds, suScales) {
+        for (let k = 0; k < suIds.length; k++) {
+            const entityId = this.toId(suIds[k]);
+            if (entityId === null) continue;
+            const snake = (this.myId !== null && entityId === this.myId)
+                ? this.snakes.get(this.myId)
+                : this.snakes.get(entityId);
+            if (!snake) continue;
+            this.applyAuthoritativeScale(snake, Number(suScales[k]), entityId);
+        }
+    }
+
+    /**
+     * M01 — OLCEK UYGULAMASININ TEK KAPISI (ScaleGuard).
+     *
+     * Uzak guncellemeler, kendi guncellemesi ve baslatma yollari BURADAN gecer;
+     * gecerlilik ve degisim kontrolu tek yerde yasar.
+     *
+     * GECERSIZ DEGER => mevcut olcek KORUNUR. Ozellikle 0 "degismedi" ya da
+     * "1.0'a don" DEMEK DEGILDIR; gecersiz bir oyun olcegidir.
+     */
+    applyAuthoritativeScale(snake, canonical, entityId) {
+        if (!snake) return;
+        if (!Number.isFinite(canonical) || canonical <= 0 || canonical > SCALE_MAX) {
+            this._warnOnce('invalidScale',
+                `[M01] Gecersiz olcek ${canonical} (entity ${entityId}) — mevcut olcek korundu.`);
+            return;
+        }
+        snake.applyCanonicalScale(canonical);
+    }
+
+    /**
+     * Ayni tani mesajini yalnizca BIR kez basar.
+     *
+     * NEDEN: bu yollar paket basina (60 Hz) kosar. Kapisiz bir console.warn,
+     * tam da onlemeye calistigimiz seyi yapardi — ana is parcaciginda surekli
+     * duraklama ve sinirsiz string tutma (bkz. DEBUG_LOG_FULLY_DATA_RX).
+     */
+    _warnOnce(key, message) {
+        if (!this._warnedOnce) this._warnedOnce = new Set();
+        if (this._warnedOnce.has(key)) return;
+        this._warnedOnce.add(key);
+        console.warn(message);
     }
 
     onSegmentMutationCollection(segmentMutationCollection) {
@@ -917,6 +1149,154 @@ export class Game extends Phaser.Scene {
         }
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    // AOI — SEKTÖR ABONELİĞİ (Faz 5 / Aşama 2)
+    // ════════════════════════════════════════════════════════════════════
+
+    /**
+     * Piksel konumundan AOI sektör kimliği. Sunucudaki
+     * PositionUtil.getSectorIdByPosition'ın AYNASIDIR.
+     *
+     * Y EKSENİ AYNALANIR: sunucunun dünya Y'si YUKARI artar, istemcinin piksel
+     * Y'si AŞAĞI. Aynalama atlanırsa sektörler dikeyde ters eşlenir ve hata
+     * yalnızca haritanın bir yarısında görünür — bu yüzden burada açıkça
+     * belgelenmiştir.
+     */
+    _foodSectorIdFromPx(pxX, pxY) {
+        if (!Number.isFinite(pxX) || !Number.isFinite(pxY)) return -1;
+        const sx = Math.floor(pxX / AOI_SECTOR_WIDTH_PX);
+        const sy = Math.floor((AOI_WORLD_SIZE_PX - pxY) / AOI_SECTOR_HEIGHT_PX);
+        const cx = Math.max(0, Math.min(AOI_SECTOR_COUNT_X - 1, sx));
+        const cy = Math.max(0, Math.min(AOI_SECTOR_COUNT_Y - 1, sy));
+        return cy * AOI_SECTOR_COUNT_X + cx;
+    }
+
+    /**
+     * uint64 abonelik kuşağını TAM SAYI olarak normalize eder.
+     *
+     * NEDEN Number DEĞİL: protobufjs uint64'ü bir Long nesnesi olarak çözer ve
+     * Number'a çevirmek 2^53 üstünde hassasiyet kaybeder. Ölçüldü: 9007199254740995
+     * ile 9007199254740996 Number'da AYNI değere çöker — yani FARKLI iki kuşak
+     * eşit görünür ve BAYAT BİR TAHLİYE KABUL EDİLİR. toString() her iki
+     * gösterimde de (Long | number | string) tam ondalık değeri verir.
+     *
+     * @returns {bigint|null} geçerli kuşak, ya da geçersiz/atanmamışsa null
+     */
+    _normalizeSubscriptionGeneration(raw) {
+        if (raw === null || raw === undefined) return null;
+        try {
+            const generation = BigInt(typeof raw === 'object' ? raw.toString() : raw);
+            // proto3'te yazılmamış bir uint64 sıfır olarak çözülür; sıfır
+            // "abonelik yok" demektir ve asla eşleşmemelidir.
+            return generation > 0n ? generation : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Bir sektöre YENİ abonelik: o sektörün TAM içeriği.
+     *
+     * SEKTÖR KAPSAMLI DEĞİŞTİRME (upsert DEĞİL): önce S'deki tüm yerel düğümler
+     * yok edilir, sonra gelenler kurulur. Upsert olsaydı upsertFood mevcut id'ler
+     * için erken döner ve BAYAT KONUMU korurdu — kimlik geri dönüşümünden sonra
+     * yemin sonsuza dek yanlış yerde çizilmesine yol açan sınıf tam olarak budur.
+     * onFoodCollection da kullanılamaz: onun budaması KÜRESELDİR ve hâlâ abone
+     * olunan diğer sektörleri de siler.
+     */
+    onFoodSectorBootstrap(bootstrap) {
+        const sectorId = Number(bootstrap?.sectorId);
+        if (!Number.isInteger(sectorId) || sectorId < 0) return;
+
+        const incomingGeneration = this._normalizeSubscriptionGeneration(
+            bootstrap?.subscriptionGeneration ?? bootstrap?.subscription_generation);
+        if (incomingGeneration === null) return;
+
+        // MONOTONLUK MUHAFIZI (iki yönlü reddin bootstrap tarafı): kuşak ancak
+        // İLERLEYEBİLİR. Eşit ya da geriye giden bir bootstrap ya tekrar ya da
+        // sıra dışıdır; uygulanması, güncel aboneliğin düğümlerini eski bir
+        // anlık görüntüyle ezerdi.
+        const currentGeneration = this.foodSectorGeneration.get(sectorId);
+        if (currentGeneration !== undefined && incomingGeneration <= currentGeneration) return;
+        this.foodSectorGeneration.set(sectorId, incomingGeneration);
+
+        // 1) S'deki TÜM yerel düğümleri yok et.
+        for (const [foodId, food] of this.foods) {
+            if (food.sectorId !== sectorId) continue;
+            this.foods.delete(foodId);
+            food.bob?.destroy();
+        }
+        // Uçuştaki (tahmin) düğümler de bu sektöre aitse temizlenir; aksi halde
+        // bootstrap'in kurduğu taze düğümün üstünde hayalet bir uçuş kalırdı.
+        for (const [foodId, flight] of this.eatingFoods) {
+            if (flight.sectorId !== sectorId) continue;
+            this.eatingFoods.delete(foodId);
+            this.pendingConsumption.delete(foodId);
+            flight.sprite?.destroy();
+        }
+
+        // 2) Gelenleri sıfırdan kur.
+        const incomingFoods = Array.isArray(bootstrap?.foods) ? bootstrap.foods : [];
+        for (const foodData of incomingFoods) {
+            this.upsertFood(foodData);
+        }
+    }
+
+    /**
+     * Sektör TAHLİYESİ — gözlemciye özel, sessiz yok etme.
+     *
+     * TAHLİYE ≠ SİLME. Yem sunucuda YAŞIYOR; yalnızca bu oyuncunun ilgi alanı
+     * artık o sektörü kapsamıyor. Bu yüzden removeFood() yolundan GEÇİLMEZ: o
+     * yol en yakın yılana doğru bir yeme-uçuşu animasyonu başlatır ve her sektör
+     * geçişinde yüzlerce yem uçuşuyordu gibi görünürdü.
+     */
+    onFoodSectorEviction(eviction) {
+        const sectorId = Number(eviction?.sectorId);
+        if (!Number.isInteger(sectorId) || sectorId < 0) return;
+
+        const incomingGeneration = this._normalizeSubscriptionGeneration(
+            eviction?.subscriptionGeneration ?? eviction?.subscription_generation);
+        if (incomingGeneration === null) return;
+
+        // BAYAT TAHLİYE REDDİ (TAM eşitlik): bu id'ler ARTIK KAPANMIŞ bir
+        // aboneliğin düğümleriydi. Gözlemci sektöre geri girdiyse bootstrap
+        // kuşağı ilerletmiştir; elimizdeki düğümler YENİ aboneliğin eseridir ve
+        // bu tahliye onlara ait DEĞİLDİR. "<=" değil "!==": ileriden gelen bir
+        // kuşak da aynı ölçüde şüphelidir.
+        const currentGeneration = this.foodSectorGeneration.get(sectorId);
+        if (currentGeneration === undefined || incomingGeneration !== currentGeneration) return;
+
+        const evictedFoodIds = Array.isArray(eviction?.evictedFoodIds)
+            ? eviction.evictedFoodIds
+            : (Array.isArray(eviction?.evicted_food_ids) ? eviction.evicted_food_ids : []);
+
+        for (const rawFoodId of evictedFoodIds) {
+            const foodId = this.toFoodId(rawFoodId);
+            if (foodId === null) continue;
+
+            // Tahmin işareti İPTAL edilir (onaylanmaz): tahliye "yedin" demek
+            // değildir. Bırakılırsa yalnızca zaman aşımıyla düşerdi.
+            this.pendingConsumption.delete(foodId);
+
+            const food = this.foods.get(foodId);
+            if (food) {
+                this.foods.delete(foodId);
+                food.bob?.destroy();
+            }
+
+            // Tahmin yolu yemi this.foods'tan ÇIKARIP eatingFoods'a taşır;
+            // yalnızca this.foods'a bakan bir muhafaza uçuştaki yemi ıskalar.
+            // DİKKAT: değer bir NESNEDİR ({ sprite, targetSnake, ... }) —
+            // doğrudan .destroy() çağırmak TypeError atar ve döngüyü kırarak
+            // kalan id'leri tahliye edilmemiş bırakırdı.
+            const flight = this.eatingFoods.get(foodId);
+            if (flight) {
+                this.eatingFoods.delete(foodId);
+                flight.sprite?.destroy();
+            }
+        }
+    }
+
     onSelfPosition(selfPosition) {
         const entityId = this.toId(selfPosition?.entityId ?? selfPosition?.clientId);
         if (entityId === null) return;
@@ -959,6 +1339,40 @@ export class Game extends Phaser.Scene {
             Number.isFinite(y) ? y : 0
         );
         this.flushPendingSegmentMutations(entityId, snake);
+
+        // ── BOOST KAPISI: OTORITER SKOR ─────────────────────────────────────
+        // Boost uygunlugu artik SKOR esigine bakiyor (sunucu ile birebir:
+        // ScoreConfig.BOOST_ENTRY_SCORE / BOOST_EXIT_SCORE). Skor TAHMIN
+        // EDILMEZ — sunucu her tick gonderir — bu yuzden kapi girdisi de
+        // otoriterdir ve client ile sunucu taban civarinda ayni karari verir.
+        if (this._hasAuthoritativeScore) {
+            snake.authoritativeScore = this.playerScore;
+        }
+
+        // ── BOOST TAHMIN AYRISMASI TESPITI ──────────────────────────────────
+        // Sunucunun ETKIN boost durumu (niyet DEGIL). Tahmine gecikme EKLEMEZ;
+        // yalnizca "client boost ediyorum diyor, sunucu etmiyor" halinin bir
+        // tam gidis-donusten uzun surmesini yakalar. O durum duzeltilmezse
+        // hata ~225 px/sn birikir ve reconciliation onu HARD_SNAP esiginin
+        // (800 px) ALTINDA, yani hicbir sicrama gostermeden, kalici ~37 px'lik
+        // bir kafa ofseti olarak sabitler — "gozle gectigim bosluktan olmek".
+        const serverBoostActive = selfPosition?.boostActive ?? selfPosition?.boost_active ?? false;
+        // Bayatlik penceresi = tam gidis-donus + bir snapshot araligi payi.
+        const rttMs = Number.isFinite(this.currentPingMs) ? this.currentPingMs : 150;
+        snake.applyAuthoritativeBoost(serverBoostActive, rttMs + 50);
+
+        // ── M01: KENDI OLCEGI — ACIK VARLIK KONTROLU ────────────────────────
+        // SelfPosition.scale artik `optional`: YOK => degismedi.
+        //
+        // `!= null` SART. Dogruluk (truthiness) uzerinden kontrol EDILEMEZ:
+        // 0 falsy'dir ama gecerli bir olcek DEGILDIR — ikisini karistirmak
+        // gecersiz bir degeri sessizce "guncelleme yok" saymak olurdu. Burada
+        // gecersiz degerler applyAuthoritativeScale icinde ayrica elenir.
+        // (protobufjs `optional` skaleri yoksa null/undefined birakir.)
+        const selfScale = selfPosition?.scale;
+        if (selfScale !== null && selfScale !== undefined) {
+            this.applyAuthoritativeScale(snake, Number(selfScale), entityId);
+        }
 
         // KENDI dokunulmazligimiz — HER TICK sunucudan. Oyuncunun kendi
         // entity'si EntityCollection'da BULUNMADIGI icin (sunucu gozlemciyi
@@ -1025,6 +1439,12 @@ export class Game extends Phaser.Scene {
         const snake = this.snakes.get(entityId);
         if (!snake) return;
 
+        // M01 — OLCEK TABANI SIFIRLAMASI BURADA YAPISALDIR: bu metot Snake
+        // NESNESINI yok eder ve id'yi map'ten duser, dolayisiyla bir sonraki
+        // FULLY_DATA yepyeni bir Snake kurar ve _canonicalScale NaN baslar.
+        // GERI DONUSTURULMUS entity id'si eski yasamin kanonik olcegini
+        // MIRAS ALAMAZ; ayrica bir sifirlama cagrisi gerekmez.
+
         // KRİTİK SIRALAMA: kayıt silme ÖNCE, görsel imha SONRA (try/catch).
         // destroy() içindeki herhangi bir hata artık map silmesini engelleyemez;
         // id her koşulda kayıtlardan düşer ve bir sonraki EntityFull temiz
@@ -1061,11 +1481,10 @@ export class Game extends Phaser.Scene {
             if (segmentCount !== undefined) {
                 existingSnake.syncSegmentCountFromServer(segmentCount);
             }
-            if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
-                existingSnake.scale = scale;
-                // scale alanını değiştirmek sprite'ları otomatik boyutlamaz —
-                // görsel boyut sunucu hitbox'ıyla anında eşitlensin.
-                existingSnake._updateSegmentScaling();
+            // M01: TEK kapi. Degismemisse sifir is; degismisse gorsel boyut
+            // sunucu hitbox'iyla aninda esitlenir (eskiden kosulsuz gecis).
+            if (scale !== undefined) {
+                this.applyAuthoritativeScale(existingSnake, Number(scale), entityId);
             }
             if (!existingSnake.nickname) {
                 existingSnake.setNickname(nickname);
@@ -1087,16 +1506,23 @@ export class Game extends Phaser.Scene {
         if (angleRaw !== undefined) {
             playerSnake._hasServerHeading = true;
         }
-        if (scale !== undefined && !Number.isNaN(scale) && scale > 0) {
-            playerSnake.scale = scale;
-            playerSnake._updateSegmentScaling(); // görsel boyut = sunucu scale, ilk kareden itibaren
+        // M01: DOGUM/YENIDEN KURULUM. Yeni obje oldugu icin _canonicalScale
+        // NaN'dir ve guard degeri DAIMA uygular — sayisal olarak onceki objenin
+        // degeriyle ayni olsa bile gorsel baglama acikca kurulur.
+        if (scale !== undefined) {
+            this.applyAuthoritativeScale(playerSnake, Number(scale), entityId);
         }
         this.snakes.set(entityId, playerSnake);
 
         // Kamera kafayı takip eder ve HER ZAMAN ekran merkezine kilitler.
         // followOffset (0, 0) → hedef tam merkezde; removeBounds() (bkz.
         // onStartGame) sayesinde harita kenarında da merkezden kaymaz.
-        this.cameras.main.startFollow(playerSnake.getHead(), true, 0.15, 0.15);
+        // roundPixels=false: kamera true ile her sprite'in dunya konumunu
+        // Math.floor'lar (MultiPipeline.batchSprite). Hemen asagidaki
+        // setRoundPixels(false) bunu zaten geri aliyordu; burada da acikca false.
+        // Lerp degeri her karede dt'ye gore yeniden yazilir (bkz. update →
+        // CAMERA_FOLLOW_LERP_60HZ); buradaki yalnizca ilk karenin degeridir.
+        this.cameras.main.startFollow(playerSnake.getHead(), false, CAMERA_FOLLOW_LERP_60HZ, CAMERA_FOLLOW_LERP_60HZ);
         this.cameras.main.setFollowOffset(0, 0);
         // Savunma amaçlı: sahne yeniden başlarken kamera örneği yeniden
         // kullanılırsa önceki turdan kalan sınır burada da düşürülür.
@@ -1211,6 +1637,13 @@ export class Game extends Phaser.Scene {
 
     checkInitialDataComplete() {
         if (this.gameStarted) return;
+
+        // Bağlanma ekranı: "Joining world…" ilerlemesi = gelen ilk veri
+        // bayraklarının oranı. Her bayrak set edildiğinde bu metot çağrılır.
+        const flags = this.initialDataFlags;
+        setConnectingStage('joining',
+            ((flags.startInfo ? 1 : 0) + (flags.entities ? 1 : 0) + (flags.selfBaseline ? 1 : 0)) / 3);
+
         // selfBaseline KOŞULU KRİTİK: eskiden perde, StartInformation + herhangi
         // bir entity paketi gelir gelmez kalkıyordu. Oyuncunun KENDİ otoriter
         // konumu henüz uygulanmamış olabildiğinden, açılışta yılan spawn
@@ -1353,7 +1786,11 @@ export class Game extends Phaser.Scene {
         // Her yem tek bir Bob. colorFrame, yem yenirken Sprite'a dönüştürmek
         // (Bob'lar setScale desteklemez — bkz. _beginFoodEatingFlight) ve
         // reddedilen tahminde yemi birebir geri getirmek için saklanır.
-        this.foods.set(foodId, { bob, value, colorFrame, shimmerPhase });
+        // Sektör etiketi: sektör kapsamlı değiştirmenin (onFoodSectorBootstrap)
+        // "S'deki TÜM yerel düğümleri yok et" adımı buna dayanır. Yem asla
+        // hareket etmediği için bir kez hesaplanır ve bir daha değişmez.
+        const sectorId = this._foodSectorIdFromPx(targetX, targetY);
+        this.foods.set(foodId, { bob, value, colorFrame, shimmerPhase, sectorId });
         return foodId;
     }
 
@@ -1440,7 +1877,7 @@ export class Game extends Phaser.Scene {
         // Ölçek çöküşü ZAMANA bağlıdır (mesafeye değil): elapsedMs 0'dan
         // FOOD_EAT_SHRINK_MS'e sayar, scale = 1 - elapsed/süre → kafa uzaklaşsa
         // bile yem asla yeniden büyümez, ~100ms içinde garantili yok olur.
-        this.eatingFoods.set(foodId, { sprite, targetSnake, elapsedMs: 0 });
+        this.eatingFoods.set(foodId, { sprite, targetSnake, elapsedMs: 0, sectorId: food.sectorId });
     }
 
     // Yenen yem SAYACI. SKOR BURADAN YAZILMAZ.
@@ -1469,6 +1906,9 @@ export class Game extends Phaser.Scene {
         this.foods.clear();
         this.eatingFoods.clear();
         this.pendingConsumption.clear();
+        // Bağlantı koptu: sunucudaki abonelik durumu da yok oldu. Kuşakları
+        // tutmak, yeniden bağlanmada tüm bootstrap'leri reddettirirdi.
+        this.foodSectorGeneration.clear();
     }
 
     // Tek havuzlanmış Blitter — TÜM yemler (tek daire dokusu) tek draw call'da
@@ -1589,9 +2029,9 @@ export class Game extends Phaser.Scene {
             this.boundaryGraphics.destroy();
             this.boundaryGraphics = null;
         }
-        const disconnectText = this.add.text(this.cameras.main.centerX, this.cameras.main.centerY,
+        const disconnectText = this.add.text(this.viewWidth / 2, this.viewHeight / 2,
             `Sunucu bağlantısı koptu!`,
-            { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000' }
+            { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000', resolution: this.renderDensity }
         ).setOrigin(0.5, 0.5).setScrollFactor(0);
         this.registerHUD(disconnectText);
     }
@@ -2022,12 +2462,23 @@ export class Game extends Phaser.Scene {
 
                 // Dinamik Kamera Zoom: Yılan büyüdükçe kamera uzaklaşır
                 // baseZoom: ekran boyutuna göre belirlenen taban zoom (bkz. computeBaseZoom)
-                const targetZoom = this.baseZoom / (1.0 + (mySnake.scale - 1.0) * 0.12);
+                // × renderDensity: bkz. create() HIGH-DPI CAMERA TRANSFORM —
+                // FOV CSS pikseline göre sabit, yoğunluk yalnız örneklemeyi artırır.
+                const targetZoom = this.baseZoom * this._renderDensity
+                    / (1.0 + (mySnake.scale - 1.0) * 0.12);
                 const currentZoom = this.cameras.main.zoom;
                 // Frame-rate-agnostik üstel yumuşatma: eski sabit 0.05/frame,
                 // 120Hz'de iki kat hızlı yakınsıyordu. 3.0/s ≈ 0.05 @60fps.
                 const zoomLerp = 1 - Math.exp(-3.0 * (delta / 1000));
                 this.cameras.main.setZoom(currentZoom + (targetZoom - currentZoom) * zoomLerp);
+
+                // Kamera takip lerp'i Phaser'da KARE BASINA uygulanir: sabit 0.15,
+                // 120/144Hz'de 60Hz'e gore 2-2.4x hizli yakinsar ve kare suresi
+                // dalgalandikca kafanin ekran konumu titrer. 60Hz'deki 0.15'e
+                // esdeger, kare-hizindan bagimsiz ustel katsayi.
+                const followLerp = 1 - Math.pow(1 - CAMERA_FOLLOW_LERP_60HZ,
+                    Math.min(delta, 100) / (1000 / 60));
+                this.cameras.main.setLerp(followLerp, followLerp);
             }
         }
 
@@ -2212,9 +2663,10 @@ export class Game extends Phaser.Scene {
     // MobileControls to keep the boost button clear of the minimap corner.
     // Mobile (short dimension < 720px): ~24% of the short dimension, 88–120px.
     // Desktop: the original 160px.
+    // Sizes are CSS px (UI camera space), NOT camera/buffer px.
     minimapMetrics() {
-        const w = this.cameras.main.width;
-        const h = this.cameras.main.height;
+        const w = this.viewWidth;
+        const h = this.viewHeight;
         const minDim = Math.min(w, h);
         if (minDim < 720) {
             return {
@@ -2227,25 +2679,53 @@ export class Game extends Phaser.Scene {
 
     drawMinimap(mySnake) {
         const { size, padding } = this.minimapMetrics();
-        const cx = this.cameras.main.width - size / 2 - padding;
-        const cy = this.cameras.main.height - size / 2 - padding;
+        const cx = this.viewWidth - size / 2 - padding;
+        const cy = this.viewHeight - size / 2 - padding;
+
+        // ── DOM ROZETINI HARITAYA BAGLA ─────────────────────────────────────
+        // Koordinat rozeti DOM'dadir ve konumunu bu iki olcuden turetir
+        // (bkz. style.css .hud-coord-pod). Olculer yalnizca resize/yon
+        // degisiminde degisir; CSS degiskeni yazmak stil yeniden hesaplamasi
+        // tetikledigi icin her kare degil, DEGISINCE yazilir.
+        const hudMetricsKey = `${size}|${padding}`;
+        if (this._hudMinimapMetricsKey !== hudMetricsKey) {
+            this._hudMinimapMetricsKey = hudMetricsKey;
+            publishMinimapMetrics(size, padding);
+        }
 
         const g = this.minimapGraphics;
         g.clear();
 
-        // Minimap border and background (matching reference design colors)
-        g.fillStyle(0x150136, 1); // surface-container-lowest
-        g.fillCircle(cx, cy, size / 2);
-        g.lineStyle(4, 0x322053, 1); // surface-container-high
-        g.strokeCircle(cx, cy, size / 2);
+        // Zemin: mini_map_terrain.png. Konum/boyut yalnizca metrikler
+        // degistiginde (resize, yon degisimi) yazilir — her kare degil.
+        const frame = this.minimapFrame;
+        if (frame) {
+            const layout = `${cx}|${cy}|${size}`;
+            if (layout !== this._minimapLayout) {
+                this._minimapLayout = layout;
+                frame.setPosition(cx, cy).setDisplaySize(size, size);
+            }
+        } else {
+            g.fillStyle(0x12345b, 0.88); // --menu-surface-container
+            g.fillCircle(cx, cy, size / 2);
+            g.lineStyle(3, 0x3688d0, 1); // --menu-bright
+            g.strokeCircle(cx, cy, size / 2);
+        }
 
         if (!this.worldRadius) return;
-        
-        // Calculate scale from world to minimap
-        const mapScale = (size / 2) / this.worldRadius;
 
-        // Draw foods as tiny dots
-        g.fillStyle(0xc2caad, 0.5); // on-surface-variant
+        // Dunya dairesi, cercevenin halkalarina degil IC diske eslenir:
+        // olculen ic disk yaricapi dokunun yari genisliginin %86.7'si
+        // (255px'te 110.5px). Kucuk pay, noktalarin halkaya tasmamasi icin.
+        const innerRadius = (size / 2) * MINIMAP_INNER_RATIO;
+        const mapScale = innerRadius / this.worldRadius;
+
+        // Yemler: koyu lacivert ama DUSUK opaklik. Harita binlerce yem tasir;
+        // yuksek opaklikta ust uste binip zemin gorselini tamamen kapatiyordu.
+        // Ayni yem sayisi kucuk (mobil ~90 px) diske alanla ters orantili daha
+        // sik duser, bu yuzden opaklik alanla olceklenir: 160 px'te 0.28.
+        const foodAlpha = 0.28 * Math.min(1, (size / 160) ** 2);
+        g.fillStyle(0x083367, foodAlpha); // --sea-dark
         for (const food of this.foods.values()) {
             const bob = food.bob;
             if (!bob) continue;
@@ -2259,7 +2739,7 @@ export class Game extends Phaser.Scene {
             // Distances check to keep them inside the minimap circle
             const distSq = wx * wx + wy * wy;
             if (distSq <= this.worldRadius * this.worldRadius) {
-                g.fillRect(mx, my, 1.5, 1.5);
+                g.fillRect(mx, my, 1.2, 1.2);
             }
         }
 
@@ -2274,8 +2754,13 @@ export class Game extends Phaser.Scene {
 
             const distSq = wx * wx + wy * wy;
             if (distSq <= this.worldRadius * this.worldRadius) {
-                g.fillStyle(0xb7f700, 1.0); // primary-container
-                g.fillCircle(mx, my, 3);
+                // Beyaz halka + yesil cekirdek: acik zeminde de, lacivert yem
+                // noktalarinin ustunde de ayirt edilir.
+                const r = size >= 140 ? 4 : 3;
+                g.fillStyle(0xffffff, 1.0);
+                g.fillCircle(mx, my, r + 1.5);
+                g.fillStyle(0x59e81b, 1.0); // --ping-good
+                g.fillCircle(mx, my, r);
             }
         }
     }

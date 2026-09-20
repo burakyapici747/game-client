@@ -16,6 +16,14 @@
             "discardSamples": 1,
             "minSamples": 3,
             "intervalMs": 500
+        },
+        "menuProbe": {
+            "burstSamples": 4,
+            "burstIntervalMs": 150,
+            "pulseIntervalMs": 2500,
+            "pulseDurationMs": 30000,
+            "discardSamples": 1,
+            "minSamples": 2
         }
     }
 }

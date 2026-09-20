@@ -7,6 +7,9 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Baloo 2 is self-hosted (public/assets/font/baloo2); preload the weight the
+         title and PLAY button render with so they don't flash a fallback. -->
+    <link rel="preload" href="/assets/font/baloo2/Baloo2-ExtraBold.ttf" as="font" type="font/ttf" crossorigin>
     <link rel="stylesheet" href="/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&family=Quicksand:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet">
@@ -14,7 +17,7 @@
          bloklamaz, hazır olduğunda src/auth/GoogleAuth.js tarafından beklenir. -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-    <title>TABUMU GAME</title>
+    <title>SEANAKES.IO</title>
 </head>
 
 <body>
@@ -39,12 +42,13 @@
             </div>
             
             <main class="main-menu-content">
-                <!-- Logo & Branding -->
+                <!-- Logo & Branding — frameless wordmark above the login card.
+                     width/height are the asset's own 1376x768 so the browser
+                     reserves the right box before the image decodes (no jump);
+                     CSS scales it fluidly (see .brand-logo). -->
                 <div class="brand float-anim">
-                    <div class="brand-logo-ring">
-                        <img src="/assets/logo_image.jpeg" alt="TABUMU GAME mascot logo" />
-                    </div>
-                    <h1 class="brand-title">TABUMU GAME</h1>
+                    <img class="brand-logo" src="/assets/logo/logo-circle-final.png"
+                         alt="SEANAKES.IO" width="1376" height="768" />
                 </div>
 
                 <!-- Login Card -->
@@ -71,11 +75,8 @@
                     <!-- GUEST: yerel takma ad, sosyal sağlayıcı yok -->
                     <div id="auth-pane-guest" class="auth-pane" role="tabpanel" aria-labelledby="auth-tab-guest">
                         <div class="login-input-wrap">
-                            <svg class="login-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                                <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                                <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                            <svg class="login-input-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                                <path d="M12 4a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4z"></path>
                             </svg>
                             <input type="text" id="nickname-input" placeholder="Enter Nickname" maxlength="16" autocomplete="off" />
                         </div>
@@ -115,12 +116,7 @@
                         <p class="auth-pane-hint">Signing in unlocks your wallet, store and skins.</p>
                     </div>
 
-                    <button id="play-btn" class="play-btn">
-                        <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
-                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"></path>
-                        </svg>
-                        PLAY
-                    </button>
+                    <button id="play-btn" class="play-btn">PLAY !</button>
 
                     <!-- Auto-selected server readout. Populated by
                          src/main.js -> updateServerIndicator(); the data-tier
@@ -141,21 +137,21 @@
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                             <path d="M4 5h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM4 13h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"></path>
                         </svg>
-                        Servers
+                        SERVERS
                     </button>
                 </div>
             </main>
 
             <!-- Footer -->
             <footer class="menu-footer">
-                <div class="menu-footer-brand">TABUMU GAME</div>
+                <div class="menu-footer-brand">SEANAKES.IO</div>
                 <nav class="menu-footer-links">
                     <a href="#">Privacy Policy</a>
                     <a href="#">Terms of Service</a>
                     <a href="#">Help Center</a>
                     <a href="#">Community Guidelines</a>
                 </nav>
-                <div class="menu-footer-copy">© 2026 TABUMU GAME. Stay Slithery!</div>
+                <div class="menu-footer-copy">© 2026 SEANAKES.IO. Stay Slithery!</div>
             </footer>
         </div>
 
@@ -264,7 +260,7 @@
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                 </button>
-                <div class="auth-logo">🐍</div>
+                <img class="auth-logo" src="/assets/logo/logo-1.png" alt="SEANAKES.IO logo" />
                 <h2 id="auth-title" class="auth-title">Sign in to continue</h2>
                 <p class="auth-subtitle">Your wallet, store and skins are tied to your Google account.</p>
 
@@ -276,120 +272,103 @@
             </div>
         </div>
 
-        <!-- Connecting Screen -->
-        <div id="connecting-overlay" class="connecting-overlay hidden">
-            <!-- Decorative Background Elements -->
-            <div class="connecting-overlay-blob connecting-overlay-blob-1"></div>
-            <div class="connecting-overlay-blob connecting-overlay-blob-2"></div>
-
-            <div class="connecting-card">
-                <!-- Loading Animation Container (Rolling Egg) -->
-                <div class="egg-loader-container">
-                    <div class="egg-loader-ring"></div>
-                    <div class="egg-loader">
-                        <div class="egg-eye egg-eye-left"></div>
-                        <div class="egg-eye egg-eye-right"></div>
-                        <div class="egg-blush egg-blush-left"></div>
-                        <div class="egg-blush egg-blush-right"></div>
-                    </div>
+        <!-- ══════════════════════════════════════════════════════════════
+             CONNECTING OVERLAY — reference: connecting-ui/connecting-ui.html
+             Opened on PLAY (src/main.js) and kept until the world is revealed.
+             The title and progress bar follow REAL milestones — see
+             src/ui/overlays.js → setConnectingStage.
+             ══════════════════════════════════════════════════════════════ -->
+        <div id="connecting-overlay" class="connecting-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="conn-title">
+            <div class="connecting-portal">
+                <div class="connecting-mascot" aria-hidden="true">
+                    <img src="/assets/logo/logo-circle-final.png" alt="" width="1376" height="768" />
                 </div>
 
-                <!-- Status Text -->
                 <div class="connecting-status">
-                    <h2 class="connecting-title">Waiting For Server...</h2>
-                    <div class="connecting-info">
-                        <span class="info-label">Server:</span>
-                        <span id="conn-server-name" class="info-value">--</span>
-                        <span class="info-separator">|</span>
-                        <span class="info-label">Ping:</span>
-                        <span id="conn-ping-value" class="info-value">--</span>
+                    <h2 id="conn-title" class="connecting-title" aria-live="polite">Loading game assets…</h2>
+
+                    <div class="connecting-server">
+                        <span id="conn-server-name" class="connecting-server-name">--</span>
+                        <span class="connecting-server-divider" aria-hidden="true"></span>
+                        <span class="connecting-ping" title="Server latency">
+                            <svg class="connecting-ping-icon" viewBox="0 0 16 14" aria-hidden="true">
+                                <rect x="0" y="10.5" width="2.6" height="3.5" rx="0.7"></rect>
+                                <rect x="4.4" y="7.5" width="2.6" height="6.5" rx="0.7"></rect>
+                                <rect x="8.8" y="4" width="2.6" height="10" rx="0.7"></rect>
+                                <rect x="13.2" y="0.5" width="2.6" height="13.5" rx="0.7"></rect>
+                            </svg>
+                            <span id="conn-ping-value">--</span>
+                        </span>
+                    </div>
+
+                    <div id="conn-progress" class="connecting-progress" role="progressbar"
+                         aria-label="Connection progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div id="conn-progress-fill" class="connecting-progress-fill"></div>
                     </div>
                 </div>
 
-                <!-- Progress Bar with Snake Animation -->
-                <div class="connecting-progress-bar">
-                    <div class="snake-animation">
-                        <div class="snake-segment snake-segment-1"></div>
-                        <div class="snake-segment snake-segment-2"></div>
-                        <div class="snake-segment snake-segment-3"></div>
-                        <div class="snake-segment snake-segment-4"></div>
-                        <div class="snake-head">
-                            <div class="snake-eye snake-eye-1"></div>
-                            <div class="snake-eye snake-eye-2"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Cancel Button -->
-                <button id="conn-cancel-btn" class="connecting-cancel-btn">
-                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
-                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path>
-                    </svg>
-                    Cancel Connection
-                </button>
+                <button id="conn-cancel-btn" class="connecting-cancel-btn" type="button">CANCEL</button>
             </div>
         </div>
 
-        <!-- Game Over Screen (reference: game_over.html) -->
-        <div id="gameover-overlay" class="gameover-overlay hidden">
-            <!-- Animated Background Decor -->
-            <div class="gameover-decor gameover-decor-1"></div>
-            <div class="gameover-decor gameover-decor-2"></div>
+        <!-- ══════════════════════════════════════════════════════════════
+             GAME OVER — reference: game_over_ui/game_over.html
+             Behaviour: src/ui/overlays.js (the ids are its hooks). Every
+             number comes from state the client already holds: score and food
+             from Game.js, rank from the last leaderboard packet.
+             ══════════════════════════════════════════════════════════════ -->
+        <div id="gameover-overlay" class="gameover-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+            <section class="gameover-card">
+                <div class="gameover-logo" aria-hidden="true">
+                    <img src="/assets/logo/logo-circle-final.png" alt="" width="1254" height="1254" />
+                </div>
 
-            <!-- Game Over Modal Cluster -->
-            <div class="gameover-cluster">
-                <!-- Mascot Section -->
-                <div class="gameover-mascot-wrap gameover-float">
-                    <div class="gameover-mascot-ring">
-                        <img alt="Game Mascot" src="/assets/logo_image.jpeg" />
+                <h1 id="gameover-title" class="gameover-title">Game Over</h1>
+
+                <!-- Stats bar: score | rank | food eaten -->
+                <div class="gameover-stats">
+                    <div class="gameover-stat gameover-stat-main">
+                        <p class="gameover-stat-label">Final Score</p>
+                        <p id="gameover-score" class="gameover-stat-value gameover-score-value">0</p>
                     </div>
-                    <!-- Dizzy stars overlay effect -->
-                    <div class="gameover-star gameover-star-spin">
-                        <span class="material-symbols-outlined">star</span>
+
+                    <div class="gameover-stat">
+                        <p class="gameover-stat-label">
+                            <img class="gameover-stat-icon" src="/assets/leaderboard/victory_cup.png"
+                                 alt="" width="23" height="21" />
+                            Rank
+                        </p>
+                        <p id="gameover-rank" class="gameover-stat-value">—</p>
                     </div>
-                    <div class="gameover-star gameover-star-pulse">
-                        <span class="material-symbols-outlined">star</span>
+
+                    <div class="gameover-stat">
+                        <p class="gameover-stat-label">
+                            <img class="gameover-stat-icon" src="/assets/leaderboard/score-orb.png"
+                                 alt="" width="24" height="24" />
+                            Food Eaten
+                        </p>
+                        <p id="gameover-food-eaten" class="gameover-stat-value">0</p>
                     </div>
                 </div>
 
-                <!-- Modal Panel -->
-                <div class="gameover-panel">
-                    <h1 class="gameover-title">GAME OVER</h1>
-
-                    <!-- Stats Bento Grid -->
-                    <div class="gameover-stats-grid">
-                        <div class="gameover-stat gameover-stat-score">
-                            <p class="gameover-stat-label">Final Score</p>
-                            <p id="gameover-score" class="gameover-score-value">0</p>
-                        </div>
-                        <div class="gameover-stat">
-                            <p class="gameover-stat-label">Rank</p>
-                            <p class="gameover-rank-value">#14</p>
-                        </div>
-                        <div class="gameover-stat">
-                            <p class="gameover-stat-label">Food Eaten</p>
-                            <p id="gameover-food-eaten" class="gameover-food-value">0</p>
-                        </div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="gameover-actions">
-                        <button id="gameover-play-again" class="gameover-btn-primary">PLAY AGAIN</button>
-                        <button id="gameover-back-menu" class="gameover-btn-secondary">BACK TO MENU</button>
-                    </div>
-
-                    <div class="gameover-links">
-                        <button class="gameover-link gameover-link-share">
-                            <span class="material-symbols-outlined">share</span>
-                            <span class="gameover-link-label">Share Score</span>
-                        </button>
-                        <button class="gameover-link gameover-link-board">
-                            <span class="material-symbols-outlined">leaderboard</span>
-                            <span class="gameover-link-label">Leaderboard</span>
-                        </button>
-                    </div>
+                <div class="gameover-actions">
+                    <button id="gameover-play-again" class="gameover-btn-primary" type="button">Play Again</button>
+                    <button id="gameover-back-menu" class="gameover-btn-secondary" type="button">Back to Menu</button>
                 </div>
-            </div>
+
+                <!-- NOT: bu iki bağlantının henüz bir davranışı yok (eski
+                     ekranda da yoktu); referansta yer aldıkları için duruyorlar. -->
+                <div class="gameover-links">
+                    <button class="gameover-link" type="button">
+                        <span class="material-symbols-outlined">share</span>
+                        <span class="gameover-link-label">Share Score</span>
+                    </button>
+                    <button class="gameover-link" type="button">
+                        <span class="material-symbols-outlined">leaderboard</span>
+                        <span class="gameover-link-label">Leaderboard</span>
+                    </button>
+                </div>
+            </section>
         </div>
 
         <!-- Server Selection Modal (reference: server_list.html) -->
@@ -416,150 +395,163 @@
             </div>
         </div>
 
-        <!-- Game HUD Overlay -->
+        <!-- ══════════════════════════════════════════════════════════════
+             GAME HUD — reference: game screen/in-game.html
+             Values are written by src/ui/overlays.js (the ids are its hooks).
+             The minimap is drawn by Phaser (Game.js drawMinimap).
+             ══════════════════════════════════════════════════════════════ -->
         <div id="game-hud" class="game-hud hidden">
-            <!-- Top HUD Row -->
             <div class="hud-top-row">
-                <!-- Stats Panel -->
-                <div class="hud-stats-panel hud-bubbly-panel">
-                    <div class="stat-item">
-                        <span class="stat-label">FPS:</span>
-                        <span id="hud-fps" class="stat-value">60</span>
+                <div class="hud-left">
+                    <!-- Telemetry pill (top-left) -->
+                    <!-- FPS/Ping satirlari AYRI AYRI gizlenebilir olmali:
+                         Settings'teki iki anahtar birbirinden bagimsizdir ve
+                         ikisi de kapaliysa pilin KENDISI de gizlenir (bos bir
+                         balonun ekranda durmasi, ayar calismiyor izlenimi
+                         verirdi). Gorunurlugu src/ui/overlays.js yonetir. -->
+                    <div id="hud-stats-panel" class="hud-stats-panel hud-bubbly-panel">
+                        <div id="hud-stat-fps" class="stat-item">
+                            <span class="stat-label">FPS:</span>
+                            <span id="hud-fps" class="stat-value">60</span>
+                        </div>
+                        <div id="hud-stat-ping" class="stat-item">
+                            <span class="stat-label">Ping:</span>
+                            <span id="hud-ping" class="stat-value">--ms</span>
+                        </div>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Ping:</span>
-                        <span id="hud-ping" class="stat-value">--ms</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Coord:</span>
-                        <span id="hud-coord" class="stat-value">0, 0</span>
+
+                    <!-- Score capsule: top-centre on desktop, under the
+                         telemetry pill on phones (see style.css). -->
+                    <div class="hud-score-pod hud-bubbly-panel">
+                        <span class="score-orb" aria-hidden="true"></span>
+                        <div id="hud-score" class="score-value">0</div>
                     </div>
                 </div>
 
-                <!-- Score Pod -->
-                <div class="hud-score-pod hud-bubbly-panel">
-                    <div class="score-icon-wrapper">
-                        <span class="material-symbols-outlined score-icon">toll</span>
-                    </div>
-                    <div id="hud-score" class="score-value">0</div>
-                </div>
-
-                <!-- Leaderboard Pod -->
+                <!-- Leaderboard card (top-right) -->
                 <div class="hud-leaderboard-pod hud-bubbly-panel">
                     <div class="leaderboard-header">
-                        <span class="leaderboard-title">LEADERBOARD</span>
-                        <span class="material-symbols-outlined leaderboard-icon">emoji_events</span>
+                        <span class="leaderboard-title">Leaderboard</span>
                     </div>
                     <div class="leaderboard-info">Players: <span id="hud-players">0</span></div>
                     <div id="hud-leaderboard-list" class="leaderboard-entries">
                         <!-- Entries populated by JS -->
                     </div>
-                    <button id="hud-leaderboard-toggle" class="leaderboard-toggle" title="Show more">
+                    <button id="hud-leaderboard-toggle" class="leaderboard-toggle" type="button" title="Show more">
                         <span class="material-symbols-outlined leaderboard-toggle-icon">expand_more</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Minimap is rendered by Phaser (Game.js drawMinimap) — no DOM element. -->
+            <!-- Koordinat rozeti: mini haritanin USTUNDE, onunla AYNI sag
+                 kenara hizali. Konum CSS degiskenlerinden turetilir
+                 (--minimap-size / --minimap-pad); degiskenleri Phaser tarafi
+                 yazar (Game.js drawMinimap -> publishMinimapMetrics), cunku
+                 mini harita canvas'a cizilir ve olcusu viewport'a gore
+                 degisir. .hud-top-row'un DISINDA durur: o satir ust kenara
+                 yapisik bir flex satiridir, rozet ise alt kose hizasinda
+                 mutlak konumlanir. -->
+            <div id="hud-coord-pod" class="hud-coord-pod hud-bubbly-panel">
+                <span class="hud-coord-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <circle cx="12" cy="12" r="3.2"></circle>
+                        <path d="M12 2v3.2M12 18.8V22M2 12h3.2M18.8 12H22"></path>
+                    </svg>
+                </span>
+                <span id="hud-coord" class="stat-value">0, 0</span>
+            </div>
         </div>
 
-        <!-- Settings Modal -->
-        <div id="settings-modal" class="settings-modal hidden">
+        <!-- ══════════════════════════════════════════════════════════════
+             SETTINGS MODAL — reference: LOGIN SCREEN/settings.html
+             Behaviour: src/main.js. The element ids, .settings-group-btn
+             [data-side] and .settings-modal-backdrop are its hooks. Every
+             control persists on change; Save closes, Reset restores defaults.
+             ══════════════════════════════════════════════════════════════ -->
+        <div id="settings-modal" class="settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <div class="settings-modal-backdrop"></div>
-            <div class="settings-card">
-                <!-- Header -->
-                <div class="settings-header">
-                    <div class="settings-header-title">
-                        <span class="material-symbols-outlined">tune</span>
-                        <h2>GAME SETTINGS</h2>
-                    </div>
-                    <button id="settings-modal-close-btn" class="settings-close-btn" aria-label="Close">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                    </button>
-                </div>
+            <section class="settings-card">
+                <button id="settings-modal-close-btn" class="settings-close-btn" type="button" aria-label="Close settings">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+
+                <header class="settings-header">
+                    <h2 id="settings-title" class="settings-title">Settings</h2>
+                </header>
 
                 <!-- Scrollable Body -->
                 <div class="settings-body">
-                    <!-- DISPLAY Section -->
-                    <section>
-                        <h3 class="settings-section-title">Display Settings</h3>
-                        <div class="settings-options">
-                            <div class="settings-option">
-                                <div class="settings-option-label">Show FPS</div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="show-fps-toggle" />
-                                    <span class="settings-slider"></span>
-                                </label>
-                            </div>
-                            <div class="settings-option">
-                                <div class="settings-option-label">Show Ping</div>
-                                <label class="settings-switch">
-                                    <input type="checkbox" id="show-ping-toggle" />
-                                    <span class="settings-slider"></span>
-                                </label>
-                            </div>
-                        </div>
-                    </section>
+                    <!-- DISPLAY -->
+                    <fieldset class="settings-group">
+                        <legend class="settings-section-title">Display Settings</legend>
 
-                    <!-- AUDIO Section -->
-                    <section>
-                        <h3 class="settings-section-title">Audio Settings</h3>
-                        <div class="settings-options">
-                            <div class="settings-slider-group">
-                                <div class="settings-slider-header">
-                                    <span>Master Volume</span>
-                                    <span id="master-volume-display" class="settings-value">85%</span>
-                                </div>
-                                <input id="master-volume-slider" class="settings-range" type="range" min="0" max="100" value="85" />
-                            </div>
-                            <div class="settings-slider-group">
-                                <div class="settings-slider-header">
-                                    <span>SFX Volume</span>
-                                    <span id="sfx-volume-display" class="settings-value">60%</span>
-                                </div>
-                                <input id="sfx-volume-slider" class="settings-range" type="range" min="0" max="100" value="60" />
-                            </div>
+                        <div class="settings-row">
+                            <span id="show-fps-label" class="settings-row-label">Show FPS</span>
+                            <label class="settings-switch">
+                                <input type="checkbox" id="show-fps-toggle" role="switch" aria-labelledby="show-fps-label" checked />
+                                <span class="settings-switch-track" aria-hidden="true"></span>
+                            </label>
                         </div>
-                    </section>
 
-                    <!-- MOBILE CONTROLS Section -->
-                    <section>
-                        <h3 class="settings-section-title">Mobile Controls</h3>
-                        <div class="settings-options">
-                            <div class="settings-joystick">
-                                <div class="settings-option-label">Joystick Side</div>
-                                <div class="settings-button-group">
-                                    <button class="settings-group-btn active" data-side="left">Left</button>
-                                    <button class="settings-group-btn" data-side="right">Right</button>
-                                </div>
-                            </div>
-                            <div class="settings-slider-group">
-                                <div class="settings-slider-header">
-                                    <span>Control Size</span>
-                                    <span id="control-size-display" class="settings-value">110%</span>
-                                </div>
-                                <input id="control-size-slider" class="settings-range" type="range" min="50" max="150" value="110" />
-                            </div>
-                            <div class="settings-slider-group">
-                                <div class="settings-slider-header">
-                                    <span>Opacity</span>
-                                    <span id="opacity-display" class="settings-value">75%</span>
-                                </div>
-                                <input id="opacity-slider" class="settings-range" type="range" min="10" max="100" value="75" />
+                        <div class="settings-row">
+                            <span id="show-ping-label" class="settings-row-label">Show Ping</span>
+                            <label class="settings-switch">
+                                <input type="checkbox" id="show-ping-toggle" role="switch" aria-labelledby="show-ping-label" checked />
+                                <span class="settings-switch-track" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                    </fieldset>
+
+                    <!-- AUDIO -->
+                    <fieldset class="settings-group">
+                        <legend class="settings-section-title">Audio Settings</legend>
+
+                        <div class="settings-row settings-row-range">
+                            <label class="settings-row-label" for="master-volume-slider">Master Volume</label>
+                            <input id="master-volume-slider" class="settings-range" type="range" min="0" max="100" value="85" style="--fill: 85%" />
+                            <span id="master-volume-display" class="settings-value" aria-hidden="true">85%</span>
+                        </div>
+
+                        <div class="settings-row settings-row-range">
+                            <label class="settings-row-label" for="sfx-volume-slider">SFX Volume</label>
+                            <input id="sfx-volume-slider" class="settings-range" type="range" min="0" max="100" value="60" style="--fill: 60%" />
+                            <span id="sfx-volume-display" class="settings-value" aria-hidden="true">60%</span>
+                        </div>
+                    </fieldset>
+
+                    <!-- MOBILE CONTROLS -->
+                    <fieldset class="settings-group">
+                        <legend class="settings-section-title">Mobile Controls</legend>
+
+                        <div class="settings-row">
+                            <span id="joystick-side-label" class="settings-row-label">Joystick Side</span>
+                            <div class="settings-button-group" role="group" aria-labelledby="joystick-side-label">
+                                <button class="settings-group-btn active" type="button" data-side="left">Left</button>
+                                <button class="settings-group-btn" type="button" data-side="right">Right</button>
                             </div>
                         </div>
-                    </section>
+
+                        <div class="settings-row settings-row-range">
+                            <label class="settings-row-label" for="control-size-slider">Control Size</label>
+                            <input id="control-size-slider" class="settings-range" type="range" min="50" max="150" value="110" style="--fill: 60%" />
+                            <span id="control-size-display" class="settings-value" aria-hidden="true">110%</span>
+                        </div>
+
+                        <div class="settings-row settings-row-range">
+                            <label class="settings-row-label" for="opacity-slider">Opacity</label>
+                            <input id="opacity-slider" class="settings-range" type="range" min="10" max="100" value="75" style="--fill: 72.2%" />
+                            <span id="opacity-display" class="settings-value" aria-hidden="true">75%</span>
+                        </div>
+                    </fieldset>
                 </div>
 
-                <!-- Footer -->
-                <div class="settings-footer">
-                    <button id="settings-save-btn" class="settings-save-btn">Save Changes</button>
-                    <button id="settings-reset-btn" class="settings-reset-btn">Reset</button>
-                </div>
-            </div>
+                <footer class="settings-footer">
+                    <button id="settings-save-btn" class="settings-save-btn" type="button">Save Changes</button>
+                    <button id="settings-reset-btn" class="settings-reset-btn" type="button">Reset</button>
+                </footer>
+            </section>
         </div>
     </div>
     <script type="module" src="src/main.js"></script>

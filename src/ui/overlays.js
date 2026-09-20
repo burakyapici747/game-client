@@ -105,12 +105,85 @@ export function initServiceBanner() {
 }
 
 // ── Connecting overlay ───────────────────────────────────────────────────────
+// PLAY'e basıldığı anda açılır (src/main.js) ve oyun görünene kadar kalır.
+// İlerleme çubuğu SAHTE DEĞİLDİR — her aşama gerçek bir olaya bağlıdır:
+//
+//   assets      Preloader yükleme oranı 0..1        (Preloader 'progress')  →  0–40%
+//   connecting  soket açılıyor 0 → açıldı 1          (Game.create / 'socket_open') → 45–55%
+//   joining     ilk veri bayrakları 0..3 / 3         (Game.checkInitialDataComplete) → 60–95%
+//   (gizle)     dünya görünür                        (hideConnectingOverlay)  → 100%
+//
+// Çubuk ve başlık yalnızca İLERİ gider: geç gelen bir önceki aşama çağrısı
+// (ör. respawn'da sahnenin yeniden kurulması) göstergeyi geri sardırmaz.
+const CONNECTING_STAGES = Object.freeze({
+    assets:     { order: 0, title: 'Loading game assets…',  from: 0,  to: 40 },
+    connecting: { order: 1, title: 'Connecting to server…', from: 45, to: 55 },
+    joining:    { order: 2, title: 'Joining world…',        from: 60, to: 95 },
+});
+
+let connectingStage = null;
+let connectingProgress = 0;
+
+function renderConnectingProgress(pct) {
+    const fill = $('conn-progress-fill');
+    if (fill) fill.style.width = `${pct}%`;
+    $('conn-progress')?.setAttribute('aria-valuenow', String(Math.round(pct)));
+}
+
+function setConnectingTitle(text) {
+    const el = $('conn-title');
+    if (!el || el.textContent === text) return;
+    el.textContent = text;
+    // Yumuşak geçiş: yalnızca opacity/transform (layout yok), Web Animations
+    // API ile — sınıf ekle/çıkar + reflow hilesine gerek kalmaz.
+    el.animate?.(
+        [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 250, easing: 'ease-out' },
+    );
+}
+
+/**
+ * @param {'assets'|'connecting'|'joining'} stage
+ * @param {number} [fraction=0] Aşama içindeki ilerleme, 0..1.
+ */
+export function setConnectingStage(stage, fraction = 0) {
+    const def = CONNECTING_STAGES[stage];
+    if (!def) return;
+
+    const current = connectingStage ? CONNECTING_STAGES[connectingStage].order : -1;
+    if (def.order < current) return;
+    if (def.order > current) {
+        connectingStage = stage;
+        setConnectingTitle(def.title);
+    }
+
+    const f = Math.min(1, Math.max(0, Number(fraction) || 0));
+    const pct = def.from + (def.to - def.from) * f;
+    if (pct > connectingProgress) {
+        connectingProgress = pct;
+        renderConnectingProgress(pct);
+    }
+}
 
 export function showConnectingOverlay(serverName, initialPingMs = null) {
     const nameEl = $('conn-server-name');
     if (nameEl) nameEl.textContent = serverName || 'Unknown';
     updateConnectingPing(initialPingMs);
-    $('connecting-overlay')?.classList.remove('hidden');
+
+    // İKİ çağıran var: PLAY anında main.js, ardından Game.create. Ekran zaten
+    // açıksa ilerleme SIFIRLANMAZ — yalnızca kapalıyken yeni tur başlar.
+    const overlay = $('connecting-overlay');
+    if (overlay?.classList.contains('hidden')) {
+        // YENİ TUR: önceki turun sıralaması düşürülür. Aksi halde bu turun ilk
+        // sıralama paketi gelmeden ölen oyuncuya ESKİ turun sırası gösterilirdi
+        // (bkz. showGameOverOverlay → lastLeaderboardData).
+        lastLeaderboardData = null;
+        connectingStage = null;
+        connectingProgress = 0;
+        renderConnectingProgress(0);
+        setConnectingStage('assets', 0);
+        overlay.classList.remove('hidden');
+    }
 }
 
 // Bağlantı ekranındaki PING metriği: önce menüden ölçülen değerle başlar,
@@ -122,7 +195,12 @@ export function updateConnectingPing(ms) {
 }
 
 export function hideConnectingOverlay() {
-    $('connecting-overlay')?.classList.add('hidden');
+    const overlay = $('connecting-overlay');
+    if (!overlay || overlay.classList.contains('hidden')) return;
+    // Son kare dolu çubuk: overlay 0.3 sn'lik fade ile kaybolurken %100 görünür.
+    connectingProgress = 100;
+    renderConnectingProgress(100);
+    overlay.classList.add('hidden');
 }
 
 // Cancel butonu: bağlantı iptal akışının sahibi (soketi kapatıp menüye dönen
@@ -132,19 +210,74 @@ export function onConnectingCancel(handler) {
     if (btn) btn.onclick = handler; // onclick ataması — tekrar bağlamada listener birikmez
 }
 
-// ── Game Over overlay (reference: game_over.html) ───────────────────────────
+// ── Game Over overlay (reference: game_over_ui/game_over.html) ─────────────
 
-// stats: { score, foodEaten } — client tarafında takip edilir (Game.js).
+const COUNT_UP_MS = 600;
+const prefersReducedMotion = () =>
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+
+/** Çalışan sayaçlar — yeni bir ölüm ekranı öncekini iptal eder. */
+const countUpFrames = new Map();
+
+/**
+ * Değeri 0'dan hedefe sayar. Metin HER ZAMAN formatScore'dan geçer, yani
+ * sayarken de bitişte de HUD ile aynı biçimi (binlik ayraç) kullanır.
+ *
+ * <p>Animasyon azaltma tercihinde (ya da hedef 0 iken) anında yazılır.
+ */
+function countUp(el, target, format = formatScore) {
+    if (!el) return;
+
+    const running = countUpFrames.get(el);
+    if (running) cancelAnimationFrame(running);
+
+    const end = Math.max(0, Math.trunc(Number(target) || 0));
+    if (end === 0 || prefersReducedMotion()) {
+        el.textContent = format(end);
+        countUpFrames.delete(el);
+        return;
+    }
+
+    const started = performance.now();
+    const step = (now) => {
+        // easeOutCubic: hızlı başlar, hedefte yumuşak durur.
+        const t = Math.min(1, (now - started) / COUNT_UP_MS);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = format(Math.round(end * eased));
+        if (t < 1) {
+            countUpFrames.set(el, requestAnimationFrame(step));
+        } else {
+            countUpFrames.delete(el);
+        }
+    };
+    el.textContent = format(0);
+    countUpFrames.set(el, requestAnimationFrame(step));
+}
+
+/**
+ * stats: { score, foodEaten } — client tarafında takip edilir (Game.js).
+ *
+ * <p>SIRA (rank) için sunucudan ayrıca bir şey beklenmez: istemci sıralama
+ * paketlerini zaten işliyor ve sonuncusu lastLeaderboardData'da duruyor
+ * (bkz. updateHUDLeaderboard). Sıralama ~5 sn'de bir yayınlandığı için değer
+ * ölüm anında o kadar bayat olabilir; oyuncu hiç sıralanmadıysa 0 gelir ve
+ * uydurma bir sayı yerine "—" gösterilir.
+ */
 export function showGameOverOverlay(stats, onPlayAgain) {
     const { score = 0, foodEaten = 0 } = stats ?? {};
 
-    // Oyun sonu ekrani da AYNI biçimlendiriciyi kullanır — oyuncunun HUD'da
-    // "12,450" görüp ölünce "12450" görmesi tutarsızlığını kapatır.
-    const scoreEl = $('gameover-score');
-    if (scoreEl) scoreEl.textContent = formatScore(score);
+    countUp($('gameover-score'), score);
+    countUp($('gameover-food-eaten'), foodEaten);
 
-    const foodEl = $('gameover-food-eaten');
-    if (foodEl) foodEl.textContent = formatScore(foodEaten);
+    const rankEl = $('gameover-rank');
+    if (rankEl) {
+        const rank = Number(lastLeaderboardData?.selfRank) || 0;
+        if (rank > 0) {
+            countUp(rankEl, rank, (v) => `#${formatScore(v)}`);
+        } else {
+            rankEl.textContent = '—';
+        }
+    }
 
     const btn = $('gameover-play-again');
     if (btn) {
@@ -181,7 +314,73 @@ export function hideAllGameOverlays() {
 
 // ── Game HUD ────────────────────────────────────────────────────────
 
+/**
+ * ── TELEMETRI GORUNURLUGU (Settings > Show FPS / Show Ping) ─────────────────
+ *
+ * <p>ESKIDEN: iki anahtar yalnizca localStorage'a yaziyordu ve HUD'u okuyan
+ * KIMSE YOKTU — FPS ve ping her kosulda gorunuyordu. Anahtar goruntude hicbir
+ * sey degistirmedigi icin "ayar bozuk" gorunuyordu; oysa ayar hic baglanmamisti.
+ *
+ * <h3>VARSAYILAN ACIK</h3>
+ * Anahtar HIC yazilmamissa deger {@code true}'dur. Bunun nedeni geriye
+ * uyumluluk: bugune kadar herkeste iki sayac da gorunuyordu, varsayilani
+ * kapali yapmak tum mevcut oyunculardan sessizce HUD parcasi silerdi.
+ * index.html'deki {@code checked} nitelikleri de bu varsayilani yansitir,
+ * boylece JS calismadan once de anahtarlar dogru konumda cizilir.
+ *
+ * <h3>OLCUM DURMAZ, YALNIZCA GOSTERIM DURUR</h3>
+ * Ping kapatildiginda ping DONGUSU calismaya devam eder. RTT tahmini yalnizca
+ * HUD'u beslemez; yilanin yerel tahmini ve adaptif interpolasyon buffer'i da
+ * ayni olcumu okur (bkz. NetworkManager.pingEmaMs / EntityInterpolator).
+ * Olcumu durdurmak, bir HUD tercihini GAMEPLAY davranisina baglamak olurdu.
+ */
+const HUD_STAT_STORAGE_KEYS = { fps: 'show_fps', ping: 'show_ping' };
+
+// Sicak yol onbellegi: updateHUDStats 10 Hz kosar, her tikte localStorage
+// okumak gereksiz senkron I/O olurdu. applyHudTelemetrySettings tazeler.
+let hudStatVisibility = { fps: true, ping: true };
+
+/** Ayarin ETKIN degeri; anahtar yoksa varsayilan ACIK. */
+export function isHudStatEnabled(statName) {
+    const raw = localStorage.getItem(HUD_STAT_STORAGE_KEYS[statName]);
+    return raw === null ? true : raw === 'true';
+}
+
+/**
+ * Ayarlari DOM'a uygular. Ayar degistiginde, HUD gosterildiginde ve sayfa
+ * acilisinda cagrilir — yani gorunurluk tek bir yerden turer.
+ */
+export function applyHudTelemetrySettings() {
+    hudStatVisibility = { fps: isHudStatEnabled('fps'), ping: isHudStatEnabled('ping') };
+
+    $('hud-stat-fps')?.classList.toggle('hidden', !hudStatVisibility.fps);
+    $('hud-stat-ping')?.classList.toggle('hidden', !hudStatVisibility.ping);
+    // Iki satir da kapaliysa BOS pil kalmasin.
+    $('hud-stats-panel')?.classList.toggle('hidden', !hudStatVisibility.fps && !hudStatVisibility.ping);
+}
+
+/**
+ * MINI HARITA OLCULERINI CSS'E YAYINLAR.
+ *
+ * <p>Mini harita Phaser canvas'ina cizilir, koordinat rozeti ise DOM'dur.
+ * Rozetin haritaya hizali kalmasinin tek yolu, haritanin olculerini tek
+ * kaynaktan (Game.minimapMetrics) alip CSS'e aktarmaktir; boylece iki ayri
+ * yerde iki farkli "24px padding" sabiti tutulmaz.
+ *
+ * <p>Yalnizca metrikler DEGISTIGINDE cagrilir (olusum + resize), her karede
+ * degil: CSS degiskeni yazmak stil yeniden hesaplamasi tetikler.
+ */
+export function publishMinimapMetrics(sizePx, paddingPx) {
+    const hud = $('game-hud');
+    if (!hud) return;
+    hud.style.setProperty('--minimap-size', `${sizePx}px`);
+    hud.style.setProperty('--minimap-pad', `${paddingPx}px`);
+}
+
 export function showGameHUD() {
+    // Oyun her basladiginda ayarlar YENIDEN uygulanir: oyuncu menude anahtari
+    // degistirmis olabilir ve HUD o sirada gizliydi.
+    applyHudTelemetrySettings();
     $('game-hud')?.classList.remove('hidden');
 }
 
@@ -189,19 +388,26 @@ export function hideGameHUD() {
     $('game-hud')?.classList.add('hidden');
 }
 
+// Yalnizca DEGISEN metni yazar. Ayni degeri yeniden atamak da bir DOM
+// mutasyonudur: metin ayni kalsa bile stil/layout gecersizlesir ve repaint
+// tetiklenir. FPS/ping cogu 100 ms'lik tikte degismez.
+function setText(el, text) {
+    if (el && el.textContent !== text) el.textContent = text;
+}
+
 export function updateHUDStats(fps, ping, coordX, coordY) {
-    const fpsEl = $('hud-fps');
-    if (fpsEl) fpsEl.textContent = String(fps ?? 0);
-
-    const pingEl = $('hud-ping');
-    if (pingEl) pingEl.textContent = (ping === null || ping === undefined) ? '--ms' : `${ping}ms`;
-
-    const coordEl = $('hud-coord');
-    if (coordEl) {
-        const x = Math.round(coordX ?? 0);
-        const y = Math.round(coordY ?? 0);
-        coordEl.textContent = `${x}, ${y}`;
+    // Gizli sayaca yazmak GORUNMEZ ama BEDAVA degil: her yazim bir DOM
+    // mutasyonudur. Kapali anahtar, yazimi da kapatir.
+    if (hudStatVisibility.fps) {
+        setText($('hud-fps'), String(fps ?? 0));
     }
+    if (hudStatVisibility.ping) {
+        setText($('hud-ping'), (ping === null || ping === undefined) ? '--ms' : `${ping}ms`);
+    }
+
+    const x = Math.round(coordX ?? 0);
+    const y = Math.round(coordY ?? 0);
+    setText($('hud-coord'), `${x}, ${y}`);
 }
 
 // ── SKOR BİÇİMLENDİRME — TEK KAYNAK ─────────────────────────────────────────
@@ -329,11 +535,16 @@ function paintLeaderboardRow(row, { rank, name, score, isTop1, isSelf, pinned })
     const nameEl = left.lastElementChild;
     const scoreEl = row.lastElementChild;
 
-    // 1. sıra tacı ile diğer sıraların numarası AYNI span'i kullanır — yapı
+    // 1. sıra kupası ile diğer sıraların numarası AYNI span'i kullanır — yapı
     // değişmez, yalnızca sınıf/metin değişir (düğüm ekleme/çıkarma yok).
+    // Kupa victory_cup.png'dir ve .rank-crown'un CSS arka planı olarak çizilir;
+    // span metinsiz kalır, sıra bilgisi title'da taşınır.
     const wantRankClass = isTop1 ? 'rank-crown' : 'rank-number';
-    const wantRankText = isTop1 ? '👑' : (pinned ? `#${rank}` : String(rank));
-    if (rankEl.className !== wantRankClass) rankEl.className = wantRankClass;
+    const wantRankText = isTop1 ? '' : `#${rank}`;
+    if (rankEl.className !== wantRankClass) {
+        rankEl.className = wantRankClass;
+        rankEl.title = isTop1 ? '#1' : '';
+    }
     if (rankEl.textContent !== wantRankText) rankEl.textContent = wantRankText;
 
     const wantName = name || 'Unknown';
@@ -351,8 +562,11 @@ function paintLeaderboardRow(row, { rank, name, score, isTop1, isSelf, pinned })
 
     let wantRowClass = 'leaderboard-entry';
     if (isTop1) wantRowClass += ' rank-1';
-    // rank-you: hem Top-5 içi vurgu hem de alttaki sabit satırın ayraç stili.
+    // rank-you: oyuncunun kendi satırı (yeşil ad) — Top-N içinde ya da altta.
+    // rank-pinned: yalnızca Top-N DIŞINDAYKEN alta sabitlenen satır; üstündeki
+    // ayraç çizgisi bundandır (Top-N içindeki kendi satırında ayraç olmaz).
     if (isSelf) wantRowClass += ' rank-you';
+    if (pinned) wantRowClass += ' rank-pinned';
     if (row.className !== wantRowClass) row.className = wantRowClass;
 }
 

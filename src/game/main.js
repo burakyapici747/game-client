@@ -3,35 +3,31 @@ import { Game as MainGame } from './scenes/Game';
 import { MainMenu } from './scenes/MainMenu';
 import { Preloader } from './scenes/Preloader';
 import Phaser, { Game } from 'phaser';
+import { attachViewport, bootScaleConfig } from './render/Viewport';
 
-const config = {
+const baseConfig = {
   type: Phaser.AUTO,
-  parent: 'game-container',
   backgroundColor: '#fff',
   pixelArt: false,
   render: {
-    resolution: window.devicePixelRatio || 1,
+    // NOT: `resolution` KASITLI OLARAK YOK. Phaser 3.90 bu anahtari okumaz
+    // (core/Config.js'te karsiligi yoktur); DPR destegi render/Viewport.js'te
+    // backing buffer = CSS boyutu × yogunluk olarak elle uygulanir.
     antialias: true,
-    antialiasGL: true,
     roundPixels: false,
-    // 2048x2048 zemin karolari POWER-OF-TWO'dur ve Phaser mipmapFilter'i
-    // YALNIZCA POT dokulara uygular (WebGLRenderer.createTextureFromSource).
+    // 2048x2048 zemin karolari ve yilan dokulari POWER-OF-TWO'dur; Phaser
+    // mipmapFilter'i YALNIZCA POT dokulara uygular
+    // (WebGLRenderer.createTextureFromSource / canvasToTexture).
     // Kamera uzaklastiginda (mobil baseZoom ~0.45, buyuyen yilanda daha da
     // dusuk) mip zinciri hem titremeyi/aliasing'i kaldirir hem de doku
-    // onbellegi isabetini artirir. NPOT dokular (yem spritesheet'i, yilan
-    // sprite'lari) bu ayardan etkilenmez; NEAREST isteyen px* dokulari kendi
-    // setFilter cagrilariyla bunu zaten ezer (bkz. Preloader.create).
+    // onbellegi isabetini artirir. POT olmayan dokular (yem spritesheet'i)
+    // bu ayardan etkilenmez; NEAREST isteyen px* dokulari kendi setFilter
+    // cagrilariyla bunu zaten ezer (bkz. Preloader.create).
     mipmapFilter: 'LINEAR_MIPMAP_LINEAR',
   },
-  scale: {
-    mode: Phaser.Scale.RESIZE,
-    // NO_CENTER is required with RESIZE: ScaleManager.updateCenter() runs in
-    // every mode and, if the canvas is ever smaller than its parent (e.g. the
-    // game booted while the mobile on-screen keyboard shrank the viewport),
-    // CENTER_BOTH margins the undersized canvas into the middle of the screen
-    // — producing the "small centered playable rectangle" input bug.
-    autoCenter: Phaser.Scale.NO_CENTER,
-  },
+  // Scale: Viewport.bootScaleConfig uretir (Scale.NONE + DPR'li buffer).
+  // NO_CENTER: canvas her zaman parent'i tam kaplar; merkezleme marjlari
+  // eskiden klavye kaynakli "kucuk ortalanmis oyun alani" hatasini uretiyordu.
   // 3 simultaneous touch points: one for the on-screen joystick, one for the
   // boost button, plus a spare. Required for the Phaser-GameObject mobile
   // controls (MobileControls.js) to track both at once.
@@ -40,5 +36,30 @@ const config = {
   scene: [Boot, Preloader, MainMenu, MainGame]
 };
 
-const StartGame = (parent) => new Game({ ...config, parent });
+const StartGame = (parent) => {
+  const parentEl = typeof parent === 'string' ? document.getElementById(parent) : parent;
+  const { density, scale } = bootScaleConfig(parentEl);
+
+  const game = new Game({
+    ...baseConfig,
+    parent: parentEl,
+    scale: { ...scale, autoCenter: Phaser.Scale.NO_CENTER },
+    render: {
+      ...baseConfig.render,
+      // MSAA yalnizca poligon KENARLARINI yumusatir (doku orneklemesine etkisi
+      // yok) ve bellegi ~4x katlar. Yogunluk >= 2'de kenar merdivenlenmesi
+      // zaten fiziksel piksel altindadir → MSAA bos yere VRAM + fill harcar.
+      // Baglam olusturma parametresidir: boot'ta bir kez belirlenir.
+      antialiasGL: density < 2,
+    },
+  });
+
+  // Tek resize sahibi: ResizeObserver + visualViewport + window resize +
+  // orientationchange + DPR degisimi → rAF'ta birlestirilmis TEK senkron.
+  const detachViewport = attachViewport(game, parentEl, density);
+  game.events.once('destroy', detachViewport);
+
+  return game;
+};
+
 export default StartGame;

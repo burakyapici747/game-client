@@ -790,6 +790,9 @@ export namespace server {
 
         /** ServerEnvelope pathSeedCollection */
         pathSeedCollection?: (server.IPathSeedCollection|null);
+
+        /** ServerEnvelope foodSectorBootstraps */
+        foodSectorBootstraps?: (server.IFoodSectorBootstrap[]|null);
     }
 
     /** Represents a ServerEnvelope. */
@@ -833,6 +836,9 @@ export namespace server {
 
         /** ServerEnvelope pathSeedCollection. */
         public pathSeedCollection?: (server.IPathSeedCollection|null);
+
+        /** ServerEnvelope foodSectorBootstraps. */
+        public foodSectorBootstraps: server.IFoodSectorBootstrap[];
 
         /** ServerEnvelope payload. */
         public payload?: ("startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification");
@@ -1175,6 +1181,109 @@ export namespace server {
         public static getTypeUrl(typeUrlPrefix?: string): string;
     }
 
+    /** Properties of a ScaleUpdates. */
+    interface IScaleUpdates {
+
+        /** ScaleUpdates entityIds */
+        entityIds?: (number[]|null);
+
+        /** ScaleUpdates scales */
+        scales?: (number[]|null);
+    }
+
+    /** Represents a ScaleUpdates. */
+    class ScaleUpdates implements IScaleUpdates {
+
+        /**
+         * Constructs a new ScaleUpdates.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.IScaleUpdates);
+
+        /** ScaleUpdates entityIds. */
+        public entityIds: number[];
+
+        /** ScaleUpdates scales. */
+        public scales: number[];
+
+        /**
+         * Creates a new ScaleUpdates instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns ScaleUpdates instance
+         */
+        public static create(properties?: server.IScaleUpdates): server.ScaleUpdates;
+
+        /**
+         * Encodes the specified ScaleUpdates message. Does not implicitly {@link server.ScaleUpdates.verify|verify} messages.
+         * @param message ScaleUpdates message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.IScaleUpdates, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified ScaleUpdates message, length delimited. Does not implicitly {@link server.ScaleUpdates.verify|verify} messages.
+         * @param message ScaleUpdates message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.IScaleUpdates, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a ScaleUpdates message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns ScaleUpdates
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.ScaleUpdates;
+
+        /**
+         * Decodes a ScaleUpdates message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns ScaleUpdates
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.ScaleUpdates;
+
+        /**
+         * Verifies a ScaleUpdates message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a ScaleUpdates message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns ScaleUpdates
+         */
+        public static fromObject(object: { [k: string]: any }): server.ScaleUpdates;
+
+        /**
+         * Creates a plain object from a ScaleUpdates message. Also converts values to other types if specified.
+         * @param message ScaleUpdates
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.ScaleUpdates, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this ScaleUpdates to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for ScaleUpdates
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
     /** Properties of an EntityCollection. */
     interface IEntityCollection {
 
@@ -1204,6 +1313,9 @@ export namespace server {
 
         /** EntityCollection invulnerableEntityIds */
         invulnerableEntityIds?: (number[]|null);
+
+        /** EntityCollection scaleUpdates */
+        scaleUpdates?: (server.IScaleUpdates|null);
     }
 
     /** Represents an EntityCollection. */
@@ -1241,6 +1353,9 @@ export namespace server {
 
         /** EntityCollection invulnerableEntityIds. */
         public invulnerableEntityIds: number[];
+
+        /** EntityCollection scaleUpdates. */
+        public scaleUpdates?: (server.IScaleUpdates|null);
 
         /**
          * Creates a new EntityCollection instance using the specified properties.
@@ -1464,6 +1579,9 @@ export namespace server {
 
         /** SelfPosition invulnerable */
         invulnerable?: (boolean|null);
+
+        /** SelfPosition boostActive */
+        boostActive?: (boolean|null);
     }
 
     /** Represents a SelfPosition. */
@@ -1485,7 +1603,7 @@ export namespace server {
         public y: number;
 
         /** SelfPosition scale. */
-        public scale: number;
+        public scale?: (number|null);
 
         /** SelfPosition lastProcessedSequenceId. */
         public lastProcessedSequenceId: number;
@@ -1495,6 +1613,12 @@ export namespace server {
 
         /** SelfPosition invulnerable. */
         public invulnerable: boolean;
+
+        /** SelfPosition boostActive. */
+        public boostActive: boolean;
+
+        /** SelfPosition _scale. */
+        public _scale?: "scale";
 
         /**
          * Creates a new SelfPosition instance using the specified properties.
@@ -2007,6 +2131,224 @@ export namespace server {
         public static getTypeUrl(typeUrlPrefix?: string): string;
     }
 
+    /** Properties of a FoodSectorEviction. */
+    interface IFoodSectorEviction {
+
+        /** FoodSectorEviction sectorId */
+        sectorId?: (number|null);
+
+        /** FoodSectorEviction subscriptionGeneration */
+        subscriptionGeneration?: (number|Long|null);
+
+        /** FoodSectorEviction evictedFoodIds */
+        evictedFoodIds?: (number[]|null);
+    }
+
+    /** Represents a FoodSectorEviction. */
+    class FoodSectorEviction implements IFoodSectorEviction {
+
+        /**
+         * Constructs a new FoodSectorEviction.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.IFoodSectorEviction);
+
+        /** FoodSectorEviction sectorId. */
+        public sectorId: number;
+
+        /** FoodSectorEviction subscriptionGeneration. */
+        public subscriptionGeneration: (number|Long);
+
+        /** FoodSectorEviction evictedFoodIds. */
+        public evictedFoodIds: number[];
+
+        /**
+         * Creates a new FoodSectorEviction instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns FoodSectorEviction instance
+         */
+        public static create(properties?: server.IFoodSectorEviction): server.FoodSectorEviction;
+
+        /**
+         * Encodes the specified FoodSectorEviction message. Does not implicitly {@link server.FoodSectorEviction.verify|verify} messages.
+         * @param message FoodSectorEviction message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.IFoodSectorEviction, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified FoodSectorEviction message, length delimited. Does not implicitly {@link server.FoodSectorEviction.verify|verify} messages.
+         * @param message FoodSectorEviction message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.IFoodSectorEviction, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a FoodSectorEviction message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns FoodSectorEviction
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.FoodSectorEviction;
+
+        /**
+         * Decodes a FoodSectorEviction message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns FoodSectorEviction
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.FoodSectorEviction;
+
+        /**
+         * Verifies a FoodSectorEviction message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a FoodSectorEviction message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns FoodSectorEviction
+         */
+        public static fromObject(object: { [k: string]: any }): server.FoodSectorEviction;
+
+        /**
+         * Creates a plain object from a FoodSectorEviction message. Also converts values to other types if specified.
+         * @param message FoodSectorEviction
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.FoodSectorEviction, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this FoodSectorEviction to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for FoodSectorEviction
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
+    /** Properties of a FoodSectorBootstrap. */
+    interface IFoodSectorBootstrap {
+
+        /** FoodSectorBootstrap sectorId */
+        sectorId?: (number|null);
+
+        /** FoodSectorBootstrap subscriptionGeneration */
+        subscriptionGeneration?: (number|Long|null);
+
+        /** FoodSectorBootstrap foods */
+        foods?: (server.IFoodData[]|null);
+    }
+
+    /** Represents a FoodSectorBootstrap. */
+    class FoodSectorBootstrap implements IFoodSectorBootstrap {
+
+        /**
+         * Constructs a new FoodSectorBootstrap.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.IFoodSectorBootstrap);
+
+        /** FoodSectorBootstrap sectorId. */
+        public sectorId: number;
+
+        /** FoodSectorBootstrap subscriptionGeneration. */
+        public subscriptionGeneration: (number|Long);
+
+        /** FoodSectorBootstrap foods. */
+        public foods: server.IFoodData[];
+
+        /**
+         * Creates a new FoodSectorBootstrap instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns FoodSectorBootstrap instance
+         */
+        public static create(properties?: server.IFoodSectorBootstrap): server.FoodSectorBootstrap;
+
+        /**
+         * Encodes the specified FoodSectorBootstrap message. Does not implicitly {@link server.FoodSectorBootstrap.verify|verify} messages.
+         * @param message FoodSectorBootstrap message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.IFoodSectorBootstrap, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified FoodSectorBootstrap message, length delimited. Does not implicitly {@link server.FoodSectorBootstrap.verify|verify} messages.
+         * @param message FoodSectorBootstrap message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.IFoodSectorBootstrap, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a FoodSectorBootstrap message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns FoodSectorBootstrap
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.FoodSectorBootstrap;
+
+        /**
+         * Decodes a FoodSectorBootstrap message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns FoodSectorBootstrap
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.FoodSectorBootstrap;
+
+        /**
+         * Verifies a FoodSectorBootstrap message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a FoodSectorBootstrap message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns FoodSectorBootstrap
+         */
+        public static fromObject(object: { [k: string]: any }): server.FoodSectorBootstrap;
+
+        /**
+         * Creates a plain object from a FoodSectorBootstrap message. Also converts values to other types if specified.
+         * @param message FoodSectorBootstrap
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.FoodSectorBootstrap, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this FoodSectorBootstrap to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for FoodSectorBootstrap
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
     /** Properties of a FoodMutationCollection. */
     interface IFoodMutationCollection {
 
@@ -2015,6 +2357,9 @@ export namespace server {
 
         /** FoodMutationCollection removedFoodIds */
         removedFoodIds?: (number[]|null);
+
+        /** FoodMutationCollection sectorEvictions */
+        sectorEvictions?: (server.IFoodSectorEviction[]|null);
     }
 
     /** Represents a FoodMutationCollection. */
@@ -2031,6 +2376,9 @@ export namespace server {
 
         /** FoodMutationCollection removedFoodIds. */
         public removedFoodIds: number[];
+
+        /** FoodMutationCollection sectorEvictions. */
+        public sectorEvictions: server.IFoodSectorEviction[];
 
         /**
          * Creates a new FoodMutationCollection instance using the specified properties.

@@ -9,6 +9,13 @@ import Phaser from 'phaser';
 // via setScrollFactor(0) so it behaves like a HUD regardless of camera zoom
 // or world scroll.
 //
+// HIGH-DPI COORDINATE SPACES (see render/Viewport.js):
+//   - Layout, radii, margins, DEAD_ZONE_PX: CSS px (the UI camera zooms by the
+//     render density around its top-left, so HUD objects live in CSS px).
+//   - Phaser pointer.x/y: BUFFER px (CSS px × density). Every pointer read goes
+//     through _view(pointer) first; mixing the two would offset the joystick
+//     by the density factor.
+//
 // Contract with Game.js: writes the exact same window.mobileInput fields the
 // scene's update() loop already reads (enabled, joystickActive, joystickAngle,
 // joystickMagnitude, boostActive) — so Game.js's steering code needs no changes.
@@ -41,7 +48,7 @@ export class MobileControls {
         this._buildGameObjects();
 
         // HUD objects (including the interactive touch zones) must render and
-        // hit-test through the zoom-1 UI camera. Under the zoomed main camera
+        // hit-test through the UI camera (CSS-px space). Under the zoomed main camera
         // (baseZoom < 1 on mobile) the zones shrank into a centered rectangle
         // and touches outside it never reached the joystick/boost handlers.
         scene.registerHUD?.(
@@ -50,11 +57,18 @@ export class MobileControls {
             this.boostButton, this.boostLabel
         );
 
-        this._layout(scene.scale.width, scene.scale.height);
+        this._layout(this._viewW(), this._viewH());
         this._bindInput();
         this._bindSettingsLive();
 
         window.mobileInput.enabled = true;
+    }
+
+    // ── Coordinate helpers (CSS px) ──────────────────────────────────────────
+    _viewW() { return this.scene.viewWidth ?? this.scene.scale.width; }
+    _viewH() { return this.scene.viewHeight ?? this.scene.scale.height; }
+    _view(pointer) {
+        return this.scene.pointerToView?.(pointer) ?? { x: pointer.x, y: pointer.y };
     }
 
     // ── Construction ─────────────────────────────────────────────────────────
@@ -102,7 +116,10 @@ export class MobileControls {
             fontSize: '13px',
             fontFamily: 'Arial, sans-serif',
             fontStyle: 'bold',
-            color: '#ffd6d6'
+            color: '#ffd6d6',
+            // Glyph canvas at buffer density → 1 texel per device px under the
+            // density-zoomed UI camera (otherwise upscaled D× and soft).
+            resolution: scene.renderDensity ?? 1
         }).setOrigin(0.5)
           .setScrollFactor(0)
           .setDepth(HUD_DEPTH + 2)
@@ -144,7 +161,8 @@ export class MobileControls {
             this.joystickOrigin.x = Phaser.Math.Clamp(this.joystickOrigin.x, r, width - r);
             this.joystickOrigin.y = Phaser.Math.Clamp(this.joystickOrigin.y, r, height - r);
             this.joystickOuter.setPosition(this.joystickOrigin.x, this.joystickOrigin.y);
-            this._updateJoystick(this.joystickPointer.x, this.joystickPointer.y);
+            const p = this._view(this.joystickPointer);
+            this._updateJoystick(p.x, p.y);
         }
     }
 
@@ -165,7 +183,8 @@ export class MobileControls {
         this.moveZone.on('pointerdown', (pointer) => {
             if (this.joystickPointer !== null) return; // already tracking a finger
             this.joystickPointer = pointer;
-            this._spawnJoystick(pointer.x, pointer.y);
+            const p = this._view(pointer);
+            this._spawnJoystick(p.x, p.y);
         });
 
         this.boostZone.on('pointerdown', (pointer) => {
@@ -177,7 +196,8 @@ export class MobileControls {
         // Bound once so they can be removed cleanly in destroy().
         this._onPointerMove = (pointer) => {
             if (pointer === this.joystickPointer) {
-                this._updateJoystick(pointer.x, pointer.y);
+                const p = this._view(pointer);
+                this._updateJoystick(p.x, p.y);
             }
         };
         this._onPointerUp = (pointer) => {
@@ -221,7 +241,7 @@ export class MobileControls {
                 [this.joystickOuter, this.joystickKnob, this.boostButton].forEach(o => o.setScale(this.controlScale));
             }
             if (Number.isFinite(opacity)) this.controlOpacity = opacity;
-            this._layout(this.scene.scale.width, this.scene.scale.height);
+            this._layout(this._viewW(), this._viewH());
         };
         window.addEventListener('mobilecontrols:settings', this._onSettingsChanged);
     }
@@ -230,8 +250,8 @@ export class MobileControls {
     _spawnJoystick(x, y) {
         const radius = JOYSTICK_OUTER_RADIUS * this.controlScale;
         const margin = 16;
-        const clampedX = Phaser.Math.Clamp(x, radius + margin, this.scene.scale.width  - radius - margin);
-        const clampedY = Phaser.Math.Clamp(y, radius + margin, this.scene.scale.height - radius - margin);
+        const clampedX = Phaser.Math.Clamp(x, radius + margin, this._viewW() - radius - margin);
+        const clampedY = Phaser.Math.Clamp(y, radius + margin, this._viewH() - radius - margin);
 
         this.joystickOrigin.x = clampedX;
         this.joystickOrigin.y = clampedY;

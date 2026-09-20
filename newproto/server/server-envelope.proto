@@ -39,4 +39,9 @@ message ServerEnvelope {
   // uzun bir gorunurluk boslugundan sonra) doldurulur; diger tick'lerde alan
   // hic yazilmaz (proto3: sifir bayt). Bkz. upgrade/path-seed.proto.
   PathSeedCollection path_seed_collection = 15;
+
+  // FAZ 5 / AOI: bu tick'te YENI abone olunan sektorlerin tam icerigi.
+  // oneof DISINDA, cunku normal snapshot zarfina eklenir (ayri paket yok).
+  // Bos oldugunda proto3 sifir bayt yazar.
+  repeated FoodSectorBootstrap food_sector_bootstraps = 16;
 }
