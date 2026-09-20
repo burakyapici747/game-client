@@ -166,8 +166,35 @@
              envanter kilitli; 'google'da hepsi açık.
              ══════════════════════════════════════════════════════════════ -->
         <aside id="side-panel" class="side-panel is-collapsed" hidden>
-            <div class="side-panel-drawer">
-                <!-- ── Profil ─────────────────────────────────────────────── -->
+            <!-- ── IKON SERIDI — HER ZAMAN GORUNUR ─────────────────────────
+                 Eski tasarimda tek gorunen sey ekranin solundaki ince bir
+                 tutamakti ve oyuncularin gozunden kaciyordu. Serit, panelin
+                 VARLIGINI surekli bildirir: kapaliyken bile Profile/Shop
+                 ikonlari durur ve tiklandiginda hem paneli acar hem dogrudan
+                 o bolume gider. -->
+            <nav class="sp-rail" aria-label="Player panel">
+                <button class="sp-rail-btn is-active" type="button" data-view="profile"
+                        aria-label="Profile" title="Profile">
+                    <span class="material-symbols-outlined">person</span>
+                    <span class="sp-rail-label">Profile</span>
+                </button>
+                <button class="sp-rail-btn" type="button" data-view="shop"
+                        aria-label="Shop" title="Shop">
+                    <span class="material-symbols-outlined">storefront</span>
+                    <span class="sp-rail-label">Shop</span>
+                </button>
+
+                <span class="sp-rail-grow" aria-hidden="true"></span>
+
+                <button id="side-panel-toggle" class="sp-rail-btn sp-rail-toggle" type="button"
+                        aria-expanded="false" aria-controls="side-panel-drawer"
+                        aria-label="Expand player panel" title="Expand">
+                    <span class="material-symbols-outlined side-panel-toggle-icon">chevron_right</span>
+                </button>
+            </nav>
+
+            <div id="side-panel-drawer" class="side-panel-drawer">
+                <!-- ── Kimlik basligi ─────────────────────────────────────── -->
                 <header class="side-panel-header">
                     <div id="sp-avatar" class="sp-avatar" aria-hidden="true"></div>
                     <div class="sp-identity">
@@ -182,38 +209,28 @@
                     </button>
                 </header>
 
-                <!-- ── Cüzdan HUD ─────────────────────────────────────────── -->
-                <section class="sp-section sp-wallet-section">
-                    <div class="sp-section-head">
-                        <h3 class="sp-section-title">Wallet</h3>
-                        <button id="sp-wallet-refresh" class="sp-icon-btn sp-icon-btn-sm" type="button"
-                                title="Refresh balances" aria-label="Refresh balances">
-                            <span class="material-symbols-outlined">refresh</span>
-                        </button>
-                    </div>
-                    <div id="sp-wallet-body" class="sp-wallet-body"></div>
-                </section>
-
-                <!-- ── Alt menü seçici ────────────────────────────────────── -->
-                <nav class="sp-menu" role="tablist" aria-label="Panel section">
-                    <button class="sp-menu-btn is-active" type="button" role="tab" aria-selected="true" data-view="store">
-                        <span class="material-symbols-outlined">storefront</span>
-                        <span>Store</span>
-                    </button>
-                    <button class="sp-menu-btn" type="button" role="tab" aria-selected="false" data-view="inventory">
-                        <span class="material-symbols-outlined">backpack</span>
-                        <span>Inventory</span>
-                    </button>
-                </nav>
-
-                <!-- ── Alt menü gövdesi ───────────────────────────────────── -->
                 <div class="sp-body">
-                    <section id="sp-view-store" class="sp-view" role="tabpanel" aria-label="Store">
-                        <div id="sp-catalog-tabs" class="sp-chip-row"></div>
-                        <div id="sp-store-body"></div>
-                    </section>
+                    <!-- ── PROFIL PANELI ───────────────────────────────────
+                         Oyuncunun KENDI durumu: hesap yonetimi, bakiye,
+                         ilerleme ve sahip oldugu kozmetikler. -->
+                    <section id="sp-view-profile" class="sp-view" role="tabpanel" aria-label="Profile">
+                        <div id="sp-account-body" class="sp-account"></div>
 
-                    <section id="sp-view-inventory" class="sp-view hidden" role="tabpanel" aria-label="Inventory and skins">
+                        <div class="sp-section-head">
+                            <h4 class="sp-subhead">Balance</h4>
+                            <button id="sp-wallet-refresh" class="sp-icon-btn sp-icon-btn-sm" type="button"
+                                    title="Refresh balances" aria-label="Refresh balances">
+                                <span class="material-symbols-outlined">refresh</span>
+                            </button>
+                        </div>
+                        <div id="sp-wallet-body" class="sp-wallet-body"></div>
+
+                        <h4 class="sp-subhead">Stats</h4>
+                        <div id="sp-stats-body"></div>
+
+                        <h4 class="sp-subhead">Achievements</h4>
+                        <div id="sp-achievements-body"></div>
+
                         <h4 class="sp-subhead">Skins</h4>
                         <p id="sp-skin-error" class="sp-inline-error hidden" role="alert"></p>
                         <div id="sp-skins-body"></div>
@@ -221,15 +238,16 @@
                         <h4 class="sp-subhead">Items</h4>
                         <div id="sp-inventory-body"></div>
                     </section>
+
+                    <!-- ── MAGAZA PANELI ───────────────────────────────────
+                         Satin alinabilir icerik. Katalog uclari token
+                         istemedigi icin MISAFIRE DE aciktir. -->
+                    <section id="sp-view-shop" class="sp-view hidden" role="tabpanel" aria-label="Shop">
+                        <div id="sp-catalog-tabs" class="sp-chip-row"></div>
+                        <div id="sp-store-body"></div>
+                    </section>
                 </div>
             </div>
-
-            <!-- Çekmece kolu — panel gövdesinin DIŞINDA kalır ki kapalıyken de
-                 tıklanabilsin ve ekranın solunda sabit bir tutamak olsun. -->
-            <button id="side-panel-toggle" class="side-panel-toggle" type="button"
-                    aria-expanded="false" aria-controls="side-panel" aria-label="Toggle player panel">
-                <span class="material-symbols-outlined side-panel-toggle-icon">chevron_right</span>
-            </button>
         </aside>
 
         <!-- ══════════════════════════════════════════════════════════════
@@ -262,7 +280,7 @@
                 </button>
                 <img class="auth-logo" src="/assets/logo/logo-1.png" alt="SEANAKES.IO logo" />
                 <h2 id="auth-title" class="auth-title">Sign in to continue</h2>
-                <p class="auth-subtitle">Your wallet, store and skins are tied to your Google account.</p>
+                <p class="auth-subtitle">Your balance, inventory and cosmetics are tied to your account.</p>
 
                 <!-- Resmî Google butonu buraya render edilir (renderSignInButton). -->
                 <div id="google-signin-button" class="auth-button-slot"></div>

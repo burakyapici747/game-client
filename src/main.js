@@ -5,7 +5,8 @@ import { hideAllGameOverlays, showConnectingOverlay, onConnectingCancel, onGameO
          isHudStatEnabled } from './ui/overlays.js';
 import { initGoogleAuth, isSignedIn, renderSignInButton } from './auth/GoogleAuth.js';
 import { initSessionBridge, establishSession, startGuestSession, endSession,
-         getAuthMode, getSessionProfile } from './auth/SessionManager.js';
+         getAuthMode, getSessionProfile, restoreSession, defaultGuestNickname,
+         setPlayNickname, onSessionChange } from './auth/SessionManager.js';
 import { initLoginTabs, setActiveTab, showSocialError, clearSocialError } from './ui/LoginTabs.js';
 import { initSidePanel, hideSidePanel, showSidePanelIfSignedIn } from './ui/SidePanel.js';
 import { serverProbe, latencyTier } from './network/ServerProbe.js';
@@ -43,6 +44,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     initServiceBanner();
     initAuthOverlayClose();
     initSessionBridge();
+
+    // ── OTURUMU GERİ GETİR, YOKSA MİSAFİR OL ────────────────────────────────
+    // Sayfanın İLK ağ çağrısı budur ve Google SDK'sını BEKLEMEZ: çerez varsa
+    // kimlik sunucudan gelir, yoksa ziyaretçi anında misafir olarak oynayabilir.
+    // Beklemek, menünün "kim olduğu belirsiz" bir ara durumda çizilmesi demekti.
+    //
+    // await KASITLI: altındaki tüm menü kurulumu (takma ad kutusu, yan panel)
+    // oturumun BİLİNDİĞİ bir durumda çizilsin. Çağrı başarısız olsa bile
+    // misafir kipine düşülür — oyun hiçbir koşulda açılamaz hale gelmez.
+    restoreSession()
+        .then((restored) => {
+            if (!restored.ok) startGuestSession(defaultGuestNickname());
+        })
+        .catch(() => startGuestSession(defaultGuestNickname()));
 
     // Giriş sekmeleri (GUEST | SOCIAL LOGIN) ve giriş sonrası sol panel.
     // İkisi de SessionManager.onSessionChange'e abone olur; abone olurken
@@ -470,6 +485,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const savedNickname = localStorage.getItem('snake_nickname');
     if (savedNickname) nicknameInput.value = savedNickname;
 
+    // ── TAKMA AD ÇİFT YÖNLÜ SENKRON ─────────────────────────────────────────
+    // Kutu ve panel başlığı AYNI değeri gösterir; tek yazma noktası
+    // SessionManager'dır. Böylece "hangisi doğru" sorusu hiç doğmaz.
+    //
+    //   yazarken  : input -> setPlayNickname -> oturum yayını -> panel başlığı
+    //   oturumda  : onSessionChange -> input (yalnızca DEĞERİ farklıysa)
+    //
+    // DÖNGÜ YOK: `input.value`'ya programatik atama `input` olayı üretmez ve
+    // değer aynıysa zaten hiçbir şey yazılmaz.
+    nicknameInput.addEventListener('input', () => {
+        setPlayNickname(nicknameInput.value);
+    });
+
+    onSessionChange(({ profile }) => {
+        const name = profile?.nickname;
+        if (!name) return;
+        // Kullanıcı O AN yazıyorsa kutusuna dokunma: imleci kaydırmak ve
+        // yazdığını değiştirmek en sinir bozucu hatadır.
+        if (document.activeElement === nicknameInput) return;
+        if (nicknameInput.value !== name) nicknameInput.value = name;
+    });
+
     // ── Play ──────────────────────────────────────────────────────────────────
     playBtn.addEventListener('click', startGameLogic);
     nicknameInput.addEventListener('keypress', (e) => {
@@ -624,6 +661,13 @@ function handleSignOut() {
     clearAuthError();
     clearSocialError();
     hideAuthOverlay();
+
+    // ── ÇIKIŞ, OTURUMSUZLUK DEĞİL MİSAFİRLİKTİR ─────────────────────────────
+    // endSession kipi null'a çeker ve yan panel tamamen GİZLENİR. Girişsiz
+    // ziyaretçinin varsayılan olarak misafir sayıldığı bir akışta bu tutarsız:
+    // oyuncu çıkış yapar yapmaz paneli, takma adını ve mağazayı kaybederdi.
+    // Girişsiz her durumun TEK bir karşılığı var: misafir.
+    startGuestSession(defaultGuestNickname());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

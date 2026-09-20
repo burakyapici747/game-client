@@ -125,10 +125,23 @@ function prodApiBaseUrl() {
     }
 }
 
-/** Dev sunucusunda Java proxy'nin adresi — WS ile aynı host, HTTP şeması. */
+/**
+ * Dev sunucusunda Java proxy'nin adresi — WS ile aynı host, HTTP şeması.
+ *
+ * ── HOST, SAYFANIN HOST'UYLA AYNI OLMALI (ÇEREZ ŞARTI) ──────────────────────
+ * Varsayılan eskiden `127.0.0.1` idi. Sayfa `localhost:3000`'den servis edilip
+ * API `127.0.0.1:8080`'e çağrıldığında tarayıcı bunu SİTELER ARASI sayar
+ * ("localhost" ile "127.0.0.1" farklı host'lardır) ve `SameSite=Lax` olan
+ * oturum çerezini İSTEĞE EKLEMEZ. Sonuç: üretimde (aynı origin) çalışan
+ * "girişli kal" akışı, yalnızca geliştirmede sessizce kırılır — hata ayıklaması
+ * pahalı, sebebi görünmez bir kırılma.
+ *
+ * <p>Bu yüzden host ÖNCE sayfanınkinden alınır; .env açıkça başka bir host
+ * verirse o kazanır (uzak makinedeki proxy'ye bağlanma senaryosu).
+ */
 function devApiBaseUrl() {
     const env = import.meta.env ?? {};
-    const host = bareHost(env.VITE_SERVER_URL) || '127.0.0.1';
+    const host = bareHost(env.VITE_SERVER_URL) || window.location.hostname || 'localhost';
     const port = String(env.VITE_API_PORT || env.VITE_SERVER_PORT || '8080');
     const scheme = (env.VITE_SERVER_SCHEME === 'wss') ? 'https' : 'http';
     return `${scheme}://${host}:${port}`;

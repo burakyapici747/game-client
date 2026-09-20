@@ -3288,6 +3288,8 @@ html.pseudo-fullscreen #app {
     /* Drawer width lives in ONE token: the drawer and the collapsed handle's
        offset must always agree, and both change at each breakpoint. */
     --sp-width: clamp(300px, 24vw, 380px);
+    /* Icon rail width — the panel's ALWAYS-VISIBLE part. */
+    --sp-rail-width: 64px;
 
     position: absolute;
     top: 0;
@@ -3297,8 +3299,89 @@ html.pseudo-fullscreen #app {
     display: flex;
     align-items: stretch;
     pointer-events: none;           /* boşluk tıklamayı yutmasın */
+    /* Kapali cekmece kendi genisligi kadar SOLA kayar ve seridin arkasindan
+       ekran disina cikar; tasan kisim buradan kirpilir. */
+    overflow: hidden;
     font-family: var(--font-menu);
     color: var(--menu-text);
+}
+
+/* ── IKON SERIDI ────────────────────────────────────────────────────────────
+   Panelin kesfedilebilirligi buna bagli: kapaliyken ekranda duran TEK sey
+   buydu ve eskiden 32px'lik ince bir tutamakti. Serit tam boy, opak ve
+   etiketli; oyuncu panelin var oldugunu gormek icin ariyor olmak zorunda
+   degil. */
+.sp-rail {
+    pointer-events: auto;
+    position: relative;
+    z-index: 2;                     /* kapanan cekmeceyi ORTER */
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: var(--sp-rail-width);
+    height: 100%;
+    padding: 10px 6px;
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(180deg, rgba(8, 51, 103, 0.98) 0%, rgba(6, 38, 77, 0.98) 100%);
+    border-right: 2px solid rgba(135, 206, 250, 0.55);
+    box-shadow: 4px 0 18px rgba(0, 0, 0, 0.35);
+}
+
+.sp-rail-grow {
+    flex: 1 1 auto;
+}
+
+.sp-rail-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 2px 6px;
+    color: var(--menu-text-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+.sp-rail-btn .material-symbols-outlined {
+    font-size: 24px;
+}
+
+.sp-rail-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.sp-rail-btn:hover {
+    color: var(--menu-text);
+    background: rgba(54, 136, 208, 0.22);
+}
+
+/* Aktif bolum: panel KAPALIYKEN de hangi sekmenin acilacagini gosterir. */
+.sp-rail-btn.is-active {
+    color: var(--menu-text);
+    background: rgba(54, 136, 208, 0.35);
+    border-color: rgba(135, 206, 250, 0.55);
+}
+
+.sp-rail-toggle {
+    color: var(--menu-text);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border-color: var(--play-border);
+}
+
+.sp-rail-toggle:hover {
+    filter: brightness(1.08);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
 }
 
 .side-panel[hidden] {
@@ -3331,33 +3414,7 @@ html.pseudo-fullscreen #app {
     transform: translateX(0);
 }
 
-/* ── Çekmece kolu ───────────────────────────────────────────────────────────
-   Çekmecenin YANINDA durur ve onunla birlikte kayar; kapalıyken ekranın sol
-   kenarında tek görünen parçadır. */
-.side-panel-toggle {
-    pointer-events: auto;
-    align-self: center;
-    width: 32px;
-    height: 72px;
-    padding: 0;
-    color: var(--menu-text);
-    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
-    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
-    border: 2px solid var(--play-border);
-    border-left: none;
-    border-radius: 0 18px 18px 0;
-    box-shadow: 0 4px 0 var(--menu-accent-deep), 6px 0 16px rgba(0, 0, 0, 0.3);
-    transition: transform var(--transition-bounce), filter var(--transition-fast);
-}
-
-.side-panel.is-collapsed .side-panel-toggle {
-    transform: translateX(calc(-1 * var(--sp-width)));
-}
-
-.side-panel-toggle:hover {
-    filter: brightness(1.08);
-}
-
+/* Ok, cekmecenin durumunu gosterir: kapalida saga, acikta sola bakar. */
 .side-panel-toggle-icon {
     font-size: 22px;
     transition: transform var(--transition-bounce);
@@ -3365,6 +3422,109 @@ html.pseudo-fullscreen #app {
 
 .side-panel.is-expanded .side-panel-toggle-icon {
     transform: rotate(180deg);
+}
+
+/* ── Hesap durumu kutusu (Profil panelinin ilk blogu) ──────────────────────
+   Misafire "girisin ne kazandiracagini" ANLATIR; girisliye hesabini gosterir.
+   Saglayici adi GECMEZ: yarin Apple/Discord eklendiginde metin degismemeli. */
+.sp-account {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 14px 14px 4px;
+    padding: 12px 14px;
+    background: rgba(8, 51, 103, 0.55);
+    border: 1px solid rgba(54, 136, 208, 0.45);
+    border-radius: 14px;
+}
+
+.sp-account-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.sp-account-text {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--menu-text-muted);
+}
+
+.sp-account-btn {
+    align-self: flex-start;
+    padding: 7px 16px 6px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    color: var(--menu-text);
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 2px solid var(--play-border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: filter var(--transition-fast);
+}
+
+.sp-account-btn:hover { filter: brightness(1.08); }
+
+/* ── Istatistik izgarasi ── */
+.sp-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 0 14px;
+}
+
+.sp-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    background: rgba(8, 51, 103, 0.45);
+    border: 1px solid rgba(54, 136, 208, 0.35);
+    border-radius: 12px;
+}
+
+.sp-stat-value {
+    font-size: 17px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--ping-good);
+}
+
+.sp-stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--menu-text-muted);
+}
+
+/* Seviye cubugu — ilerlemenin nereye gittigini gosterir. */
+.sp-level {
+    margin: 10px 14px 0;
+}
+
+.sp-level-bar {
+    height: 8px;
+    margin-top: 6px;
+    background: rgba(8, 51, 103, 0.7);
+    border: 1px solid rgba(54, 136, 208, 0.35);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.sp-level-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--play-mid) 0%, var(--play-top) 100%);
+    transition: width var(--transition-bounce);
+}
+
+.sp-level-caption {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--menu-text-muted);
 }
 
 /* ── Profil başlığı ── */
@@ -3976,31 +4136,30 @@ html.pseudo-fullscreen #app {
    so while open it docks inside the sheet's top-right corner as a close
    button; collapsed, it stays a tab on the left edge. */
 @media (max-width: 768px) {
-    .side-panel { --sp-width: 100vw; }
+    /* Çekmece ekranın KALANINI doldurur — şerit görünür kalır. Şeridi de
+       gizleyip tam ekran bir sayfa yapmak, bölüm değiştirmek için önce
+       kapatmayı gerektirirdi; dar ekranda en sık yapılan iş tam olarak
+       bölüm değiştirmektir. */
+    .side-panel {
+        --sp-rail-width: 56px;
+        --sp-width: calc(100vw - var(--sp-rail-width));
+    }
 
     .side-panel-drawer {
         border-right: none;
         box-shadow: none;
     }
 
-    .side-panel.is-expanded .side-panel-toggle {
-        position: fixed;
-        top: calc(env(safe-area-inset-top, 0px) + 14px);
-        right: 12px;
-        width: 40px;
-        height: 40px;
-        border-left: 2px solid var(--play-border);
-        border-radius: 50%;
-        box-shadow: 0 3px 0 var(--menu-accent-deep);
-        transform: none;
-    }
+    .sp-rail { padding: 8px 4px; }
+    .sp-rail-btn { padding: 7px 2px 5px; }
+    .sp-rail-btn .material-symbols-outlined { font-size: 22px; }
 
-    /* Right inset leaves room for the docked close handle. */
-    .side-panel-header { padding: 16px 64px 16px 16px; }
-    .sp-section { padding: 12px 16px; }
-    .sp-menu { padding: 10px 16px; }
+    .side-panel-header { padding: 14px 14px; }
+    .sp-account { margin: 12px 12px 4px; }
+    .sp-stat-grid { padding: 0 12px; }
+    .sp-level { margin: 8px 12px 0; }
     /* Bottom inset clears the fixed fullscreen button (bottom-left). */
-    .sp-body { padding: 0 16px calc(56px + env(safe-area-inset-bottom, 0px)); }
+    .sp-body { padding: 0 0 calc(56px + env(safe-area-inset-bottom, 0px)); }
     .sp-skin-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 }
 

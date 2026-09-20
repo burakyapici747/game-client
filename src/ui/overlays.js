@@ -8,6 +8,8 @@
 // tarafından import edilen tek ortak kontrol noktasıdır.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { recordGame } from './PlayerStats.js';
+
 const $ = (id) => document.getElementById(id);
 
 // ── Google Sign-In gate ──────────────────────────────────────────────────────
@@ -265,6 +267,10 @@ function countUp(el, target, format = formatScore) {
  */
 export function showGameOverOverlay(stats, onPlayAgain) {
     const { score = 0, foodEaten = 0 } = stats ?? {};
+
+    // Yerel ilerleme BURADA islenir: oyunun bittigini kesin bilen ve skoru
+    // elinde tutan tek nokta burasi (bkz. PlayerStats).
+    recordGame({ score, foodEaten });
 
     countUp($('gameover-score'), score);
     countUp($('gameover-food-eaten'), foodEaten);

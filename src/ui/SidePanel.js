@@ -1,15 +1,30 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SIDE PANEL — giriş sonrası sol çekmece (profil · cüzdan · mağaza · envanter)
+// SIDE PANEL — tam boy, katlanabilir sol panel
 //
 // DOM iskeleti index.html'de (#side-panel), stiller public/style.css'te. Bu
 // modül yalnızca DAVRANIŞI sahiplenir: görünürlük, veri çekme, durum çizimi.
+//
+// ── İKİ PARÇA ───────────────────────────────────────────────────────────────
+//   ŞERİT (.sp-rail)   Her zaman görünür, tam boy ikon şeridi. Panelin var
+//                      olduğunu bildiren tek şey budur; eskiden bu görev 32px
+//                      genişliğinde bir tutamaktaydı ve fark edilmiyordu.
+//   ÇEKMECE (.side-panel-drawer)  Açıldığında bağlamın tamamını gösterir.
+//
+// ── İKİ BÖLÜM ───────────────────────────────────────────────────────────────
+//   'profile'  hesap yönetimi · bakiye · ilerleme · başarımlar · sahip olunan
+//              kozmetikler (skinler/eşyalar). "Bende ne var" sorusu.
+//   'shop'     satın alınabilir katalog içeriği. "Ne alabilirim" sorusu.
+//
+// Envanter mağazada DEĞİL profilde: sahip olunan eşya, oyuncunun kendi
+// durumudur; mağaza sekmesi satın alınabilir olanı gösterir. İkisini aynı
+// sekmede toplamak "hangisi benim" sorusunu her seferinde yeniden sordururdu.
 //
 // ── OTURUM KİPİNE GÖRE DAVRANIŞ ─────────────────────────────────────────────
 // Panel oturum kipini POLL ETMEZ; SessionManager.onSessionChange ile abone olur.
 //
 //   null      panel gizli.
 //   'guest'   panel açık. Mağaza ÇALIŞIR (katalog uçları public), cüzdan ve
-//             envanter "sign in to unlock" ile kilitli gösterilir.
+//             envanter "login required" satırıyla kilitli gösterilir.
 //   'google'  hepsi açık.
 //
 // Mağazanın misafire de açık olması bilinçli: /api/catalogs ve
@@ -34,6 +49,8 @@ import {
     normalizeInventory, normalizeSkins,
 } from '../network/GameApi.js';
 import { onSessionChange, getAuthMode } from '../auth/SessionManager.js';
+import { readStats } from './PlayerStats.js';
+import { showAuthOverlay } from './overlays.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -56,7 +73,7 @@ const currencyIcon = (code) => CURRENCY_ICONS[String(code || '').toUpperCase()] 
 
 let initialized = false;
 let expanded = false;
-let activeView = 'store';          // 'store' | 'inventory'
+let activeView = 'profile';        // 'profile' | 'shop'
 let mode = null;                   // SessionManager kipi aynası
 
 /** Bayat yanıt koruması — bkz. dosya başı. */
@@ -125,7 +142,7 @@ function skeletonRows(count) {
  * sadece panelin neden boş olduğunu açıklar.
  */
 function errorText(err) {
-    if (err?.isUnauthorized) return 'Session expired — sign in again.';
+    if (err?.isUnauthorized) return 'Session expired — please sign in again.';
     if (err?.isServiceUnavailable) return 'Service temporarily unavailable.';
     if (err?.isNetwork) return 'Can\'t reach the server.';
     return err?.message ? String(err.message).slice(0, 120) : 'Something went wrong.';
@@ -140,7 +157,14 @@ function setExpanded(next) {
     if (!panel) return;
     panel.classList.toggle('is-expanded', expanded);
     panel.classList.toggle('is-collapsed', !expanded);
-    if (toggle) toggle.setAttribute('aria-expanded', String(expanded));
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', String(expanded));
+        // Etiket durumu ANLATMALI: ekran okuyucu kullanıcısı için "Toggle"
+        // hangi yöne gittiğini söylemez.
+        const label = expanded ? 'Collapse player panel' : 'Expand player panel';
+        toggle.setAttribute('aria-label', label);
+        toggle.title = expanded ? 'Collapse' : 'Expand';
+    }
 
     // Çekmece AÇILDIĞINDA görünür sekmenin verisi yoksa şimdi çek. Kapalıyken
     // istek atmak, kullanıcının hiç bakmayacağı veri için kota harcamak olurdu.
@@ -200,6 +224,102 @@ function renderProfile(profile) {
     }
 }
 
+// ── Hesap durumu ─────────────────────────────────────────────────────────────
+
+/**
+ * Profil panelinin ilk bloğu: oyuncu şu an KİM ve ne kazanabilir.
+ *
+ * <p>Metinler SAĞLAYICIDAN BAĞIMSIZDIR. Panelde "Google ile giriş yap" yazsaydı,
+ * ikinci bir sağlayıcı eklendiği gün bu metinlerin hepsi yalan olurdu; giriş
+ * YÖNTEMİ giriş ekranının işidir, panelin değil.
+ */
+function renderAccount() {
+    const box = $('sp-account-body');
+    if (!box) return;
+
+    if (mode === 'google') {
+        box.replaceChildren(
+            el('span', 'sp-account-title', 'Account connected'),
+            el('span', 'sp-account-text',
+                'Your balance, inventory and cosmetics are synced to this account.'),
+        );
+        return;
+    }
+
+    const title = el('span', 'sp-account-title', 'Playing as guest');
+    const text = el('span', 'sp-account-text',
+        'You can play right away. Log in to unlock your balance, inventory and cosmetics, '
+        + 'and to keep your progress on any device.');
+    const btn = el('button', 'sp-account-btn', 'Log in');
+    btn.type = 'button';
+    btn.addEventListener('click', () => showAuthOverlay());
+
+    box.replaceChildren(title, text, btn);
+}
+
+// ── İlerleme (yerel) ─────────────────────────────────────────────────────────
+
+/**
+ * Seviye + istatistikler.
+ *
+ * <p>KAYNAK YEREL: proxy'de henüz istatistik ucu yok (bkz. PlayerStats). Panel
+ * bunu gizlemez — "this device" ibaresi, sayıların hesapla senkron OLMADIĞINI
+ * söyler. Uydurma bir sunucu istatistiği göstermek, backend geldiğinde sessizce
+ * yanlış olurdu.
+ */
+function renderStats() {
+    const body = $('sp-stats-body');
+    if (!body) return;
+
+    const stats = readStats();
+
+    const level = el('div', 'sp-level');
+    const caption = el('div', 'sp-level-caption');
+    caption.append(
+        el('span', null, `Level ${stats.level}`),
+        el('span', null, stats.gamesPlayed === 0
+            ? 'Play a round to start'
+            : `${formatAmount(stats.toNext)} to next`),
+    );
+    const bar = el('div', 'sp-level-bar');
+    const fill = el('div', 'sp-level-fill');
+    fill.style.width = `${Math.round(stats.progress * 100)}%`;
+    bar.append(fill);
+    level.append(caption, bar);
+
+    const grid = el('div', 'sp-stat-grid');
+    grid.append(
+        stat(formatAmount(stats.bestScore), 'Best score'),
+        stat(formatAmount(stats.gamesPlayed), 'Games played'),
+        stat(formatAmount(stats.totalScore), 'Total score'),
+        stat(formatAmount(stats.foodEaten), 'Food eaten'),
+    );
+
+    const note = el('span', 'sp-account-text', 'Progress is tracked on this device.');
+    note.style.padding = '0 14px';
+
+    body.replaceChildren(level, grid, note);
+}
+
+function stat(value, label) {
+    const box = el('div', 'sp-stat');
+    box.append(el('span', 'sp-stat-value', value), el('span', 'sp-stat-label', label));
+    return box;
+}
+
+/**
+ * Başarımlar.
+ *
+ * <p>Backend'de başarım ucu YOK. Sahte rozetler çizmek yerine bölüm açıkça boş
+ * durumunu gösterir: panelde yeri hazırdır, veri geldiğinde tek fonksiyon
+ * değişecektir.
+ */
+function renderAchievements() {
+    const body = $('sp-achievements-body');
+    if (!body) return;
+    renderState(body, { kind: 'empty', message: 'Achievements are coming soon.' });
+}
+
 // ── Cüzdan ───────────────────────────────────────────────────────────────────
 
 async function loadWallet({ force = false } = {}) {
@@ -208,7 +328,9 @@ async function loadWallet({ force = false } = {}) {
 
     if (mode !== 'google') {
         loaded.wallet = false;
-        renderState(body, { kind: 'locked', message: 'Sign in with Google to see your balances.' });
+        // SAĞLAYICI ADI GEÇMEZ: yarın Apple/Discord eklendiğinde bu metnin
+        // değişmesi gerekmemeli (bkz. sp-account bloğundaki aynı gerekçe).
+        renderState(body, { kind: 'locked', message: 'Login required to access your balance.' });
         return;
     }
     if (loaded.wallet && !force) return;
@@ -403,7 +525,7 @@ async function loadInventory({ force = false } = {}) {
 
     if (mode !== 'google') {
         loaded.inventory = false;
-        const locked = { kind: 'locked', message: 'Sign in with Google to view your items.' };
+        const locked = { kind: 'locked', message: 'Login required to access your inventory.' };
         renderState(skinsBody, locked);
         renderState(itemsBody, locked);
         return;
@@ -553,20 +675,31 @@ function renderItems(items) {
 
 function setView(view) {
     activeView = view;
-    for (const btn of document.querySelectorAll('.sp-menu-btn')) {
+    // Şerit düğmeleri panel KAPALIYKEN de aktif bölümü gösterir: açıldığında
+    // nereye düşeceği sürpriz olmamalı.
+    for (const btn of document.querySelectorAll('.sp-rail-btn[data-view]')) {
         const isActive = btn.dataset.view === view;
         btn.classList.toggle('is-active', isActive);
-        btn.setAttribute('aria-selected', String(isActive));
+        btn.setAttribute('aria-current', isActive ? 'true' : 'false');
     }
-    $('sp-view-store')?.classList.toggle('hidden', view !== 'store');
-    $('sp-view-inventory')?.classList.toggle('hidden', view !== 'inventory');
+    $('sp-view-profile')?.classList.toggle('hidden', view !== 'profile');
+    $('sp-view-shop')?.classList.toggle('hidden', view !== 'shop');
     ensureViewLoaded(view);
 }
 
 function ensureViewLoaded(view) {
     if (!expanded || mode === null) return;
-    if (view === 'store') loadStore();
-    else if (view === 'inventory') loadInventory();
+    if (view === 'shop') {
+        loadStore();
+        return;
+    }
+    // Profil: hesap/ilerleme blokları ağ GEREKTİRMEZ, anında çizilir; bakiye ve
+    // envanter kipe göre ya yüklenir ya kilitli satır gösterir.
+    renderAccount();
+    renderStats();
+    renderAchievements();
+    loadWallet();
+    loadInventory();
 }
 
 // ── Oturum geçişleri ─────────────────────────────────────────────────────────
@@ -602,6 +735,9 @@ function applySession({ mode: nextMode, profile }) {
     panel.hidden = false;
     panel.dataset.mode = mode;
     renderProfile(profile);
+    // Kipe bağlı bloklar çekmece kapalıyken de güncel tutulur: açılış anında
+    // "bir an eski durumu gösterip sonra düzelen" panel istemiyoruz.
+    renderAccount();
 
     // Cüzdan her zaman görünür (google'da veri, misafirde kilit satırı) —
     // çekmece kapalıyken bile ilk açılışta hazır olsun diye burada çizilir.
@@ -626,8 +762,20 @@ export function initSidePanel({ onSignOut } = {}) {
 
     $('side-panel-toggle')?.addEventListener('click', () => setExpanded(!expanded));
 
-    for (const btn of document.querySelectorAll('.sp-menu-btn')) {
-        btn.addEventListener('click', () => setView(btn.dataset.view));
+    // ŞERİT DÜĞMESİ İKİ İŞ YAPAR: bölümü seçer VE panel kapalıysa açar.
+    // Ayrı bir "önce aç, sonra sekme seç" adımı istemek, tek tıkla ulaşılması
+    // gereken bir şeyi iki tıka çıkarırdı. Açıkken aynı bölüme basmak paneli
+    // KAPATIR — şerit böylece aç/kapa için de tutarlı bir kol olur.
+    for (const btn of document.querySelectorAll('.sp-rail-btn[data-view]')) {
+        btn.addEventListener('click', () => {
+            const view = btn.dataset.view;
+            if (expanded && activeView === view) {
+                setExpanded(false);
+                return;
+            }
+            setView(view);
+            if (!expanded) setExpanded(true);
+        });
     }
 
     $('sp-wallet-refresh')?.addEventListener('click', () => loadWallet({ force: true }));

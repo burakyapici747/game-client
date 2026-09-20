@@ -6,8 +6,9 @@
 // tanımlıdır ve başlık ÇAĞIRANIN İSTEĞİNE BAKILMAKSIZIN otomatik eklenir.
 //
 // ── SUNUCU SÖZLEŞMESİ (Java proxy) ──────────────────────────────────────────
-//   Korumalı:  /api/me/**, /api/players/**, /api/wallets/**, /api/purchases/**,
-//              /api/admin/**  →  Authorization: Bearer <Google ID Token>
+//   Korumalı:  /api/auth/**, /api/me/**, /api/players/**, /api/wallets/**,
+//              /api/purchases/**, /api/admin/**
+//              →  oturum çerezi (ve giriş anında Bearer <Google ID Token>)
 //   Public:    diğer her şey (/api/catalogs, /api/currencies, /api/assets ...)
 //   401 → token yok/geçersiz/süresi dolmuş  → yeniden giriş istenir
 //   503 → LootLocker Google Sign-In kapalı  → "geçici olarak kullanılamıyor"
@@ -19,10 +20,21 @@
 // an istek CORS hatasıyla düşer. Çağıran yanlışlıkla böyle bir başlık verirse
 // aşağıda ayıklanır ve uyarı basılır.
 //
-// credentials: 'omit' BİLİNÇLİDİR. Kimlik Bearer başlığıyla taşınır, çerezle
-// değil. 'include' deseydik tarayıcı sunucudan `Allow-Credentials: true` VE
-// joker olmayan tam bir `Allow-Origin` beklerdi; WebMvcConfig'te yaygın olan
-// `allowedOrigins("*")` ayarıyla bu kombinasyon tarayıcı tarafından reddedilir.
+// ── KİMLİK TAŞIYICILARI: ÇEREZ + BEARER ────────────────────────────────────
+// Korumalı çağrılar `credentials: 'include'` ile gider. Sebebi: oturum artık
+// sunucunun imzaladığı HttpOnly bir çerezte yaşıyor ve sayfa yenilendikten
+// sonra kimliği taşıyan TEK şey o çerez — Google ID Token yalnızca JS
+// belleğindeydi ve F5 ile kayboldu.
+//
+// Bearer başlığı KALDIRILMADI: taze bir ID Token varsa (giriş anı) yine
+// eklenir ve sunucuda o kazanır. İkisi birlikte, "giriş yap" ile "girişli
+// kal" adımlarını tek bir istek yolunda birleştirir.
+//
+// Bunun sunucu tarafı şartı: `Allow-Credentials: true` VE joker OLMAYAN tam
+// bir `Allow-Origin` (bkz. GoogleAuthProperties.Cors.allowCredentials).
+//
+// Public GET'ler 'omit' kalır: çerez taşımalarının bir anlamı yok ve
+// 'include' onları da credentialed isteğe çevirip CORS şartlarını sıkardı.
 //
 // Public GET'lere HİÇBİR özel başlık eklenmez (yalnızca safelisted 'Accept').
 // Böylece o istekler "simple request" kalır ve preflight HİÇ oluşmaz. Preflight
@@ -39,6 +51,11 @@ import { getIdToken } from '../auth/GoogleAuth.js';
  * (Y2) aynası. Sunucuda değişirse BURASI da değişmelidir.
  */
 export const PROTECTED_PREFIXES = Object.freeze([
+    // Oturum uçları: kimlik TAŞIYAN çağrılardır, dolayısıyla çerez (credentials)
+    // ve yazma isteklerinde CSRF başlığı BURADAN gelir. Listeye eklenmezlerse
+    // istek 'credentials: omit' ile gider, tarayıcı çerezi göndermez ve
+    // "girişli kal" akışı sessizce çalışmaz — sunucu tarafı kusursuz olsa bile.
+    '/api/auth',
     '/api/me',
     '/api/players',
     '/api/wallets',
@@ -190,16 +207,22 @@ export async function apiFetch(path, options = {}) {
     const headers = sanitizeHeaders(extraHeaders);
 
     if (auth) {
+        // Taze ID Token varsa eklenir; YOKSA istek yine de gider, çünkü oturum
+        // çerezi tek başına yeterlidir.
+        //
+        // ESKİDEN: token yoksa ağa çıkmadan 401 üretiliyordu. O kısa devre,
+        // çerez kimliği geldiği anda YANLIŞ hale geldi — sayfa yenilendikten
+        // sonra token hiçbir zaman olmaz, dolayısıyla her korumalı çağrı
+        // sunucuya hiç sorulmadan 401'e düşer ve girişli kullanıcı misafire
+        // indirgenirdi. Kimlik kararı artık SUNUCUNUNDUR.
         const token = getIdToken();       // süresi dolmuşsa null döner
-        if (!token) {
-            // Ağa ÇIKMADAN 401 üretiyoruz: token yokken istek atmak garanti bir
-            // 401 + gereksiz bir preflight demek olurdu. Kullanıcı deneyimi ve
-            // sonuç birebir aynı, tur sayısı sıfır.
-            const err = new ApiError(401, 'No valid Google ID token', null, path);
-            emit(unauthorizedHandlers, { error: err, path });
-            throw err;
-        }
-        headers.Authorization = `Bearer ${token}`;
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        // CSRF: çerez tarayıcı tarafından OTOMATİK eklendiği için, durum
+        // değiştiren her istek bu özel başlığı taşımak zorundadır. Siteler
+        // arası bir HTML formu özel başlık gönderemez; sunucu başlıksız
+        // yazma isteklerini reddeder (bkz. GoogleAuthFilter.CSRF_HEADER).
+        if (method !== 'GET' && method !== 'HEAD') headers['X-Session-Auth'] = '1';
     }
 
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -219,8 +242,9 @@ export async function apiFetch(path, options = {}) {
             headers,
             body: body === undefined ? undefined : JSON.stringify(body),
             mode: 'cors',
-            // Bkz. dosya başındaki CORS notu — çerez göndermiyoruz.
-            credentials: 'omit',
+            // Korumalı yolda oturum çerezi TAŞINIR; public yolda taşınmaz
+            // (bkz. dosya başındaki kimlik taşıyıcıları notu).
+            credentials: auth ? 'include' : 'omit',
             cache: 'no-store',
             signal: controller.signal,
         });
