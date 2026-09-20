@@ -404,18 +404,19 @@
             <div class="hud-top-row">
                 <div class="hud-left">
                     <!-- Telemetry pill (top-left) -->
-                    <div class="hud-stats-panel hud-bubbly-panel">
-                        <div class="stat-item">
+                    <!-- FPS/Ping satirlari AYRI AYRI gizlenebilir olmali:
+                         Settings'teki iki anahtar birbirinden bagimsizdir ve
+                         ikisi de kapaliysa pilin KENDISI de gizlenir (bos bir
+                         balonun ekranda durmasi, ayar calismiyor izlenimi
+                         verirdi). Gorunurlugu src/ui/overlays.js yonetir. -->
+                    <div id="hud-stats-panel" class="hud-stats-panel hud-bubbly-panel">
+                        <div id="hud-stat-fps" class="stat-item">
                             <span class="stat-label">FPS:</span>
                             <span id="hud-fps" class="stat-value">60</span>
                         </div>
-                        <div class="stat-item">
+                        <div id="hud-stat-ping" class="stat-item">
                             <span class="stat-label">Ping:</span>
                             <span id="hud-ping" class="stat-value">--ms</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Coord:</span>
-                            <span id="hud-coord" class="stat-value">0, 0</span>
                         </div>
                     </div>
 
@@ -440,6 +441,24 @@
                         <span class="material-symbols-outlined leaderboard-toggle-icon">expand_more</span>
                     </button>
                 </div>
+            </div>
+
+            <!-- Koordinat rozeti: mini haritanin USTUNDE, onunla AYNI sag
+                 kenara hizali. Konum CSS degiskenlerinden turetilir
+                 (--minimap-size / --minimap-pad); degiskenleri Phaser tarafi
+                 yazar (Game.js drawMinimap -> publishMinimapMetrics), cunku
+                 mini harita canvas'a cizilir ve olcusu viewport'a gore
+                 degisir. .hud-top-row'un DISINDA durur: o satir ust kenara
+                 yapisik bir flex satiridir, rozet ise alt kose hizasinda
+                 mutlak konumlanir. -->
+            <div id="hud-coord-pod" class="hud-coord-pod hud-bubbly-panel">
+                <span class="hud-coord-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <circle cx="12" cy="12" r="3.2"></circle>
+                        <path d="M12 2v3.2M12 18.8V22M2 12h3.2M18.8 12H22"></path>
+                    </svg>
+                </span>
+                <span id="hud-coord" class="stat-value">0, 0</span>
             </div>
         </div>
 
@@ -471,7 +490,7 @@
                         <div class="settings-row">
                             <span id="show-fps-label" class="settings-row-label">Show FPS</span>
                             <label class="settings-switch">
-                                <input type="checkbox" id="show-fps-toggle" role="switch" aria-labelledby="show-fps-label" />
+                                <input type="checkbox" id="show-fps-toggle" role="switch" aria-labelledby="show-fps-label" checked />
                                 <span class="settings-switch-track" aria-hidden="true"></span>
                             </label>
                         </div>
@@ -479,7 +498,7 @@
                         <div class="settings-row">
                             <span id="show-ping-label" class="settings-row-label">Show Ping</span>
                             <label class="settings-switch">
-                                <input type="checkbox" id="show-ping-toggle" role="switch" aria-labelledby="show-ping-label" />
+                                <input type="checkbox" id="show-ping-toggle" role="switch" aria-labelledby="show-ping-label" checked />
                                 <span class="settings-switch-track" aria-hidden="true"></span>
                             </label>
                         </div>

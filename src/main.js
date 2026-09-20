@@ -1,7 +1,8 @@
 import StartGame from './game/main';
 import { hideAllGameOverlays, showConnectingOverlay, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle,
          hideAuthOverlay, clearAuthError, getGoogleButtonSlot, getInlineGoogleButtonSlot,
-         initAuthOverlayClose, initServiceBanner } from './ui/overlays.js';
+         initAuthOverlayClose, initServiceBanner, applyHudTelemetrySettings,
+         isHudStatEnabled } from './ui/overlays.js';
 import { initGoogleAuth, isSignedIn, renderSignInButton } from './auth/GoogleAuth.js';
 import { initSessionBridge, establishSession, startGuestSession, endSession,
          getAuthMode, getSessionProfile } from './auth/SessionManager.js';
@@ -59,6 +60,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ARTIK onun uzerine yazmaz — aksi halde kullanicinin tercihi arka plandaki
     // bir olcum turuyla sessizce degisirdi.
     let serverChosenManually = false;
+    // Seçili sunucunun CANLI ölçüm aboneliğini bırakan fonksiyon. Tek seferlik
+    // ölçüm 15 sn sonra bayatlar ve kimse tazelemez; gösterge canlı kalsın
+    // diye seçili sunucu ayrıca izlenir (bkz. ServerProbe.watch).
+    let stopWatchingSelectedServer = null;
     let gameStarted    = false;
     let gameInstance   = null;
     let teardownFns    = [];     // boot sırasında takılan observer/listener temizleyicileri
@@ -74,6 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderServerList(config.servers);
     updateServerIndicator();
     refreshServerPings(); // sayfa açılır açılmaz arka planda ilk ölçüm
+    watchSelectedServer(); // ve seçili sunucu için canlı nabız
 
     // Sunucu kartları (referans: server_list.html) — globe ikonu + bölge adı +
     // durum alt yazısı solda; latency-tier renkli ping + sinyal ikonu sağda.
@@ -131,6 +137,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 serverChosenManually = true;
                 // Gosterge elle secimi ANINDA yansitir (olculmus ping ile birlikte).
                 updateServerIndicator();
+                // Canlı nabız YENİ seçime taşınır: eskisinin soketi kapanır,
+                // yenisi patlama fazıyla hızlı bir değer üretir.
+                watchSelectedServer();
             });
             serverList.appendChild(li);
         }
@@ -167,21 +176,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         for (const item of items) {
             const id = item.dataset.serverId;
-            const pingEl = item.querySelector('.server-ping');
-            const statusEl = item.querySelector('.server-status');
-            if (!id || !pingEl || !statusEl) continue;
-
-            const result = serverProbe.getResult(id);
-            if (result?.online) {
-                pingEl.textContent = `${result.rttMs}ms`;
-                statusEl.textContent = 'Online';
-                statusEl.classList.add('active');
-            } else {
-                pingEl.textContent = '--';
-                statusEl.textContent = 'Offline';
-                statusEl.classList.remove('active');
-            }
-            item.dataset.tier = latencyTier(result?.online ? result.rttMs : null);
+            if (!id) continue;
+            paintServerRow(id, serverProbe.getResult(id));
         }
 
         // ── OTOMATIK SECIM: en dusuk gecikmeli cevrimici sunucu ───────────────
@@ -193,10 +189,65 @@ document.addEventListener('DOMContentLoaded', async () => {
                 serverList.querySelectorAll('.server-item').forEach((i) => {
                     i.classList.toggle('selected', i.dataset.serverId === best.id);
                 });
+                watchSelectedServer();
             }
         }
 
         updateServerIndicator();
+    }
+
+    /** Tek bir sunucu kartını ölçüm sonucuna göre boyar. */
+    function paintServerRow(serverId, result) {
+        const item = serverList.querySelector(`.server-item[data-server-id="${serverId}"]`);
+        if (!item) return;
+        const pingEl = item.querySelector('.server-ping');
+        const statusEl = item.querySelector('.server-status');
+        if (!pingEl || !statusEl) return;
+
+        if (result?.online && result.rttMs != null) {
+            pingEl.textContent = formatPing(result);
+            statusEl.textContent = 'Online';
+            statusEl.classList.add('active');
+        } else {
+            pingEl.textContent = '--';
+            statusEl.textContent = 'Offline';
+            statusEl.classList.remove('active');
+        }
+        item.dataset.tier = latencyTier(result?.online ? result.rttMs : null);
+    }
+
+    /**
+     * Ölçüm sonucunu metne çevirir.
+     *
+     * <p>`estimated` sonuç, sunucu hiç pong döndürmediğinde el sıkışması
+     * süresinden TÜRETİLMİŞTİR ve yapısal olarak şişkindir. Kesin ölçümle
+     * aynı biçimde gösterilseydi kullanıcıya olmayan bir kesinlik vaat
+     * ederdi; tilde işareti bunu görünür kılar.
+     */
+    function formatPing(result) {
+        return result.estimated ? `~${result.rttMs}ms` : `${result.rttMs}ms`;
+    }
+
+    /**
+     * SEÇİLİ SUNUCUYU CANLI İZLE.
+     *
+     * <p>Abonelik TEKİLDİR: yeni izleme başlatılmadan önce eskisi bırakılır,
+     * aksi halde her seçim değişikliği ardında bir nabız (ve bir soket)
+     * bırakırdı. Bırakma fonksiyonu son izleyici gittiğinde oturumu da
+     * kapatır (bkz. ServerProbe.watch).
+     */
+    function watchSelectedServer() {
+        stopWatchingSelectedServer?.();
+        stopWatchingSelectedServer = null;
+        if (!selectedServer) return;
+
+        const watchedId = selectedServer.id;
+        stopWatchingSelectedServer = serverProbe.watch(selectedServer, (result) => {
+            // Seçim bu arada değiştiyse geriden gelen sonucu UYGULAMA.
+            if (selectedServer?.id !== watchedId) return;
+            paintServerRow(watchedId, result);
+            updateServerIndicator();
+        });
     }
 
     /**
@@ -215,14 +266,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         indicatorName.textContent = selectedServer.name;
 
+        // ÖLÇÜLMEDİ ile ÇEVRİMDIŞI AYRI DURUMLARDIR. ServerProbe bir sonucu
+        // ancak yayınlanabilir bir değer oluştuğunda (en az iki geçerli örnek
+        // ortalandığında) ya da sunucu ulaşılamaz olduğunda yazar; dolayısıyla
+        // "sonuç yok" = "hâlâ ölçüyoruz" demektir ve göstergede nabız atan
+        // "…" ile temsil edilir (bkz. .server-indicator[data-tier="measuring"]).
         const result = serverProbe.getResult(selectedServer.id);
-        if (measuring && !result) {
-            indicatorPing.textContent = '…';
-            serverIndicator.dataset.tier = 'measuring';
-        } else if (result?.online) {
-            indicatorPing.textContent = `${result.rttMs}ms`;
+        if (result?.online && result.rttMs != null) {
+            indicatorPing.textContent = formatPing(result);
             serverIndicator.dataset.tier = latencyTier(result.rttMs);
-        } else if (result) {
+        } else if (result && !measuring) {
             indicatorPing.textContent = 'Offline';
             serverIndicator.dataset.tier = 'offline';
         } else {
@@ -293,8 +346,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load persisted settings
     const loadSettings = () => {
-        showFpsToggle.checked = localStorage.getItem('show_fps') === 'true';
-        showPingToggle.checked = localStorage.getItem('show_ping') === 'true';
+        // VARSAYILAN ACIK: anahtar hic yazilmamissa iki sayac da gorunur.
+        // Eski kod "=== 'true'" ile okuyordu, yani yazilmamis anahtar KAPALI
+        // demekti — anahtarlar HUD'a hic baglanmadigi icin bu fark gorunmuyordu.
+        // Simdi bagli olduklarina gore varsayilan, bugunku goruntuyu korumali.
+        showFpsToggle.checked = isHudStatEnabled('fps');
+        showPingToggle.checked = isHudStatEnabled('ping');
         masterVolumeSlider.value = localStorage.getItem('master_volume') || '85';
         masterVolumeDisplay.textContent = masterVolumeSlider.value + '%';
         sfxVolumeSlider.value = localStorage.getItem('sfx_volume') || '60';
@@ -312,18 +369,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     loadSettings();
+    // HUD gorunurlugu ILK karede dogru olsun: oyun sonradan baslasa da
+    // showGameHUD tekrar uygular, ama menuye donuldugunde acik kalan HUD
+    // parcalari icin burasi da gerekir.
+    applyHudTelemetrySettings();
     // Apply opacity CSS variable immediately so controls are correct from first frame
     document.documentElement.style.setProperty('--mc-opacity', (localStorage.getItem('mc_opacity') || '75') / 100);
 
     rangeSliders.forEach(slider => slider.addEventListener('input', () => syncRangeFill(slider)));
 
     // Save settings on change
+    // KALICILIK + ANINDA UYGULAMA. Eskiden yalnizca ilk satir vardi: deger
+    // saklaniyor ama hicbir yerde okunmuyordu.
     showFpsToggle.addEventListener('change', () => {
         localStorage.setItem('show_fps', showFpsToggle.checked);
+        applyHudTelemetrySettings();
     });
 
     showPingToggle.addEventListener('change', () => {
         localStorage.setItem('show_ping', showPingToggle.checked);
+        applyHudTelemetrySettings();
     });
 
     masterVolumeSlider.addEventListener('input', () => {
@@ -371,6 +436,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         localStorage.removeItem('mc_opacity');
         localStorage.removeItem('mc_joystickSide');
         loadSettings();
+        applyHudTelemetrySettings();
         dispatchMobileControlsSettings();
     });
 
@@ -385,6 +451,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         gameInstance = null;
         gameStarted = false;
         uiLayer.classList.remove('hidden');
+        // ÖLÇÜM KİLİDİNİ AÇ: startGameLogic oyun soketi tek kalsın diye
+        // kilitlemişti. Açılmazsa menüye dönen oyuncu ölü bir göstergeye
+        // bakar — değerler bayatlar, hiçbir ölçüm başlamaz.
+        serverProbe.unlock();
+        refreshServerPings(true);
+        watchSelectedServer();
         // Panel oyun boyunca gizliydi (canvas'ı kapatmasın diye); menüye
         // dönüldüğünde oturum hâlâ duruyorsa geri gelir.
         showSidePanelIfSignedIn();
@@ -435,6 +507,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         // TEK AKTIF BAGLANTI GARANTISI: oyun soketi acilmadan hemen once tum
         // olcum soketleri kapatilir ve yeni olcum acilmasi kilitlenir. Boylece
         // NetworkManager.connect() calistiginda oturumda baska WebSocket kalmaz.
+        // Önce ABONELİK bırakılır, sonra kilit: lock() zaten tüm oturumları
+        // kapatır, ama izleyici kaydı kalsaydı menüye dönüşte (unlock) ölü bir
+        // callback yeniden canlanırdı.
+        stopWatchingSelectedServer?.();
+        stopWatchingSelectedServer = null;
         serverProbe.lock();
 
         // Bağlanma ekranı PLAY anında açılır: Phaser boot + Preloader (2048'lik
@@ -572,7 +649,17 @@ async function loadClientConfig() {
         return {
             servers: [fallback],
             defaultServerId: fallback.id,
-            ping: { heartbeatIntervalMs: 2500, calibration: { discardSamples: 1, minSamples: 3, intervalMs: 500 } },
+            ping: {
+                heartbeatIntervalMs: 2500,
+                calibration: { discardSamples: 1, minSamples: 3, intervalMs: 500 },
+                // Menü ölçüm profili; ServerProbe kendi varsayılanlarını da
+                // taşır, burası yalnızca config.json ile aynı yüzeyi gösterir.
+                menuProbe: {
+                    burstSamples: 4, burstIntervalMs: 150,
+                    pulseIntervalMs: 2500, pulseDurationMs: 30000,
+                    discardSamples: 1, minSamples: 2,
+                },
+            },
         };
     }
 }

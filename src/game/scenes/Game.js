@@ -17,6 +17,7 @@ import {
     updateHUDStats,
     updateHUDScore,
     updateHUDLeaderboard,
+    publishMinimapMetrics,
 } from './../../ui/overlays.js';
 
 // Note: updateHUDLeaderboard is called with empty array [] to trigger
@@ -655,6 +656,10 @@ export class Game extends Phaser.Scene {
 
         // Minimap geometry is cached by layout key; CSS size change → redraw.
         this._minimapLayout = null;
+        // Rozet degiskenleri de yeniden yayinlansin: resize sonrasi olculer
+        // ayni cikabilir, ama ayni cikmadiginda rozet haritayla birlikte
+        // tasinmak ZORUNDADIR.
+        this._hudMinimapMetricsKey = null;
 
         // (Connecting/Game Over ekranları HTML/CSS overlay — CSS kendisi
         // responsive olduğundan burada yeniden konumlandırma gerekmiyor.)
@@ -2676,6 +2681,17 @@ export class Game extends Phaser.Scene {
         const { size, padding } = this.minimapMetrics();
         const cx = this.viewWidth - size / 2 - padding;
         const cy = this.viewHeight - size / 2 - padding;
+
+        // ── DOM ROZETINI HARITAYA BAGLA ─────────────────────────────────────
+        // Koordinat rozeti DOM'dadir ve konumunu bu iki olcuden turetir
+        // (bkz. style.css .hud-coord-pod). Olculer yalnizca resize/yon
+        // degisiminde degisir; CSS degiskeni yazmak stil yeniden hesaplamasi
+        // tetikledigi icin her kare degil, DEGISINCE yazilir.
+        const hudMetricsKey = `${size}|${padding}`;
+        if (this._hudMinimapMetricsKey !== hudMetricsKey) {
+            this._hudMinimapMetricsKey = hudMetricsKey;
+            publishMinimapMetrics(size, padding);
+        }
 
         const g = this.minimapGraphics;
         g.clear();

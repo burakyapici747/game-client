@@ -314,7 +314,73 @@ export function hideAllGameOverlays() {
 
 // ── Game HUD ────────────────────────────────────────────────────────
 
+/**
+ * ── TELEMETRI GORUNURLUGU (Settings > Show FPS / Show Ping) ─────────────────
+ *
+ * <p>ESKIDEN: iki anahtar yalnizca localStorage'a yaziyordu ve HUD'u okuyan
+ * KIMSE YOKTU — FPS ve ping her kosulda gorunuyordu. Anahtar goruntude hicbir
+ * sey degistirmedigi icin "ayar bozuk" gorunuyordu; oysa ayar hic baglanmamisti.
+ *
+ * <h3>VARSAYILAN ACIK</h3>
+ * Anahtar HIC yazilmamissa deger {@code true}'dur. Bunun nedeni geriye
+ * uyumluluk: bugune kadar herkeste iki sayac da gorunuyordu, varsayilani
+ * kapali yapmak tum mevcut oyunculardan sessizce HUD parcasi silerdi.
+ * index.html'deki {@code checked} nitelikleri de bu varsayilani yansitir,
+ * boylece JS calismadan once de anahtarlar dogru konumda cizilir.
+ *
+ * <h3>OLCUM DURMAZ, YALNIZCA GOSTERIM DURUR</h3>
+ * Ping kapatildiginda ping DONGUSU calismaya devam eder. RTT tahmini yalnizca
+ * HUD'u beslemez; yilanin yerel tahmini ve adaptif interpolasyon buffer'i da
+ * ayni olcumu okur (bkz. NetworkManager.pingEmaMs / EntityInterpolator).
+ * Olcumu durdurmak, bir HUD tercihini GAMEPLAY davranisina baglamak olurdu.
+ */
+const HUD_STAT_STORAGE_KEYS = { fps: 'show_fps', ping: 'show_ping' };
+
+// Sicak yol onbellegi: updateHUDStats 10 Hz kosar, her tikte localStorage
+// okumak gereksiz senkron I/O olurdu. applyHudTelemetrySettings tazeler.
+let hudStatVisibility = { fps: true, ping: true };
+
+/** Ayarin ETKIN degeri; anahtar yoksa varsayilan ACIK. */
+export function isHudStatEnabled(statName) {
+    const raw = localStorage.getItem(HUD_STAT_STORAGE_KEYS[statName]);
+    return raw === null ? true : raw === 'true';
+}
+
+/**
+ * Ayarlari DOM'a uygular. Ayar degistiginde, HUD gosterildiginde ve sayfa
+ * acilisinda cagrilir — yani gorunurluk tek bir yerden turer.
+ */
+export function applyHudTelemetrySettings() {
+    hudStatVisibility = { fps: isHudStatEnabled('fps'), ping: isHudStatEnabled('ping') };
+
+    $('hud-stat-fps')?.classList.toggle('hidden', !hudStatVisibility.fps);
+    $('hud-stat-ping')?.classList.toggle('hidden', !hudStatVisibility.ping);
+    // Iki satir da kapaliysa BOS pil kalmasin.
+    $('hud-stats-panel')?.classList.toggle('hidden', !hudStatVisibility.fps && !hudStatVisibility.ping);
+}
+
+/**
+ * MINI HARITA OLCULERINI CSS'E YAYINLAR.
+ *
+ * <p>Mini harita Phaser canvas'ina cizilir, koordinat rozeti ise DOM'dur.
+ * Rozetin haritaya hizali kalmasinin tek yolu, haritanin olculerini tek
+ * kaynaktan (Game.minimapMetrics) alip CSS'e aktarmaktir; boylece iki ayri
+ * yerde iki farkli "24px padding" sabiti tutulmaz.
+ *
+ * <p>Yalnizca metrikler DEGISTIGINDE cagrilir (olusum + resize), her karede
+ * degil: CSS degiskeni yazmak stil yeniden hesaplamasi tetikler.
+ */
+export function publishMinimapMetrics(sizePx, paddingPx) {
+    const hud = $('game-hud');
+    if (!hud) return;
+    hud.style.setProperty('--minimap-size', `${sizePx}px`);
+    hud.style.setProperty('--minimap-pad', `${paddingPx}px`);
+}
+
 export function showGameHUD() {
+    // Oyun her basladiginda ayarlar YENIDEN uygulanir: oyuncu menude anahtari
+    // degistirmis olabilir ve HUD o sirada gizliydi.
+    applyHudTelemetrySettings();
     $('game-hud')?.classList.remove('hidden');
 }
 
@@ -330,8 +396,14 @@ function setText(el, text) {
 }
 
 export function updateHUDStats(fps, ping, coordX, coordY) {
-    setText($('hud-fps'), String(fps ?? 0));
-    setText($('hud-ping'), (ping === null || ping === undefined) ? '--ms' : `${ping}ms`);
+    // Gizli sayaca yazmak GORUNMEZ ama BEDAVA degil: her yazim bir DOM
+    // mutasyonudur. Kapali anahtar, yazimi da kapatir.
+    if (hudStatVisibility.fps) {
+        setText($('hud-fps'), String(fps ?? 0));
+    }
+    if (hudStatVisibility.ping) {
+        setText($('hud-ping'), (ping === null || ping === undefined) ? '--ms' : `${ping}ms`);
+    }
 
     const x = Math.round(coordX ?? 0);
     const y = Math.round(coordY ?? 0);

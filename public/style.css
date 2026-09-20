@@ -432,7 +432,13 @@ button {
 
 .server-indicator-ping {
     font-weight: 700;
+    /* tabular-nums RAKAM GENİŞLİĞİNİ sabitler, RAKAM SAYISINI değil:
+       "…" -> "98ms" -> "112ms" geçişlerinde metin kutusu büyür ve satırdaki
+       her şey yana kayar. min-width bu kaymayı keser; sağa yaslama sayının
+       basamak eklerken sola doğru büyümesini sağlar (nokta ayracı sabit kalır). */
     font-variant-numeric: tabular-nums;
+    min-width: 5.5ch;
+    text-align: right;
 }
 
 /* Latency tier renkleri — .server-item[data-tier] ile BIREBIR ayni palet.
@@ -647,7 +653,11 @@ button {
 .server-ping {
     font-size: 0.85rem;
     font-weight: 700;
+    /* Kart listesinde de aynı gerekçe: "…" ile "112ms" arasındaki genişlik
+       farkı, sinyal ikonunu her ölçümde zıplatırdı. */
     font-variant-numeric: tabular-nums;
+    min-width: 5.5ch;
+    text-align: right;
 }
 
 .server-item[data-tier="good"]    .server-ping-wrap { color: var(--ping-good); }
@@ -2482,7 +2492,56 @@ html.pseudo-fullscreen #app {
 
 #hud-fps   { min-width: 3ch; color: var(--menu-placeholder); }
 #hud-ping  { min-width: 5ch; }
-#hud-coord { min-width: 12ch; }
+#hud-coord { min-width: 10ch; text-align: right; }
+
+/* Settings > Show FPS / Show Ping. Iki satir da kapaliysa pilin kendisi
+   gizlenir; bos bir balon ekranda durmamali. Gorunurlugu
+   src/ui/overlays.js -> applyHudTelemetrySettings yazar. */
+.stat-item.hidden,
+.hud-stats-panel.hidden {
+    display: none;
+}
+
+/* ── Koordinat rozeti — MINI HARITAYA HIZALI ────────────────────────────────
+   Rozet DOM'da, mini harita ise Phaser canvas'inda cizilir. Hizayi koruyan
+   sey iki degiskendir: --minimap-size ve --minimap-pad. Ikisini de Phaser
+   tarafi yazar (Game.minimapMetrics tek kaynak), boylece mobil/masaustu
+   olcek farki, yon degisimi ve her resize'da rozet haritayla BIRLIKTE
+   hareket eder. Degiskenler yoksa masaustu olculerine duser.
+
+   NEDEN HARITANIN USTUNDE, ICINDE DEGIL: harita zaten ekranin alt kenarina
+   'padding' kadar yakindir, yani ALTINA bir sey koymak icin yer yoktur.
+   Diskin ustune bindirmek ise gorusu kapatirdi — kucuk mobil haritada
+   (88 px) 18 px'lik bir rozet diskin bes'te birini orter. Ust kenar, hem
+   haritayi hem de sag alttaki boost dugmesini serbest birakan tek yerdir. */
+.hud-coord-pod {
+    position: absolute;
+    right: var(--minimap-pad, 24px);
+    bottom: calc(var(--minimap-pad, 24px) + var(--minimap-size, 160px) + 8px);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px 2px;
+    border: 1px solid rgba(54, 136, 208, 0.5);  /* --menu-bright */
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 18px;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
+    /* Rozet bir OKUMA alanidir: altindaki canvas'a dokunusu gecirmeli, aksi
+       halde mini harita kosesinde olu bir girdi bolgesi olusur. */
+    pointer-events: none;
+}
+
+.hud-coord-pod.hidden {
+    display: none;
+}
+
+.hud-coord-icon {
+    display: flex;
+    color: var(--menu-bright);
+}
 
 /* ── Score capsule ── */
 .hud-score-pod {
@@ -2709,6 +2768,20 @@ html.pseudo-fullscreen #app {
         font-size: 11px;
         line-height: 15px;
     }
+
+    /* Telefonda rozet kuculur: mini haritanin SOLUNDA boost dugmesi durur
+       (MobileControls, minimap ayak izini 'minimapReserve' ile bosaltir) ve
+       kontrol olcegi %150'ye cekildiginde iki eleman birbirine yaklasir.
+       Dar rozet bu payi korur. Rozet zaten pointer-events:none oldugu icin
+       gorsel olarak degselerdi bile boost dokunusu engellenmezdi. */
+    .hud-coord-pod {
+        gap: 4px;
+        padding: 2px 9px 1px;
+        font-size: 11px;
+        line-height: 15px;
+    }
+
+    #hud-coord { min-width: 9ch; }
 
     .score-orb { width: 12px; height: 12px; }
 

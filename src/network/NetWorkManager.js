@@ -1,5 +1,6 @@
 import { client, server } from './bundle.js';
 import { resolveWsUrl } from './endpoint.js';
+import { PingSampler } from './PingSampler.js';
 
 
 export class NetworkManager {
@@ -35,14 +36,6 @@ export class NetworkManager {
         this.pingTimer = null;
         this.pingNonce = 0;
         this.pendingPings = new Map();   // nonce -> performance.now() @ send
-        this.pingEmaMs = null;           // yumuşatılmış RTT (EMA)
-        // RTT SAPMASI (jitter) — |rtt - ema|'nın EMA'sı, RFC 3550 ruhunda.
-        // Adaptif interpolasyon buffer'ı (EntityInterpolator) bunu doğrudan
-        // tüketir: buffer derinliğini belirleyen şey ortalama gecikme DEĞİL,
-        // gecikmenin oynaklığıdır. Heartbeat 2.5 s'de bir örneklendiği için
-        // burası yavaş bir taban terimdir; hızlı tepki paket-varış jitter'ından
-        // (interpolatörün kendi ölçümü) gelir.
-        this.pingJitterMs = 0;
 
         // ── Kalibrasyon (ilk ping spike düzeltmesi) ──────────────────────────
         // İlk pong, bağlantı ısınması yüzünden şişkin ölçülür (~200ms görünüp
@@ -55,8 +48,35 @@ export class NetworkManager {
         this.pingCalibDiscard = calCfg.discardSamples ?? 1;
         this.pingCalibMinSamples = calCfg.minSamples ?? 3;
         this.pingCalibIntervalMs = calCfg.intervalMs ?? 500;
-        this.pingSamplesSeen = 0;
         this.pingCalibrated = false;
+
+        // ── ÖLÇÜM İSTATİSTİĞİ: TEK ALGORİTMA, İKİ ÇAĞIRAN ────────────────────
+        // Aynı sınıfı menüdeki ölçüm de kullanır (ServerProbe). Formül iki
+        // yerde ayrı ayrı yazılsaydı, menüde 60ms gösterip oyuna girince 90ms
+        // gösteren bir arayüz kaçınılmazdı — ve fark ağdan değil, iki farklı
+        // yumuşatmadan gelirdi. Ayrıntılar: PingSampler.
+        this.pingSampler = new PingSampler({
+            discardSamples: this.pingCalibDiscard,
+            minSamples: this.pingCalibMinSamples,
+        });
+    }
+
+    /**
+     * Yumuşatılmış RTT (ms) — Snake.js tahmin/telafi zincirinin okuduğu alan.
+     * Getter'dır: tek gerçek kaynak {@link PingSampler}, bu yalnızca vitrin.
+     */
+    get pingEmaMs() {
+        return this.pingSampler.rawValue;
+    }
+
+    /**
+     * RTT SAPMASI (jitter) — |rtt - ema|'nın hareketli ortalaması.
+     * Adaptif interpolasyon buffer'ı (EntityInterpolator) bunu doğrudan
+     * tüketir: buffer derinliğini belirleyen şey ortalama gecikme DEĞİL,
+     * gecikmenin oynaklığıdır.
+     */
+    get pingJitterMs() {
+        return this.pingSampler.jitterMs;
     }
 
     canSend() {
@@ -256,10 +276,8 @@ export class NetworkManager {
 
     _startPingLoop() {
         this._stopPingLoop();
-        this.pingSamplesSeen = 0;
         this.pingCalibrated = false;
-        this.pingEmaMs = null;
-        this.pingJitterMs = 0;
+        this.pingSampler.reset();
         this.sendPing(); // ilk örneği bekletmeden al
         // Kalibrasyon fazı: hızlandırılmış aralık. _handlePong yeterli örnek
         // toplandığında _switchToSteadyPingInterval() ile normale döndürür.
@@ -308,34 +326,17 @@ export class NetworkManager {
         this.pendingPings.delete(nonce);
         const rtt = Math.max(0, performance.now() - sentAt);
 
-        this.pingSamplesSeen++;
-
-        // Kalibrasyon: ilk örnek(ler) bağlantı ısınması artefaktıdır — EMA'yı
-        // kirletmesin diye tamamen atılır (bkz. constructor'daki açıklama).
-        if (this.pingSamplesSeen <= this.pingCalibDiscard) return;
-
-        // Jitter, EMA GÜNCELLENMEDEN ÖNCE ölçülür: sapma, o örneğin mevcut
-        // beklentiden ne kadar saptığıdır (kendi kendini yiyen bir ölçüm değil).
-        if (this.pingEmaMs !== null) {
-            const deviation = Math.abs(rtt - this.pingEmaMs);
-            this.pingJitterMs += (deviation - this.pingJitterMs) / 8;
-        }
-
-        // EMA (0.3): tekil spike'lar UI'da zıplama yaratmasın, yine de
-        // gerçek değişimlere birkaç örnek içinde yakınsasın.
-        this.pingEmaMs = this.pingEmaMs === null
-            ? rtt
-            : this.pingEmaMs * 0.7 + rtt * 0.3;
-
-        // UI'ya ancak minSamples doğru örnek ortalandıktan sonra yayınla.
-        if (this.pingSamplesSeen < this.pingCalibDiscard + this.pingCalibMinSamples) return;
+        // Isınma örneğinin atılması, budanmış pencere ve EMA — hepsi
+        // PingSampler'ın içindedir. Burada yalnızca "yayınlanabilir mi"
+        // sorusu sorulur.
+        if (!this.pingSampler.addSample(rtt)) return;
 
         if (!this.pingCalibrated) {
             this.pingCalibrated = true;
             this._switchToSteadyPingInterval();
         }
 
-        this.scene.events.emit('ping_update', Math.round(this.pingEmaMs));
+        this.scene.events.emit('ping_update', this.pingSampler.value);
     }
     
     /**
