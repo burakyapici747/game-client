@@ -40,6 +40,10 @@
 }
 
 :root {
+    /* Yan panelin HER ZAMAN gorunen ikon seridinin genisligi. Hem seridin
+       kendisi hem de menu icerigi bu tek degeri okur. */
+    --sp-rail-width: 64px;
+
     /* ── Menu palette — "sea" theme (reference: LOGIN SCREEN/index.html) ──
        The ONE definition shared by the login screen, side panel, servers
        modal and auth gate. It used to be copied into .ui-layer and
@@ -2185,8 +2189,15 @@ button {
        sizes from width instead of vmin and the sphere takes the full column. */
     .main-menu-content {
         --logo-size: min(62vw, 420px);
-        padding: 0 16px 3vh;
+        /* SOL BOSLUK SERIT KADAR: yan panelin ikon seridi tam boy ve OPAKTIR;
+           dar ekranda menuyu ortalamak, kartin sol kenarinin seridin ALTINDA
+           kalmasi demekti (320px'de kartin ~%18'i goruntuden dusuyordu).
+           Icerik artik KALAN alanda ortalanir. */
+        padding: 0 16px 3vh calc(16px + var(--sp-rail-width));
     }
+
+    /* Telefonda serit biraz daralir: 320px genislikte her piksel kartindir. */
+    :root, .side-panel { --sp-rail-width: 52px; }
 
     .login-card {
         max-width: min(420px, 100%);
@@ -2202,13 +2213,61 @@ button {
     }
 }
 
+/* ── KISA EKRAN: GIRIS KARTI SIGMALI ────────────────────────────────────────
+   SORUN: SOCIAL LOGIN sekmesi, GUEST sekmesinden ~56px daha uzun (iki saglayici
+   dugmesi + aciklama satiri). Menunun toplam yuksekligi bu sekmede ~568px'e
+   cikiyor; tarayici cubuklarini dusunce 375x667 bir telefonda bile ekrani asip
+   dikey kaydirma uretiyordu — oyuncu PLAY dugmesini gormek icin kaydirmak
+   zorunda kaliyordu.
+
+   COZUM: kisa ekranda karti KUCULTMEK, kaydirmayi kabul etmek degil. Kesilen
+   yerler bilincli olarak ISLEVSIZ olanlar: aciklama satiri, fazladan bosluk ve
+   dugme yuksekligi. Dokunma hedefleri 38px'in altina INDIRILMEZ.
+
+   Kosul iki kollu: dar telefonlar VE kisa pencereler. Masaustu (1080p+) bu
+   kurallara hic girmez. */
+@media (max-width: 480px), (max-height: 700px) {
+    .main-menu-content {
+        --logo-size: min(58vw, 260px);
+    }
+
+    .login-card {
+        gap: 8px;
+        padding: 14px 14px 16px;
+    }
+
+    .auth-tabs { padding: 3px; }
+    .auth-tab { padding: 7px 8px; font-size: 0.72rem; }
+    .auth-tab-icon { font-size: 16px; }
+
+    /* Saglayici dugmeleri: yukseklik 44 -> 38, aradaki bosluk yariya. */
+    .social-providers { gap: 8px; }
+    .social-btn { padding: 8px 12px; font-size: 0.82rem; min-height: 38px; }
+    .social-btn .social-btn-icon { width: 18px; height: 18px; }
+
+    /* Aciklama satiri BILGILENDIRICIDIR, islevsel degil: yer darken ilk o
+       gider. Giris akisinda hicbir adim buna bagli degil. */
+    #auth-pane-social .auth-pane-hint { display: none; }
+    .auth-pane { gap: 8px; }
+    .auth-pane-hint { font-size: 0.72rem; line-height: 1.25; }
+
+    .login-input { padding: 10px 14px 10px 40px; font-size: 0.9rem; }
+    #play-btn { padding: 10px 18px; font-size: 1.35rem; }
+    .servers-btn { padding: 8px 14px; font-size: 0.8rem; }
+}
+
 /* Very small phones (≤400px wide) */
 @media (max-width: 400px) {
     .login-card {
-        padding-left: 14px;
-        padding-right: 14px;
+        padding-left: 12px;
+        padding-right: 12px;
         border-radius: 32px;
     }
+
+    /* Serit icin ayrilan bosluk sonrasi kart daraldi; "Sign in with Apple"
+       iki satira kiriliyordu. Tek satir, dugmenin yuksekligini de sabit tutar. */
+    .social-btn { font-size: 0.76rem; padding: 8px 10px; white-space: nowrap; }
+    .social-btn .social-btn-icon { width: 16px; height: 16px; }
 
     /* Dar ekranda "Connected to" etiketi satiri kirar; sadece bolge + ping
        kalsin — bilgi yogunlugu korunur, satir tek satirda kalir. */
@@ -2317,70 +2376,6 @@ button {
     }
 }
 
-/* ═══════════════════════════════════════════════
-   FULLSCREEN TOGGLE — universal, all screens
-   ═══════════════════════════════════════════════ */
-
-.fullscreen-btn {
-    position: fixed;
-    bottom: 16px;
-    left: 16px;
-    z-index: 55;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(39, 20, 72, 0.45);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(235, 221, 255, 0.1);
-    border-radius: 10px;
-    color: rgba(235, 221, 255, 0.6);
-    cursor: pointer;
-    padding: 0;
-    pointer-events: auto;
-    transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    overflow: visible;
-}
-
-.fullscreen-btn svg {
-    display: block;
-    width: 20px;
-    height: 20px;
-    overflow: visible;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-}
-
-.fullscreen-btn:hover {
-    background: rgba(50, 32, 83, 0.75);
-    color: #ebddff;
-    -webkit-transform: translateZ(0) scale(1.08);
-    transform: translateZ(0) scale(1.08);
-}
-
-.fullscreen-btn:active {
-    -webkit-transform: translateZ(0) scale(0.94);
-    transform: translateZ(0) scale(0.94);
-}
-
-@media (max-width: 768px), (max-height: 500px) {
-    .fullscreen-btn {
-        bottom: 10px;
-        left: 10px;
-        width: 32px;
-        height: 32px;
-    }
-
-    .fullscreen-btn svg {
-        width: 16px;
-        height: 16px;
-    }
-}
-
 /* ── iOS Safari pseudo-fullscreen fallback ── */
 html.pseudo-fullscreen,
 html.pseudo-fullscreen body {
@@ -2456,6 +2451,49 @@ html.pseudo-fullscreen #app {
     gap: 8px;
     min-width: 0;
 }
+
+/* Cikis dugmesi ile telemetri pili AYNI satirda durur; skor podu altlarina
+   yerlesir (mobilde de ayni siralama korunur). */
+.hud-left-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+/* ── Oyun ici "menuye don" dugmesi ──────────────────────────────────────────
+   Iki adimli onay GORSEL olarak da bildirilir: onay bekleyen durum kirmiziya
+   doner, boylece "yanlislikla bastim" ile "gercekten cikiyorum" arasindaki
+   fark bir saniyeligine de olsa gorunur olur. */
+.hud-exit-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 4px;
+    color: var(--menu-text);
+    font-family: var(--font-menu);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    line-height: 18px;
+    border: 1px solid rgba(54, 136, 208, 0.5);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast),
+                color var(--transition-fast);
+}
+
+.hud-exit-btn:hover {
+    border-color: rgba(135, 206, 250, 0.9);
+    background: rgba(54, 136, 208, 0.35);
+}
+
+.hud-exit-btn.is-armed {
+    color: #fff;
+    background: rgba(214, 63, 63, 0.92);
+    border-color: rgba(255, 138, 138, 0.9);
+}
+
+.hud-exit-icon { font-size: 18px; }
 
 /* ── Telemetry pill ── */
 .hud-stats-panel {
@@ -2774,14 +2812,19 @@ html.pseudo-fullscreen #app {
        kontrol olcegi %150'ye cekildiginde iki eleman birbirine yaklasir.
        Dar rozet bu payi korur. Rozet zaten pointer-events:none oldugu icin
        gorsel olarak degselerdi bile boost dokunusu engellenmezdi. */
+    /* Koordinat rozeti: mini haritanin ustunde dar bir seritte durur; telefonda
+       daha da kucultulur ki haritayi ve boost dugmesini rahat biraksin. */
     .hud-coord-pod {
-        gap: 4px;
-        padding: 2px 9px 1px;
-        font-size: 11px;
-        line-height: 15px;
+        gap: 3px;
+        padding: 1px 7px 0;
+        font-size: 9.5px;
+        line-height: 13px;
+        border-radius: 999px;
     }
 
-    #hud-coord { min-width: 9ch; }
+    .hud-coord-icon svg { width: 10px; height: 10px; }
+
+    #hud-coord { min-width: 8ch; }
 
     .score-orb { width: 12px; height: 12px; }
 
@@ -2805,11 +2848,37 @@ html.pseudo-fullscreen #app {
         line-height: 15px;
     }
 
-    .rank-number { min-width: 17px; font-size: 10px; }
-    .rank-crown { width: 13px; height: 12px; }
-    .leaderboard-entry.rank-pinned { margin-top: 2px; padding-top: 4px; }
-    .leaderboard-toggle { height: 18px; }
-    .leaderboard-toggle-icon { font-size: 16px; }
+    .rank-number { min-width: 15px; font-size: 9px; }
+    .rank-crown { width: 12px; height: 11px; }
+    .leaderboard-entry.rank-pinned { margin-top: 2px; padding-top: 3px; }
+    .leaderboard-toggle { height: 16px; }
+    .leaderboard-toggle-icon { font-size: 15px; }
+
+    /* ── SIRALAMA: TELEFONDA DAHA KUCUK AYAK IZI ────────────────────────────
+       Kart ust sag koseyi kapliyor ve her piksel, oyuncunun kendi yilanini
+       goremedigi alan demek. Satir SAYISI ayrica JS tarafinda 3'ten 2'ye
+       duser (overlays.LEADERBOARD_COLLAPSED_COUNT_MOBILE) — yalnizca
+       tipografiyi kucultmek karti kisaltmaz, satirlar kalirdi. */
+    .hud-leaderboard-pod {
+        width: 142px;
+        padding: 5px 7px 2px;
+        border-radius: 10px;
+    }
+
+    .leaderboard-title { font-size: 10px; line-height: 13px; letter-spacing: 0.02em; }
+    .leaderboard-info { font-size: 9px; line-height: 11px; padding-bottom: 3px; }
+    .leaderboard-entries { gap: 1px; font-size: 10px; line-height: 13px; }
+
+    /* Cikis dugmesi: telefonda YAZI GIZLENIR, ikon kalir. Etiket, dar ekranda
+       telemetri pilini asagi itiyordu; ikon tek basina anlasilir ve dokunma
+       hedefi yine 40px'in uzerinde kalir. */
+    .hud-exit-btn { padding: 6px 9px 5px; gap: 0; }
+    .hud-exit-label { display: none; }
+    /* Onay durumunda etiket GERI GELIR: "Confirm?" yazmadan kirmizi bir ikon
+       ne demek istedigini soylemez. */
+    .hud-exit-btn.is-armed .hud-exit-label { display: inline; margin-left: 6px; font-size: 11px; }
+    .hud-exit-icon { font-size: 20px; }
+    .hud-left-top { gap: 6px; }
 }
 
 /* Portrait phones: telemetry, score and leaderboard don't fit side by side,
@@ -3251,6 +3320,39 @@ html.pseudo-fullscreen #app {
     color: var(--menu-text-muted);
 }
 
+/* Girisli oyuncunun DUZENLENEBILIR adi. Dinlenirken duz metin gibi gorunur
+   (kart sakin kalsin), uzerine gelince/odaklaninca kutu oldugu belli olur. */
+.social-nickname-input {
+    width: 100%;
+    min-width: 0;
+    padding: 2px 6px;
+    margin-left: -6px;
+    background: transparent;
+    border: 1px dashed transparent;
+    border-radius: 8px;
+    cursor: text;
+}
+
+.social-nickname-input:hover { border-color: rgba(135, 206, 250, 0.55); }
+
+.social-nickname-input:focus {
+    outline: none;
+    background: rgba(8, 51, 103, 0.6);
+    border: 1px solid var(--play-top);
+    text-overflow: clip;
+}
+
+.social-nickname-input:disabled { opacity: 0.6; }
+
+.social-nickname-status {
+    min-height: 0.9rem;
+    font-size: 0.7rem;
+    color: var(--menu-text-muted);
+}
+
+.social-nickname-status[data-kind="ok"]    { color: var(--ping-good); }
+.social-nickname-status[data-kind="error"] { color: var(--ping-bad); }
+
 /* ── Auth overlay kapatma düğmesi ──────────────────────────────────────────
    Overlay artık açılış kapısı değil, 401 sonrası yeniden giriş istemi. */
 .auth-close-btn {
@@ -3288,8 +3390,10 @@ html.pseudo-fullscreen #app {
     /* Drawer width lives in ONE token: the drawer and the collapsed handle's
        offset must always agree, and both change at each breakpoint. */
     --sp-width: clamp(300px, 24vw, 380px);
-    /* Icon rail width — the panel's ALWAYS-VISIBLE part. */
-    --sp-rail-width: 64px;
+    /* Icon rail genisligi kokte tanimli (bkz. :root --sp-rail-width): menu
+       icerigi de ayni olcuyu okuyup serit icin yer AYIRIR. Iki ayri sabit
+       tutulsaydi, birini degistiren kisi digerini unuttugunda serit menunun
+       ustune binerdi — nitekim dar ekranda tam olarak bu oldu. */
 
     position: absolute;
     top: 0;
@@ -3423,6 +3527,47 @@ html.pseudo-fullscreen #app {
 .side-panel.is-expanded .side-panel-toggle-icon {
     transform: rotate(180deg);
 }
+
+/* ── Takma ad duzenleme (profil basligi) ────────────────────────────────────
+   Form, adin DURDUGU yerde acilir: ayri bir modal, iki satirlik bir islem icin
+   ekrani kaplamaya degmez ve kullanicinin baglamini kaybettirir. */
+.sp-nickname-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sp-nickname-input {
+    width: 8.5rem;
+    min-width: 0;
+    padding: 4px 8px;
+    color: var(--menu-text);
+    font-family: var(--font-menu);
+    font-size: 13px;
+    font-weight: 700;
+    background: rgba(8, 51, 103, 0.75);
+    border: 1px solid rgba(135, 206, 250, 0.6);
+    border-radius: 8px;
+}
+
+.sp-nickname-input:focus {
+    outline: none;
+    border-color: var(--play-top);
+}
+
+.sp-nickname-save {
+    padding: 4px 10px 3px;
+    color: var(--menu-text);
+    font-family: var(--font-menu);
+    font-size: 11px;
+    font-weight: 800;
+    background: linear-gradient(180deg, var(--play-top) 0%, var(--play-mid) 55%, var(--play-bottom) 100%);
+    border: 1px solid var(--play-border);
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.sp-nickname-save[disabled] { opacity: 0.6; cursor: default; }
 
 /* ── Hesap durumu kutusu (Profil panelinin ilk blogu) ──────────────────────
    Misafire "girisin ne kazandiracagini" ANLATIR; girisliye hesabini gosterir.
@@ -3790,6 +3935,14 @@ html.pseudo-fullscreen #app {
 }
 
 /* Katalog seçici çipleri — yalnızca birden fazla katalog varsa doldurulur. */
+/* Magaza gorunumunun ilk satiri baslik/konteyner kenariyla BITISIK duruyordu.
+   Bosluk ILK OGEYE degil BOLUME verilir: tek katalog varsa sekme seridi BOS
+   render edilir ve bos bir elemanin ust margin'i ebeveyninden GECER (margin
+   collapse) — yani gorunur hicbir bosluk olusmazdi. Padding collapse etmez. */
+#sp-view-shop {
+    padding-top: 14px;
+}
+
 .sp-chip-row {
     display: flex;
     flex-wrap: wrap;
@@ -4141,7 +4294,8 @@ html.pseudo-fullscreen #app {
        kapatmayı gerektirirdi; dar ekranda en sık yapılan iş tam olarak
        bölüm değiştirmektir. */
     .side-panel {
-        --sp-rail-width: 56px;
+        /* Genislik :root'ta tanimli (bkz. 768px blogu): menu icerigi ayni
+           degeri okuyup yer ayirdigi icin burada YENIDEN tanimlanmaz. */
         --sp-width: calc(100vw - var(--sp-rail-width));
     }
 

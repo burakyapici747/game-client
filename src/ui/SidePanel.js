@@ -44,11 +44,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-    getCatalogs, getCatalogPrices, getMyWalletBalances, getMyInventory, getMySkins,
-    setActiveSkin, normalizeCatalogs, normalizeCatalogItems, normalizeBalances,
-    normalizeInventory, normalizeSkins,
+    getCatalogs, getCatalogPrices, getMyWalletBalances, getMySkins, getAssets, buildAssetImageIndex,
+    setActiveSkin, clearActiveSkin, updateNickname,
+    normalizeCatalogs, normalizeCatalogItems, normalizeBalances, normalizeSkins,
 } from '../network/GameApi.js';
-import { onSessionChange, getAuthMode } from '../auth/SessionManager.js';
+import { onSessionChange, getAuthMode, setPlayNickname, getSessionProfile } from '../auth/SessionManager.js';
 import { readStats } from './PlayerStats.js';
 import { showAuthOverlay } from './overlays.js';
 
@@ -84,6 +84,30 @@ const loaded = { wallet: false, store: false, inventory: false };
 
 /** Seçili katalog anahtarı; kataloglar geldiğinde ilkine ayarlanır. */
 let activeCatalogKey = null;
+
+/**
+ * Varlık görselleri (ulid → url). Katalog yanıtı görsel taşımadığı için
+ * /api/assets ile BİR KEZ doldurulur ve panel oturumu boyunca saklanır
+ * (uç zaten sunucuda 30 dk önbellekli; her katalog sekmesinde yeniden
+ * istemek boşuna tur olurdu).
+ */
+let assetImageIndex = null;
+
+/**
+ * Görsel indeksini hazırlar. Başarısız olursa SESSİZCE boş döner: görseli
+ * olmayan bir mağaza hâlâ kullanılabilir, ama görsel yüzünden mağazanın hiç
+ * açılmaması kabul edilemez.
+ */
+async function ensureAssetImages() {
+    if (assetImageIndex) return assetImageIndex;
+    try {
+        assetImageIndex = buildAssetImageIndex(await getAssets());
+    } catch (err) {
+        console.warn('[shop] varlık görselleri alınamadı:', err.message);
+        assetImageIndex = new Map();
+    }
+    return assetImageIndex;
+}
 
 /** Envanterdeki skin listesi ve aktif skin — equip sonrası yerel güncellenir. */
 let skinState = { skins: [], activeSkinId: null };
@@ -193,7 +217,16 @@ function renderProfile(profile) {
     const avatarEl = $('sp-avatar');
     const badgeEl = $('sp-mode-badge');
 
-    if (nameEl) nameEl.textContent = profile?.nickname || 'Player';
+    // Düzenleme açıkken ÜZERİNE YAZMA: oturum yayını (ör. başka bir alan
+    // değişti) kullanıcının yazdığı formu silip götürürdü.
+    if (nameEl && nameEl.dataset.editing !== 'true') {
+        nameEl.textContent = profile?.nickname || 'Player';
+    }
+
+    // Kalem yalnızca hesabı olan oyuncuda görünür: misafirin kaydedeceği bir
+    // hesap yoktur ve düğme tıklanınca hiçbir şey yapmazdı.
+    const editBtn = $('sp-nickname-edit');
+    if (editBtn) editBtn.classList.toggle('hidden', mode !== 'google');
 
     if (mailEl) {
         // Misafirin e-postası YOKTUR. Boş bir satır bırakmak yerine kipin ne
@@ -209,18 +242,14 @@ function renderProfile(profile) {
     }
 
     if (avatarEl) {
+        // ── GOOGLE AVATARI KULLANILMAZ ──────────────────────────────────────
+        // Profil resmi Google CDN'inden gelir; oyunun görsel dili ise kendi
+        // skin/avatar sistemidir. Dış bir resmi bu sisteme karıştırmak üç şey
+        // getirir: üçüncü taraf bir isteğe (ve oyuncunun IP'sinin o CDN'e
+        // gitmesine) bağımlılık, oyun estetiğiyle uyumsuz bir kare, ve hesap
+        // türüne göre DEĞİŞEN bir arayüz. Harf rozeti her kip için aynıdır.
         const initial = (profile?.nickname || 'P').trim().charAt(0).toUpperCase();
-        if (profile?.picture) {
-            const img = el('img', 'sp-avatar-img');
-            img.src = profile.picture;
-            img.alt = '';
-            img.referrerPolicy = 'no-referrer';   // Google avatar CDN'i referrer istemez
-            // Resim yüklenmezse harfe düş — kırık ikon gösterme.
-            img.addEventListener('error', () => avatarEl.replaceChildren(el('span', 'sp-avatar-letter', initial)));
-            avatarEl.replaceChildren(img);
-        } else {
-            avatarEl.replaceChildren(el('span', 'sp-avatar-letter', initial));
-        }
+        avatarEl.replaceChildren(el('span', 'sp-avatar-letter', initial));
     }
 }
 
@@ -273,20 +302,9 @@ function renderStats() {
 
     const stats = readStats();
 
-    const level = el('div', 'sp-level');
-    const caption = el('div', 'sp-level-caption');
-    caption.append(
-        el('span', null, `Level ${stats.level}`),
-        el('span', null, stats.gamesPlayed === 0
-            ? 'Play a round to start'
-            : `${formatAmount(stats.toNext)} to next`),
-    );
-    const bar = el('div', 'sp-level-bar');
-    const fill = el('div', 'sp-level-fill');
-    fill.style.width = `${Math.round(stats.progress * 100)}%`;
-    bar.append(fill);
-    level.append(caption, bar);
-
+    // SEVIYE CUBUGU KALDIRILDI: seviye, yerel toplam skordan TURETILMIS bir
+    // sayiydi ve sunucuda karsiligi yoktu. Ilerleme cubugu, arkasinda gercek
+    // bir ilerleme sistemi varmis izlenimi verir; sayilar ise gercek.
     const grid = el('div', 'sp-stat-grid');
     grid.append(
         stat(formatAmount(stats.bestScore), 'Best score'),
@@ -298,7 +316,7 @@ function renderStats() {
     const note = el('span', 'sp-account-text', 'Progress is tracked on this device.');
     note.style.padding = '0 14px';
 
-    body.replaceChildren(level, grid, note);
+    body.replaceChildren(grid, note);
 }
 
 function stat(value, label) {
@@ -307,17 +325,82 @@ function stat(value, label) {
     return box;
 }
 
+// ── Takma ad düzenleme ───────────────────────────────────────────────────────
+
 /**
- * Başarımlar.
+ * GİRİŞ YAPMIŞ oyuncunun adını panelden değiştirmesini sağlar.
  *
- * <p>Backend'de başarım ucu YOK. Sahte rozetler çizmek yerine bölüm açıkça boş
- * durumunu gösterir: panelde yeri hazırdır, veri geldiğinde tek fonksiyon
- * değişecektir.
+ * <p>Ad, ana menüdeki kutu ile AYNI değerdir (bkz. main.js çift yönlü senkron);
+ * burada düzenlenmesi o senkronu bozmaz, çünkü yazma yine tek noktadan
+ * (SessionManager) geçer ve sunucuya da oradan gider.
+ *
+ * <p>MİSAFİR İÇİN KAPALI: kaydedilecek bir hesap yoktur. Misafir adını ana
+ * menüdeki kutudan değiştirir ve değer yerelde saklanır.
+ *
+ * <p>İYİMSER DEĞİL: ad, sunucu 200 dönene kadar panelde DEĞİŞMEZ. Kaydedilmemiş
+ * bir adı kaydedilmiş gibi göstermek, oyuncunun yenilediğinde eski adını
+ * bulmasına yol açardı — sessiz ve kafa karıştırıcı.
  */
-function renderAchievements() {
-    const body = $('sp-achievements-body');
-    if (!body) return;
-    renderState(body, { kind: 'empty', message: 'Achievements are coming soon.' });
+function beginNicknameEdit() {
+    if (mode !== 'google') return;
+    const nameEl = $('sp-nickname');
+    const editBtn = $('sp-nickname-edit');
+    if (!nameEl || nameEl.dataset.editing === 'true') return;
+
+    const current = getSessionProfile()?.nickname ?? '';
+    nameEl.dataset.editing = 'true';
+    if (editBtn) editBtn.classList.add('hidden');
+
+    const form = el('form', 'sp-nickname-form');
+    const input = el('input', 'sp-nickname-input');
+    input.type = 'text';
+    input.value = current;
+    input.maxLength = 16;
+    input.setAttribute('aria-label', 'Nickname');
+
+    const save = el('button', 'sp-nickname-save', 'Save');
+    save.type = 'submit';
+
+    const cancel = el('button', 'sp-icon-btn sp-icon-btn-sm');
+    cancel.type = 'button';
+    cancel.title = 'Cancel';
+    cancel.append(el('span', 'material-symbols-outlined', 'close'));
+
+    const finish = () => {
+        nameEl.dataset.editing = 'false';
+        if (editBtn) editBtn.classList.remove('hidden');
+        renderProfile(getSessionProfile());
+    };
+
+    cancel.addEventListener('click', finish);
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const value = input.value.trim();
+        if (!value || value === current) { finish(); return; }
+
+        save.disabled = true;
+        input.disabled = true;
+        save.textContent = 'Saving…';
+        clearSkinError();
+
+        try {
+            const result = await updateNickname(value);
+            // Sunucu adı temizleyip kırpabilir (kontrol karakterleri, 16 sınırı);
+            // panelde GÖSTERİLECEK olan sunucunun döndürdüğü addır, yazılan değil.
+            setPlayNickname(result?.nickname ?? value);
+            finish();
+        } catch (err) {
+            save.disabled = false;
+            input.disabled = false;
+            save.textContent = 'Save';
+            showSkinError(errorText(err));
+        }
+    });
+
+    form.append(input, save, cancel);
+    nameEl.replaceChildren(form);
+    input.focus();
+    input.select();
 }
 
 // ── Cüzdan ───────────────────────────────────────────────────────────────────
@@ -432,8 +515,18 @@ async function loadCatalogItems(catalogKey) {
     renderState(body, { kind: 'loading', message: 'Loading prices…' });
 
     try {
-        const items = normalizeCatalogItems(await getCatalogPrices(catalogKey));
+        // İKİ UÇ BİRLİKTE: fiyatlar katalogdan, görseller varlık ucundan.
+        // Paralel çağrılır — görsel indeksi sıralı beklenirse mağaza açılışı
+        // gereksiz yere bir tur gecikir.
+        const [pricesPayload, images] = await Promise.all([
+            getCatalogPrices(catalogKey),
+            ensureAssetImages(),
+        ]);
         if (gen !== generation || activeCatalogKey !== catalogKey) return;
+
+        const items = normalizeCatalogItems(pricesPayload).map((item) => (
+            item.imageUrl ? item : { ...item, imageUrl: images.get(String(item.assetId)) ?? null }
+        ));
 
         if (items.length === 0) {
             renderState(body, { kind: 'empty', message: 'No items in this catalog.' });
@@ -516,55 +609,54 @@ function thumbIcon(kind) {
     return icon;
 }
 
-// ── Envanter + skinler ───────────────────────────────────────────────────────
+// ── Skinler ──────────────────────────────────────────────────────────────────
+//
+// GENEL "ITEMS" BOLUMU KALDIRILDI. Oyunun sahip oldugu tek kozmetik tur skin;
+// ikinci bir liste, her zaman ya bos ya skinlerin kopyasi olan bir bolum
+// demekti. Envanter ucu (/api/me/inventory) artik BURADAN cagrilmaz — skin
+// ucu zaten sahip olunan skinleri ve aktif secimi birlikte donuyor.
 
-async function loadInventory({ force = false } = {}) {
-    const itemsBody = $('sp-inventory-body');
-    const skinsBody = $('sp-skins-body');
-    if (!itemsBody || !skinsBody) return;
+async function loadSkins({ force = false } = {}) {
+    const body = $('sp-skins-body');
+    if (!body) return;
 
     if (mode !== 'google') {
         loaded.inventory = false;
-        const locked = { kind: 'locked', message: 'Login required to access your inventory.' };
-        renderState(skinsBody, locked);
-        renderState(itemsBody, locked);
+        renderState(body, { kind: 'locked', message: 'Login required to access your skins.' });
         return;
     }
     if (loaded.inventory && !force) return;
 
     const gen = generation;
-    renderState(skinsBody, { kind: 'loading', message: 'Loading skins…' });
-    renderState(itemsBody, { kind: 'loading', message: 'Loading items…' });
+    renderState(body, { kind: 'loading', message: 'Loading skins…' });
 
-    // İki uç BAĞIMSIZ: biri düşerse diğeri yine de çizilsin. allSettled tam
-    // olarak bunu verir — Promise.all olsaydı tek hata iki bölümü de boşaltırdı.
-    const [skinsResult, itemsResult] = await Promise.allSettled([getMySkins(), getMyInventory()]);
-    if (gen !== generation) return;
-
-    if (skinsResult.status === 'fulfilled') {
-        skinState = normalizeSkins(skinsResult.value);
+    try {
+        // Skinler + görsel indeksi PARALEL: önizleme görseli önce proxy'nin
+        // skin kaydından (`imageUrl`, envanter varlığının `files` dizisinden)
+        // gelir; envanter yanıtı dosyaları taşımıyorsa mağazayla AYNI indeksten
+        // (/api/assets → files[].url) tamamlanır. İki kaynak da aynı LootLocker
+        // `files` verisidir, yalnızca geldikleri uç farklıdır.
+        const [result, images] = await Promise.all([getMySkins(), ensureAssetImages()]);
+        if (gen !== generation) return;   // oturum değişti — çizme
+        const normalized = normalizeSkins(result);
+        normalized.skins = normalized.skins.map((skin) => (skin.imageUrl ? skin : {
+            ...skin,
+            imageUrl: images.get(String(skin.assetId))
+                ?? images.get(String(skin.raw?.assetUlid ?? ''))
+                ?? null,
+        }));
+        skinState = normalized;
+        loaded.inventory = true;
         renderSkins();
-    } else {
-        renderState(skinsBody, {
+    } catch (err) {
+        if (gen !== generation) return;
+        loaded.inventory = false;
+        renderState(body, {
             kind: 'error',
-            message: errorText(skinsResult.reason),
-            onRetry: () => loadInventory({ force: true }),
+            message: errorText(err),
+            onRetry: () => loadSkins({ force: true }),
         });
     }
-
-    if (itemsResult.status === 'fulfilled') {
-        renderItems(normalizeInventory(itemsResult.value));
-    } else {
-        renderState(itemsBody, {
-            kind: 'error',
-            message: errorText(itemsResult.reason),
-            onRetry: () => loadInventory({ force: true }),
-        });
-    }
-
-    // Yalnızca İKİSİ de başarılıysa "yüklendi" say; aksi halde sekmeye dönüş
-    // yeniden denesin.
-    loaded.inventory = skinsResult.status === 'fulfilled' && itemsResult.status === 'fulfilled';
 }
 
 function renderSkins() {
@@ -588,14 +680,13 @@ function renderSkins() {
         card.dataset.skinId = id;
         card.append(thumb(skin.imageUrl, skin.name, 'skin'));
         card.append(el('span', 'sp-skin-name', skin.name));
-        card.append(el('span', 'sp-skin-state', isActive ? 'EQUIPPED' : 'EQUIP'));
-
-        // Zaten takılı olan skine basmak boş bir PUT üretirdi.
-        if (isActive) {
-            card.disabled = true;
-        } else {
-            card.addEventListener('click', () => equipSkin(id, card));
-        }
+        // TAKILI SKIN ARTIK PASIF DEGIL: uzerine basmak onu CIKARIR. Eskiden
+        // devre disi birakiliyordu, yani oyuncunun "hicbir skin takili degil"
+        // durumuna donmesinin HICBIR yolu yoktu — ancak baska bir skin
+        // takabiliyordu.
+        card.append(el('span', 'sp-skin-state', isActive ? 'UNEQUIP' : 'EQUIP'));
+        card.title = isActive ? 'Unequip this skin' : 'Equip this skin';
+        card.addEventListener('click', () => (isActive ? unequipSkin(card) : equipSkin(id, card)));
         grid.append(card);
     }
     body.replaceChildren(grid);
@@ -632,6 +723,39 @@ async function equipSkin(skinId, card) {
     }
 }
 
+/**
+ * TAKILI SKINI CIKARIR.
+ *
+ * <p>{@link equipSkin} ile ayni iskelet: iyimser gorsel geri bildirim, bayat
+ * yanit korumasi (generation) ve hata durumunda ONCEKI etikete donus. Ayri bir
+ * fonksiyon olmasinin sebebi tek satirlik fark degil, FARKLI UCU cagirmasidir
+ * (DELETE .../active) — birlestirilmis bir fonksiyon her cagrida "hangi yol"
+ * dallanmasi tasirdi.
+ */
+async function unequipSkin(card) {
+    const gen = generation;
+    const stateEl = card.querySelector('.sp-skin-state');
+    const previous = stateEl?.textContent;
+
+    card.disabled = true;
+    card.classList.add('is-busy');
+    if (stateEl) stateEl.textContent = 'REMOVING…';
+    clearSkinError();
+
+    try {
+        await clearActiveSkin();
+        if (gen !== generation) return;
+        skinState.activeSkinId = null;
+        renderSkins();
+    } catch (err) {
+        if (gen !== generation) return;
+        card.disabled = false;
+        card.classList.remove('is-busy');
+        if (stateEl) stateEl.textContent = previous ?? 'UNEQUIP';
+        showSkinError(errorText(err));
+    }
+}
+
 function showSkinError(message) {
     const box = $('sp-skin-error');
     if (!box) return;
@@ -644,31 +768,6 @@ function clearSkinError() {
     if (!box) return;
     box.textContent = '';
     box.classList.add('hidden');
-}
-
-function renderItems(items) {
-    const body = $('sp-inventory-body');
-    if (!body) return;
-
-    if (items.length === 0) {
-        renderState(body, { kind: 'empty', message: 'Your inventory is empty.' });
-        return;
-    }
-
-    const list = el('div', 'sp-list');
-    for (const item of items) {
-        const row = el('div', 'sp-row');
-        row.append(thumb(item.imageUrl, item.name, item.kind));
-
-        const info = el('div', 'sp-row-info');
-        info.append(el('span', 'sp-row-name', item.name));
-        info.append(el('span', 'sp-row-sub', item.rarity ? `${item.kind} · ${item.rarity}` : item.kind));
-        row.append(info);
-
-        if (item.quantity > 1) row.append(el('span', 'sp-qty', `×${formatAmount(item.quantity)}`));
-        list.append(row);
-    }
-    body.replaceChildren(list);
 }
 
 // ── Görünüm anahtarlama ──────────────────────────────────────────────────────
@@ -697,9 +796,8 @@ function ensureViewLoaded(view) {
     // envanter kipe göre ya yüklenir ya kilitli satır gösterir.
     renderAccount();
     renderStats();
-    renderAchievements();
     loadWallet();
-    loadInventory();
+    loadSkins();
 }
 
 // ── Oturum geçişleri ─────────────────────────────────────────────────────────
@@ -779,6 +877,7 @@ export function initSidePanel({ onSignOut } = {}) {
     }
 
     $('sp-wallet-refresh')?.addEventListener('click', () => loadWallet({ force: true }));
+    $('sp-nickname-edit')?.addEventListener('click', beginNicknameEdit);
     $('sp-signout')?.addEventListener('click', () => onSignOut?.());
 
     // Escape ile kapat — modal olmayan ama ekranı kaplayan her çekmecenin borcu.

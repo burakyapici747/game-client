@@ -452,11 +452,29 @@ export function updateHUDScore(score) {
 // ── SIRALAMA (LEADERBOARD) HUD ───────────────────────────────────────────────
 const LEADERBOARD_COLLAPSED_COUNT = 3;
 const LEADERBOARD_EXPANDED_COUNT = 5;
+
+/**
+ * TELEFONDA BIR SATIR DAHA AZ.
+ *
+ * <p>Siralama kartı dikey alanın üst sağ köşesini kaplar; küçük ekranda her
+ * satır, oyuncunun kendi yılanını göremediği bir şerit demektir. Katlanmış
+ * hâlde 2 satır "kim önde" sorusunu yine cevaplar; daha fazlasını isteyen
+ * oyuncu genişletme düğmesini kullanır (tercih localStorage'da kalıcıdır).
+ */
+const LEADERBOARD_COLLAPSED_COUNT_MOBILE = 2;
+
+/** Eşik, style.css'teki HUD mobil kırılma noktasıyla AYNI olmalıdır. */
+function isCompactViewport() {
+    return typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(max-width: 768px), (max-height: 500px)').matches;
+}
 let leaderboardExpanded = localStorage.getItem('lb_expanded') === 'true';
 let lastLeaderboardData = null;
 
 function getLeaderboardDisplayCount() {
-    return leaderboardExpanded ? LEADERBOARD_EXPANDED_COUNT : LEADERBOARD_COLLAPSED_COUNT;
+    if (leaderboardExpanded) return LEADERBOARD_EXPANDED_COUNT;
+    return isCompactViewport() ? LEADERBOARD_COLLAPSED_COUNT_MOBILE : LEADERBOARD_COLLAPSED_COUNT;
 }
 
 // (formatLeaderboardScore KALDIRILDI — skor biçimlendirmesi artık tek kaynaktan,
@@ -696,6 +714,48 @@ function syncToggleIcon(entryCount) {
     const icon = btn.querySelector('.leaderboard-toggle-icon');
     if (icon) icon.textContent = leaderboardExpanded ? 'expand_less' : 'expand_more';
     btn.title = leaderboardExpanded ? 'Show less' : 'Show more';
+}
+
+/**
+ * OYUN ICI "MENUYE DON" DUGMESI.
+ *
+ * <p>IKI ADIMLI: ilk tıklama düğmeyi "Confirm?" yapar ve 3 saniye bekler,
+ * ikincisi çıkar. Modal AÇMAMA kararı bilinçli — oyun devam ederken ekranı
+ * kaplayan bir diyalog, oyuncuyu tam da karar veremeyeceği anda kör eder.
+ * Zaman aşımı, yanlışlıkla basıp dokunmayı bırakan oyuncuyu kendiliğinden
+ * güvenli duruma döndürür.
+ *
+ * @param {function} handler Çıkış onaylandığında çağrılır (teardown çağıranın işi).
+ */
+export function onHudExit(handler) {
+    const btn = $('hud-exit');
+    const label = $('hud-exit-label');
+    if (!btn || typeof handler !== 'function') return;
+
+    let armed = false;
+    let disarmTimer = null;
+
+    const disarm = () => {
+        armed = false;
+        btn.classList.remove('is-armed');
+        if (label) label.textContent = 'Menu';
+        if (disarmTimer) { clearTimeout(disarmTimer); disarmTimer = null; }
+    };
+
+    btn.addEventListener('click', () => {
+        if (!armed) {
+            armed = true;
+            btn.classList.add('is-armed');
+            if (label) label.textContent = 'Confirm?';
+            disarmTimer = setTimeout(disarm, 3000);
+            return;
+        }
+        disarm();
+        handler();
+    });
+
+    // Sahne kapanırken düğme "Confirm?" durumunda kalmasın.
+    return disarm;
 }
 
 export function initLeaderboardToggle() {

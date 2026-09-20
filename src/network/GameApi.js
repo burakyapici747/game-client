@@ -194,6 +194,58 @@ function text(value) {
  * <p>Not: bu URL'ler imzalıdır ve `Expires` parametresi taşır — kalıcı olarak
  * saklanmamalı, her yanıtta yeniden okunmalıdır.
  */
+// Dosya kaydinda adresi tasiyabilecek anahtarlar. LootLocker surumler arasinda
+// `url` ve `file_url` arasinda gidip geliyor; listeyi GENIS tutmak, tek bir
+// anahtara bahse girip gorseli sessizce kaybetmekten ucuzdur.
+const FILE_URL_KEYS = ['url', 'file_url', 'fileUrl', 'cdn_url', 'cdnUrl', 'path', 'link', 'href'];
+
+// Onceliklendirme: kucuk gorsel > genel gorsel. Katalog karti bir kucuk resim
+// ister; tam boy dosya varsa da kabul edilir ama once thumbnail aranir.
+const PREFERRED_FILE_TAGS = ['thumbnail', 'thumb', 'icon', 'image', 'preview'];
+
+/** Dosya kaydindan adres cikarir; hicbir anahtar tutmazsa null. */
+function fileUrl(file) {
+    if (!file || typeof file !== 'object') return null;
+    for (const key of FILE_URL_KEYS) {
+        const value = file[key];
+        if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return null;
+}
+
+function isImageFile(file) {
+    const type = String(file?.content_type ?? file?.contentType ?? '').toLowerCase();
+    if (type.startsWith('image/')) return true;
+    const url = fileUrl(file);
+    return typeof url === 'string' && /\.(png|jpe?g|webp|gif|svg)(\?|#|$)/i.test(url);
+}
+
+// Gorsel bulunamayan varliklarda bir KEZ uyarir: "resimler gelmiyor" sikayeti
+// ile "hangi alanda geliyor" sorusu arasindaki bosluk tam olarak buydu.
+// Konsolda gercek anahtarlari gostermek, tahmin turunu bitirir.
+let filesShapeWarned = false;
+
+function warnUnknownFileShape(source) {
+    if (filesShapeWarned) return;
+    filesShapeWarned = true;
+    const sample = Array.isArray(source?.files) ? source.files[0] : null;
+    console.warn(
+        '[api] Varlik dosyalarinda taninan bir gorsel adresi bulunamadi. ' +
+        'Beklenen anahtarlar: ' + FILE_URL_KEYS.join(', ') + '. ' +
+        'Gelen ilk dosya kaydinin anahtarlari: ' +
+        (sample && typeof sample === 'object' ? Object.keys(sample).join(', ') : '(dosya yok)'),
+        sample,
+    );
+}
+
+/**
+ * Bir varlik kaydindan gorsel adresini cikarir.
+ *
+ * <p>SIRA: dogrudan alanlar > `links` > `files[]`. Katalog yanitinda gorsel
+ * neredeyse her zaman `files` dizisindedir ve dizideki kayitlarin bicimi
+ * surumden surume degisir; bu yuzden hem ANAHTAR hem ETIKET kumesi genis
+ * tutulur ve hicbiri tutmazsa durum sessizce yutulmaz (bkz. warnUnknownFileShape).
+ */
 function imageOf(source) {
     if (!source || typeof source !== 'object') return null;
 
@@ -206,12 +258,26 @@ function imageOf(source) {
         if (fromLinks && typeof fromLinks === 'string') return fromLinks;
     }
 
-    if (Array.isArray(source.files) && source.files.length > 0) {
-        const tagged = source.files.find((f) =>
-            Array.isArray(f?.tags) && f.tags.some((t) => String(t).toLowerCase().includes('thumb')));
-        const chosen = tagged ?? source.files.find((f) => typeof f?.url === 'string');
-        if (typeof chosen?.url === 'string') return chosen.url;
+    const files = Array.isArray(source.files) ? source.files : [];
+    if (files.length === 0) return null;
+
+    // 1) Etiketi tercih edilen bir dosya (thumbnail/icon/...).
+    for (const tag of PREFERRED_FILE_TAGS) {
+        const tagged = files.find((f) =>
+            Array.isArray(f?.tags) && f.tags.some((t) => String(t).toLowerCase().includes(tag)));
+        const url = fileUrl(tagged);
+        if (url) return url;
     }
+
+    // 2) Etiket yoksa GORSEL olan ilk dosya (content_type ya da uzanti).
+    const imageEntry = files.find((f) => isImageFile(f) && fileUrl(f));
+    if (imageEntry) return fileUrl(imageEntry);
+
+    // 3) Son care: adresi olan ilk dosya.
+    const anyEntry = files.find((f) => fileUrl(f));
+    if (anyEntry) return fileUrl(anyEntry);
+
+    warnUnknownFileShape(source);
     return null;
 }
 
@@ -254,14 +320,70 @@ function detailIndex(payload) {
  * domain nesnesine indirgenir. `raw` her zaman korunur — burada karşılanmayan
  * bir alana ihtiyaç doğarsa UI onu okuyabilir.
  */
+/**
+ * PUT /api/me/nickname — oyun ici goruntuleme adini gunceller.
+ *
+ * <p>Ad bir KIMLIK alani DEGILDIR: sunucu yetkiyi daima oturumdan alir ve bu
+ * cagri yalnizca bir tercihi saklar. Dogrulama sunucuda da yapilir; buradaki
+ * kirpma yalnizca kullaniciya aninda geri bildirim icindir.
+ */
+export function updateNickname(nickname) {
+    return apiFetch('/api/me/nickname', { method: 'PUT', body: { nickname } });
+}
+
+/** DELETE /api/me/skins/active — takili skini cikarir (unequip). */
+export function clearActiveSkin() {
+    return apiFetch('/api/me/skins/active', { method: 'DELETE' });
+}
+
+/**
+ * VARLIK KIMLIGI -> GORSEL ADRESI indeksi.
+ *
+ * <p><b>NEDEN GEREKLI:</b> katalog fiyat yaniti gorsel TASIMAZ. Olculen gercek
+ * yanitta {@code assets_details[].thumbnail === null} ve {@code file_details === null};
+ * dosyalar YALNIZCA tam varlik kaydinda ({@code /api/assets}) bulunur:
+ * <pre>
+ *   files: [{ url: "https://static.lootlocker.com/....png?Expires=...", tags: ["SKIN_1"] }]
+ * </pre>
+ * Dolayisiyla magaza kartlarindaki gorsel, iki ucun BIRLESTIRILMESIYLE elde
+ * edilir. Bu birlestirme olmadan kartlar kalici olarak jenerik ikon gosterirdi —
+ * "resimler gelmiyor" sikayetinin sebebi ayristirma hatasi degil, EKSIK VERIYDI.
+ *
+ * <p>Etiketler ({@code tags}) burada "thumbnail" gibi anlamli degerler degil,
+ * varligin ADI olabiliyor; bu yuzden secim etikete degil, dosyanin gorsel olup
+ * olmadigina dayanir (bkz. imageOf).
+ *
+ * @param {*} assetsPayload /api/assets yaniti
+ * @returns {Map<string, string>} ulid/id/legacy_id -> gorsel adresi
+ */
+export function buildAssetImageIndex(assetsPayload) {
+    const index = new Map();
+    for (const asset of collection(assetsPayload, ['assets', 'items'])) {
+        const url = imageOf(asset);
+        if (!url) continue;
+        // Katalog satiri varliga ULID ile atifta bulunur, envanter ise sayisal
+        // legacy id kullanabilir; ikisini de anahtarliyoruz.
+        for (const key of [asset?.ulid, asset?.id, asset?.legacy_id, asset?.uuid]) {
+            if (key !== undefined && key !== null && key !== '') index.set(String(key), url);
+        }
+    }
+    return index;
+}
+
 export function normalizeProfile(payload) {
     const src = (payload && typeof payload === 'object' && !Array.isArray(payload))
         ? (payload.player ?? payload.data ?? payload)
         : {};
 
+    // Oyuncunun SECTIGI ad `user` dalinda gelir; `player` dalinda yoktur.
+    // Onceligi sunucunun hesapladigi `user.nickname` alir — "hangisi gecerli"
+    // karari sunucudadir (bkz. PlayerProfileService.nickname).
+    const user = (payload && typeof payload === 'object') ? payload.user : null;
+
     return {
         playerId: pick(src, ['playerId', 'player_id', 'id', 'public_uid', 'playerUid']),
-        nickname: pick(src, ['nickname', 'name', 'playerName', 'player_name', 'displayName', 'display_name']),
+        nickname: pick(user ?? {}, ['nickname'])
+                  ?? pick(src, ['nickname', 'name', 'playerName', 'player_name', 'displayName', 'display_name']),
         email:    pick(src, ['email', 'emailAddress', 'email_address']),
         picture:  pick(src, ['picture', 'avatar', 'avatarUrl', 'avatar_url', 'imageUrl']),
         walletId: pick(src, ['walletId', 'wallet_id', 'walletID']),

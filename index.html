@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <!-- Sekme ikonu: oyunun kendi logosu. Yol public/ koku altindadir, yani
+         build ciktisinda /assets/logo/logo-1.png olarak servis edilir. -->
+    <link rel="icon" type="image/png" href="/assets/logo/logo-1.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -22,8 +24,6 @@
 
 <body>
     <div id="app">
-        <!-- Fullscreen Toggle — always visible, all screens -->
-        <button id="fullscreen-btn" class="fullscreen-btn" title="Enter Fullscreen"></button>
 
         <!-- Phaser Game Container (hidden initially or under UI) -->
         <div id="game-container"></div>
@@ -89,8 +89,16 @@
                         <div id="social-signed-in" class="social-signed-in hidden">
                             <span class="material-symbols-outlined social-signed-in-tick">check_circle</span>
                             <div class="social-signed-in-text">
-                                <span id="social-signed-in-name" class="social-signed-in-name"></span>
+                                <!-- Girisli oyuncunun adi DUZENLENEBILIR: GUEST sekmesindeki
+                                     kutu bu kipte kilitlidir, dolayisiyla ad degistirmenin
+                                     formdaki tek yeri burasidir. Kaydetme blur/Enter ile
+                                     tetiklenir ve LootLocker Player Storage'a yazilir
+                                     (bkz. LoginTabs.initNicknameEditor). -->
+                                <input id="social-nickname-input" class="social-signed-in-name social-nickname-input"
+                                       type="text" maxlength="16" autocomplete="off" spellcheck="false"
+                                       aria-label="Nickname" title="Click to change your nickname" />
                                 <span id="social-signed-in-email" class="social-signed-in-email"></span>
+                                <span id="social-nickname-status" class="social-nickname-status" role="status" aria-live="polite"></span>
                             </div>
                         </div>
 
@@ -200,6 +208,13 @@
                     <div class="sp-identity">
                         <div class="sp-identity-top">
                             <span id="sp-nickname" class="sp-nickname">Player</span>
+                            <!-- Ad degistirme YALNIZCA girisli oyuncuda gorunur
+                                 (SidePanel.renderProfile gizler/gosterir): misafirin
+                                 kaydedecegi bir hesap yoktur. -->
+                            <button id="sp-nickname-edit" class="sp-icon-btn sp-icon-btn-sm hidden"
+                                    type="button" title="Change nickname" aria-label="Change nickname">
+                                <span class="material-symbols-outlined">edit</span>
+                            </button>
                             <span id="sp-mode-badge" class="sp-mode-badge">GUEST</span>
                         </div>
                         <span id="sp-email" class="sp-email is-muted">—</span>
@@ -228,15 +243,11 @@
                         <h4 class="sp-subhead">Stats</h4>
                         <div id="sp-stats-body"></div>
 
-                        <h4 class="sp-subhead">Achievements</h4>
-                        <div id="sp-achievements-body"></div>
-
+                        <!-- Tek kozmetik tur SKIN oldugu icin ayri bir "Items"
+                             bolumu YOK: ikinci liste ya bos ya bunun kopyasi olurdu. -->
                         <h4 class="sp-subhead">Skins</h4>
                         <p id="sp-skin-error" class="sp-inline-error hidden" role="alert"></p>
                         <div id="sp-skins-body"></div>
-
-                        <h4 class="sp-subhead">Items</h4>
-                        <div id="sp-inventory-body"></div>
                     </section>
 
                     <!-- ── MAGAZA PANELI ───────────────────────────────────
@@ -421,6 +432,20 @@
         <div id="game-hud" class="game-hud hidden">
             <div class="hud-top-row">
                 <div class="hud-left">
+                    <!-- ── MENUYE DON ──────────────────────────────────────
+                         Oyuncunun maci terk etmesinin TEK yolu eskiden olmek ya
+                         da sekmeyi kapatmakti. Dugme telemetri pilinin yaninda
+                         durur (ust-sol): sag ust siralamaya, alt koseler mobil
+                         kontrollere ve mini haritaya ayrilmistir.
+                         Yanlislikla basmaya karsi IKI ADIMLIDIR — ilk tiklama
+                         "Confirm?" der, ikincisi cikar (bkz. overlays.onHudExit). -->
+                    <div class="hud-left-top">
+                        <button id="hud-exit" class="hud-exit-btn hud-bubbly-panel" type="button"
+                                title="Exit to main menu" aria-label="Exit to main menu">
+                            <span class="material-symbols-outlined hud-exit-icon">logout</span>
+                            <span id="hud-exit-label" class="hud-exit-label">Menu</span>
+                        </button>
+
                     <!-- Telemetry pill (top-left) -->
                     <!-- FPS/Ping satirlari AYRI AYRI gizlenebilir olmali:
                          Settings'teki iki anahtar birbirinden bagimsizdir ve
@@ -437,6 +462,7 @@
                             <span id="hud-ping" class="stat-value">--ms</span>
                         </div>
                     </div>
+                    </div><!-- /hud-left-top -->
 
                     <!-- Score capsule: top-centre on desktop, under the
                          telemetry pill on phones (see style.css). -->

@@ -2,7 +2,7 @@ import StartGame from './game/main';
 import { hideAllGameOverlays, showConnectingOverlay, onConnectingCancel, onGameOverBackToMenu, initLeaderboardToggle,
          hideAuthOverlay, clearAuthError, getGoogleButtonSlot, getInlineGoogleButtonSlot,
          initAuthOverlayClose, initServiceBanner, applyHudTelemetrySettings,
-         isHudStatEnabled } from './ui/overlays.js';
+         isHudStatEnabled, onHudExit } from './ui/overlays.js';
 import { initGoogleAuth, isSignedIn, renderSignInButton } from './auth/GoogleAuth.js';
 import { initSessionBridge, establishSession, startGuestSession, endSession,
          getAuthMode, getSessionProfile, restoreSession, defaultGuestNickname,
@@ -11,7 +11,6 @@ import { initLoginTabs, setActiveTab, showSocialError, clearSocialError } from '
 import { initSidePanel, hideSidePanel, showSidePanelIfSignedIn } from './ui/SidePanel.js';
 import { serverProbe, latencyTier } from './network/ServerProbe.js';
 import { fallbackServerEntry } from './network/endpoint.js';
-import { initFullscreenToggle } from './ui/fullscreen.js';
 
 // ─── Mobile input state (read by Game.js every frame) ───────────────────────
 window.mobileInput = {
@@ -478,6 +477,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     onConnectingCancel(teardownGameToMenu);
 
+    // Oyun içi çıkış AYNI teardown'ı kullanır: bağlantıyı kapatma, Phaser'ı
+    // yıkma ve menüye dönme sırası tek yerde tanımlı kalmalı — ikinci bir
+    // kopya, zamanla iki farklı "çıkış" davranışına ayrışırdı.
+    onHudExit(teardownGameToMenu);
+
     // ── Game Over "BACK TO MENU": aynı teardown akışı ─────────────────────────
     onGameOverBackToMenu(teardownGameToMenu);
 
@@ -581,7 +585,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         // this.add.circle()/this.add.zone() — no DOM activation needed here.
     }
 
-    initFullscreenToggle();
     initLeaderboardToggle();
 });
 

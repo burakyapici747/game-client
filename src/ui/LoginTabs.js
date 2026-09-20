@@ -21,7 +21,8 @@
 // Kimlikten çıkış yalnızca yan paneldeki açık "Sign out" eylemiyle olur.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { onSessionChange } from '../auth/SessionManager.js';
+import { onSessionChange, setPlayNickname } from '../auth/SessionManager.js';
+import { updateNickname } from '../network/GameApi.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -96,9 +97,13 @@ function applySession({ mode, profile }) {
     if (signedInBox) {
         signedInBox.classList.toggle('hidden', !signedIn);
         if (signedIn) {
-            const nameEl = $('social-signed-in-name');
+            const nameInput = $('social-nickname-input');
             const mailEl = $('social-signed-in-email');
-            if (nameEl) nameEl.textContent = profile?.nickname || 'Signed in';
+            // Kullanıcı O AN yazıyorsa kutuya dokunma (imleç kayar, yazdığı silinir).
+            if (nameInput && document.activeElement !== nameInput) {
+                nameInput.value = profile?.nickname || '';
+                savedNickname = nameInput.value;
+            }
             if (mailEl) mailEl.textContent = profile?.email || '';
         }
     }
@@ -140,6 +145,61 @@ export function clearSocialError() {
     box.classList.add('hidden');
 }
 
+/** Sunucunun onayladığı SON ad; kaydetme başarısız olursa kutu buna döner. */
+let savedNickname = '';
+
+/**
+ * GİRİŞLİ OYUNCUNUN TAKMA AD KUTUSU.
+ *
+ * <p>KAYIT ANI `change` olayıdır (blur ya da Enter) — her tuş vuruşu DEĞİL:
+ * yazılan her harf LootLocker'a bir PATCH demek olurdu. Ad sunucu onaylayana
+ * kadar oturuma İŞLENMEZ; kaydedilmemiş bir adı kaydedilmiş gibi göstermek,
+ * oyuncunun yenilediğinde eski adını bulmasına yol açardı.
+ *
+ * <p>Sunucu adı temizleyip kırpabilir; kutuya ve oturuma yazılan değer
+ * sunucunun DÖNDÜRDÜĞÜ addır.
+ */
+function initNicknameEditor() {
+    const input = $('social-nickname-input');
+    const status = $('social-nickname-status');
+    if (!input) return;
+
+    const setStatus = (text, kind = '') => {
+        if (!status) return;
+        status.textContent = text;
+        status.dataset.kind = kind;
+    };
+
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+        if (event.key === 'Escape') { input.value = savedNickname; input.blur(); }
+    });
+
+    input.addEventListener('change', async () => {
+        const value = input.value.trim();
+        if (!value || value === savedNickname) {
+            input.value = savedNickname;
+            return;
+        }
+
+        input.disabled = true;
+        setStatus('Saving…');
+        try {
+            const result = await updateNickname(value);
+            savedNickname = result?.nickname ?? value;
+            input.value = savedNickname;
+            setPlayNickname(savedNickname);   // panel başlığı + oyun içi ad
+            setStatus('Saved', 'ok');
+            setTimeout(() => setStatus(''), 1800);
+        } catch (err) {
+            input.value = savedNickname;
+            setStatus(err?.message || 'Could not save nickname', 'error');
+        } finally {
+            input.disabled = false;
+        }
+    });
+}
+
 /**
  * Sekmeleri bağlar. Uygulama başlarken BİR KEZ çağrılır (bkz. src/main.js).
  *
@@ -151,6 +211,7 @@ export function initLoginTabs({ onTabChange } = {}) {
     if (initialized) return;
     const tabs = [...document.querySelectorAll('.auth-tab')];
     if (tabs.length === 0) return;
+    initNicknameEditor();
     initialized = true;
 
     for (const btn of tabs) {
