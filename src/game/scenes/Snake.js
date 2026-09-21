@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { EntityInterpolator } from '../net/EntityInterpolator.js';
 import * as SnakeSkin from '../render/SnakeSkin.js';
 import { SnakeTexture } from '../render/SnakeSkin.js';
+import * as SnakeBubbles from '../render/SnakeBubbles.js';
 
 // ── NICKNAME TYPOGRAPHY (High-DPI) ──────────────────────────────────────────
 // Nicknames are sized in CSS px ON SCREEN, independent of camera zoom:
@@ -392,6 +393,9 @@ export class Snake {
         this.GRID = 1;
         this.head = null;
         this.trail = null;
+        // Baloncuk kisma durumu — YALNIZCA sayilar (bkz. render/SnakeBubbles.js).
+        // Emitter sahneye aittir; yilan sahnede baloncuk icin HICBIR nesne tutmaz.
+        this._bubbleState = SnakeBubbles.createState();
         this.eyeL = null; this.eyeR = null;
         this.pupilL = null; this.pupilR = null;
         this._lookVec = new Phaser.Math.Vector2(1, 0);
@@ -500,6 +504,9 @@ export class Snake {
         c.bodyExtent = Math.min(c.bodyLen, 2 * m.body.halfWidth * s);
         c.tailFront = m.tail.front * s;
         c.tailLen = (m.tail.front + m.tail.back) * s;
+        const hw = c.halfWidths ?? (c.halfWidths = { head: 0, body: 0 });
+        hw.head = m.head.halfWidth * s;
+        hw.body = m.body.halfWidth * s;
         c.maxExtent = Math.max(m.body.front, m.body.back, m.body.halfWidth,
             m.tail.front, m.tail.back, m.tail.halfWidth) * s;
         return c;
@@ -1257,6 +1264,9 @@ export class Snake {
         // referans uzerinden setTexture cagrisi riski).
         this._tailSprite = null;
         this.trail?.destroy();
+        // Baloncuklar: yok edilecek NESNE yok (emitter sahnenin). Durumu birakmak
+        // yayimi keser; havadaki baloncuklar omurlerini (<= 700 ms) tamamlar.
+        this._bubbleState = null;
         this.eyeL?.destroy();
         this.eyeR?.destroy();
         this.pupilL?.destroy();
@@ -1568,6 +1578,10 @@ export class Snake {
         // Segment büyüme/çöküş/emeklilik animasyonları (Issue #3) —
         // konumlandırmadan sonra, ölçeği/opaklığı bu karenin dt'siyle ilerlet.
         this._updateSegmentLifecycle(this._delta || 16.67);
+        // Kafa ve gövde BU KAREDEKİ son konumuna oturduktan sonra: baloncuklar
+        // bir kare geriden doğmasın. Kısma, culling ve hareket kontrolü sistemin
+        // içindedir; burası kare başına tek çağrıdır.
+        this.scene.snakeBubbles?.emitForSnake(this, this._bubbleState, this._delta || 16.67);
         // Gözler imlece bakar — ANCAK masaüstünde, spawn'da fare henüz
         // oynatılmamışsa activePointer bayat bir konum taşır (bkz.
         // Game._pointerSteeringArmed) ve yılan hareket yönüne giderken gözleri
@@ -1589,6 +1603,20 @@ export class Snake {
         if (this.nicknameText) {
             this._layoutNickname();
         }
+    }
+
+    // Baloncuk sisteminin (render/SnakeBubbles.js) okuduğu yarı genişlikler,
+    // dünya px. _skinExtents önbelleğinden gelir → kare başına tahsis yok ve
+    // skin geçişi (blend) sırasında da doğru kalır.
+    bubbleHalfWidths() {
+        return this._skinExtents().halfWidths;
+    }
+
+    // Bu karede culling'den geçen segment sayısı (bkz. _positionSegmentsByPath).
+    // Baloncuk sistemi "gövdenin görünen bir parçası var mı" sorusunu buradan
+    // okur; kendi başına ikinci bir görünürlük taraması yapmaz.
+    get visibleSegmentCount() {
+        return this._visibleSegmentCount;
     }
 
     // ── UZAMSAL PATH FOLLOWER ────────────────────────────────────────────

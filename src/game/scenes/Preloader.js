@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import * as SnakeSkin from '../render/SnakeSkin.js';
 import * as Terrain from '../render/Terrain.js';
+import * as SnakeBubbles from '../render/SnakeBubbles.js';
 import { setConnectingStage } from '../../ui/overlays.js';
 
 // Kameranin zemin rengi — TEK DOGRULUK KAYNAGI.
@@ -27,6 +28,10 @@ export class Preloader extends Phaser.Scene {
     // Zemin: public/assets/terrain/terrain.png — tek, 2048x2048, kenarlari
     // sarilan desen. Dosya yolunun TEK sahibi render/Terrain.js'tir.
     Terrain.preload(this);
+
+    // Yilan baloncuklari (16x16). Yuklenemezse efekt sessizce devre disi kalir
+    // (bkz. SnakeBubbles) — kozmetik bir varlik oyunu durdurmamali.
+    SnakeBubbles.preload(this);
 
     // Minimap zemini (255x256, dairesel cerceve + izgara). Yuklenemezse
     // Game.drawMinimap duz daire cizimine geri duser.

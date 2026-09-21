@@ -5,6 +5,7 @@ import { TerrainRenderer } from './../render/Terrain';
 import { NetworkManager } from './../../network/NetWorkManager';
 import { MobileControls } from './../ui/MobileControls';
 import * as Viewport from './../render/Viewport';
+import { SnakeBubbles } from './../render/SnakeBubbles';
 import {
     showConnectingOverlay,
     setConnectingStage,
@@ -483,6 +484,17 @@ export class Game extends Phaser.Scene {
 
         this.scale.on('resize', this.handleResize, this);
         this.events.once('shutdown', () => this.scale.off('resize', this.handleResize, this));
+
+        // ── Yılan baloncukları: SAHNE BAŞINA TEK emitter ────────────────────
+        // Yılanlar kendi emitter'ını YARATMAZ; her kare bu sisteme "benim için
+        // üret" der (bkz. Snake._emitBubbles). uiCamera'dan SONRA kurulur ki
+        // registerWorld onu HUD kamerasından düşürebilsin.
+        this.snakeBubbles = new SnakeBubbles(this);
+        this.registerWorld(this.snakeBubbles.emitter);
+        this.events.once('shutdown', () => {
+            this.snakeBubbles?.destroy();
+            this.snakeBubbles = null;
+        });
 
         // ── AOI debug overlay ───────────────────────────────────────────────
         // Dünya uzayında çizilir (registerWorld → ana kamera render eder,
