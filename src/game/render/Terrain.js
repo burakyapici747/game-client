@@ -68,7 +68,7 @@ export const TERRAIN_BASE_COLOR = 0xbdebee;
 export const TERRAIN_TEXTURE_KEY = 'terrain';
 
 /** Kaynak dosya public/assets/terrain/ altinda; Vite onu aynen kopyalar. */
-const SOURCE_PATH = 'assets/terrain/terrain.png';
+const SOURCE_PATH = 'assets/terrain/terrain2.png';
 
 /** Zemin her seyin ALTINDA: yem/yilan depth >= 0, sinir cemberi 500. */
 const TERRAIN_DEPTH = -1000;
