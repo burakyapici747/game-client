@@ -45,8 +45,8 @@ export const HALO_TEXTURE_KEY = 'food_halo';
  */
 export const FOOD_VARIANT_COUNT = 8;
 
-const CORE_SIZE = 20;   // eski 'food_glow' ile aynı ayak izi — yem büyüklüğü hissi değişmez
-const HALO_SIZE = 50;   // gövdenin ~2.3 katı: hale dışarı taşar, gövdeyi yutmaz
+const CORE_SIZE = 18;   // eski 'food_glow' ile aynı ayak izi — yem büyüklüğü hissi değişmez
+const HALO_SIZE = 30;   // gövdenin ~2.3 katı: hale dışarı taşar, gövdeyi yutmaz
 
 // ── PALET ───────────────────────────────────────────────────────────────────
 /**
@@ -57,17 +57,17 @@ const HALO_SIZE = 50;   // gövdenin ~2.3 katı: hale dışarı taşar, gövdeyi
  * yem — ikisi de aynı upsertFood yolundan geçer) ekranda tek bir çekirdek rengi
  * okunur. Gövdeye ton farkı verilseydi "istenen renk" yem başına değişirdi.</p>
  */
-const CORE_COLOR = '#0691D6';
+const CORE_COLOR = '#2e9259';
 
 // Kenar ışığı — gövdeden belirgin biçimde AÇIK olmak ZORUNDADIR. Eski doygun
 // camgöbeği tonları (#00a6ff) koyu lacivert gövdede parlak duruyordu; #0691D6
 // üstünde parlaklıkları neredeyse eşittir ve kenar tamamen kaybolur. Bu yüzden
 // beyaza doğru açıldı: kontrast artık gövdeyle hale arasında da sınır çiziyor.
-const RIM = ['#7fe4ff', '#c4f4ff'];
+const RIM = ['#106440', '#106440'];
 
 // Hale — doygun camgöbeği. Varyant yalnızca burada ve kenar ışığında oynar,
 // böylece yüzlerce yem yan yana geldiğinde tek tip damga tekrarı olmaz.
-const GLOW = ['#00a6ff', '#00d2ff'];
+const GLOW = ['#2e9259', '#2e9259'];
 
 // ── NABIZ ───────────────────────────────────────────────────────────────────
 // Yalnızca HALE nabız atar. Gövde sabit opaklıktadır: koyu gövdeyi soldurmak,
