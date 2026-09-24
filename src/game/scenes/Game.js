@@ -21,6 +21,7 @@ import {
     updateHUDLeaderboard,
     publishMinimapMetrics,
 } from './../../ui/overlays.js';
+import { describeJoinRejection } from './../../network/joinRejection.js';
 
 // Note: updateHUDLeaderboard is called with empty array [] to trigger
 // the default mockup data initialization in overlays.js
@@ -365,6 +366,10 @@ export class Game extends Phaser.Scene {
         this.events.on('remove_entity', this.onRemoveEntity, this);
         this.events.on('disconnected', this.onDisconnected, this);
         this.events.on('death_notification', this.onDeathNotification, this);
+        // Katılım reddi sebebi; scene.restart() sonrası yeni tura sızmasın diye
+        // burada (create) sıfırlanır.
+        this._joinRejection = null;
+        this.events.on('join_rejected', this.onJoinRejected, this);
         this.events.on('leaderboard_update', this.onLeaderboardUpdate, this);
 
         // NetworkManager'ın pong başına yaydığı yumuşatılmış (EMA) RTT değeri.
@@ -411,6 +416,7 @@ export class Game extends Phaser.Scene {
             this.events.off('remove_entity', this.onRemoveEntity, this);
             this.events.off('disconnected', this.onDisconnected, this);
             this.events.off('death_notification', this.onDeathNotification, this);
+            this.events.off('join_rejected', this.onJoinRejected, this);
             this.events.off('leaderboard_update', this.onLeaderboardUpdate, this);
             this.events.off('ping_update', this._onPingUpdate, this);
             this.events.off('socket_open', this._onSocketOpen, this);
@@ -1993,6 +1999,18 @@ export class Game extends Phaser.Scene {
         );
     }
 
+    /**
+     * Sunucu katılımı reddetti (SKIN_NOT_SELECTED / SERVER_API_UNAVAILABLE).
+     *
+     * <p>Kare, sunucunun hemen ardından kapattığı bağlantıyla birlikte gelir:
+     * burada yalnızca sebep saklanır; ekranı 'disconnected' çizer. İkisi ayrı
+     * çizilseydi aynı karede iki metin üst üste binerdi.
+     */
+    onJoinRejected(rejection) {
+        this._joinRejection = rejection ?? null;
+        console.warn('Katılım reddedildi:', rejection?.code, rejection?.detail);
+    }
+
     onDisconnected() {
         this.gameStarted = false;
 
@@ -2013,9 +2031,17 @@ export class Game extends Phaser.Scene {
             this.boundaryGraphics.destroy();
             this.boundaryGraphics = null;
         }
+        // Katılım reddi varsa sebebi göster; yoksa genel kopma metni.
+        const message = this._joinRejection
+            ? describeJoinRejection(this._joinRejection)
+            : 'Sunucu bağlantısı koptu!';
         const disconnectText = this.add.text(this.viewWidth / 2, this.viewHeight / 2,
-            `Sunucu bağlantısı koptu!`,
-            { fontSize: '24px', color: '#ffdd00', backgroundColor: '#000', resolution: this.renderDensity }
+            message,
+            {
+                fontSize: '24px', color: '#ffdd00', backgroundColor: '#000', resolution: this.renderDensity,
+                align: 'center', padding: { x: 12, y: 8 },
+                wordWrap: { width: Math.max(240, this.viewWidth * 0.8) },
+            }
         ).setOrigin(0.5, 0.5).setScrollFactor(0);
         this.registerHUD(disconnectText);
     }

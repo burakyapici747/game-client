@@ -15,6 +15,7 @@ import "server/upgrade/food-mutation.proto";
 import "server/upgrade/death-notification.proto";
 import "server/upgrade/leaderboard.proto";
 import "server/upgrade/path-seed.proto";
+import "server/join-rejected.proto";
 
 message ServerEnvelope {
   oneof payload {
@@ -23,21 +24,20 @@ message ServerEnvelope {
     RemoveEntity remove_entity = 3;
     Pong pong = 4;
     DeathNotification death_notification = 5;
+    // Katilim reddi (SKIN_NOT_SELECTED / SERVER_API_UNAVAILABLE). Bu kareden
+    // sonra sunucu baglantiyi kapatir; bkz. join-rejected.proto.
+    JoinRejected join_rejected = 6;
   }
   SelfPosition self_position = 10;
   SegmentMutationCollection segment_mutation_collection = 11;
   FoodCollection food_collection = 12;
   FoodMutationCollection food_mutation_collection = 13;
-  // Siralama yayini — oneof DISINDA, cunku normal snapshot zarfina
-  // eklenerek gonderilir (ayri paket/round-trip yok). Yalnizca throttle
-  // penceresi acikken ve siralama degistiginde doldurulur; diger tick'lerde
-  // alan hic yazilmaz (proto3: sifir bayt).
   LeaderboardUpdate leaderboard_update = 14;
   // Ilk karsilasma path tohumu — leaderboard_update ile ayni gerekce ile
   // oneof DISINDA: entity'yi ilk kez ortaya cikaran EntityCollection zarfina
-  // eklenir, ayri paket/round-trip yoktur. Yalnizca ilk gorunurlukte (veya
-  // uzun bir gorunurluk boslugundan sonra) doldurulur; diger tick'lerde alan
-  // hic yazilmaz (proto3: sifir bayt). Bkz. upgrade/path-seed.proto.
+  // eklenir, ayri paket/round-trip yoktur. Yalnizca FULLY_DATA scope'unda
+  // (bu gozlemci icin ilk gorunurluk) doldurulur; diger tick'lerde alan hic
+  // yazilmaz (proto3: sifir bayt). Bkz. upgrade/path-seed.proto.
   PathSeedCollection path_seed_collection = 15;
 
   // FAZ 5 / AOI: bu tick'te YENI abone olunan sektorlerin tam icerigi.

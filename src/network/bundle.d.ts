@@ -3,11 +3,23 @@ import Long = require("long");
 /** Namespace client. */
 export namespace client {
 
+    /** JoinAuthType enum. */
+    enum JoinAuthType {
+        GUEST = 0,
+        SOCIAL = 1
+    }
+
     /** Properties of a JoinRequest. */
     interface IJoinRequest {
 
         /** JoinRequest nickname */
         nickname?: (string|null);
+
+        /** JoinRequest authType */
+        authType?: (client.JoinAuthType|null);
+
+        /** JoinRequest socialPlayerId */
+        socialPlayerId?: (string|null);
     }
 
     /** Represents a JoinRequest. */
@@ -21,6 +33,12 @@ export namespace client {
 
         /** JoinRequest nickname. */
         public nickname: string;
+
+        /** JoinRequest authType. */
+        public authType: client.JoinAuthType;
+
+        /** JoinRequest socialPlayerId. */
+        public socialPlayerId: string;
 
         /**
          * Creates a new JoinRequest instance using the specified properties.
@@ -422,6 +440,116 @@ export namespace client {
 /** Namespace server. */
 export namespace server {
 
+    /** JoinErrorCode enum. */
+    enum JoinErrorCode {
+        JOIN_ERROR_UNSPECIFIED = 0,
+        SKIN_NOT_SELECTED = 1,
+        SERVER_API_UNAVAILABLE = 2
+    }
+
+    /** Properties of a JoinRejected. */
+    interface IJoinRejected {
+
+        /** JoinRejected code */
+        code?: (server.JoinErrorCode|null);
+
+        /** JoinRejected detail */
+        detail?: (string|null);
+    }
+
+    /** Represents a JoinRejected. */
+    class JoinRejected implements IJoinRejected {
+
+        /**
+         * Constructs a new JoinRejected.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.IJoinRejected);
+
+        /** JoinRejected code. */
+        public code: server.JoinErrorCode;
+
+        /** JoinRejected detail. */
+        public detail: string;
+
+        /**
+         * Creates a new JoinRejected instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns JoinRejected instance
+         */
+        public static create(properties?: server.IJoinRejected): server.JoinRejected;
+
+        /**
+         * Encodes the specified JoinRejected message. Does not implicitly {@link server.JoinRejected.verify|verify} messages.
+         * @param message JoinRejected message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.IJoinRejected, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified JoinRejected message, length delimited. Does not implicitly {@link server.JoinRejected.verify|verify} messages.
+         * @param message JoinRejected message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.IJoinRejected, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a JoinRejected message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns JoinRejected
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.JoinRejected;
+
+        /**
+         * Decodes a JoinRejected message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns JoinRejected
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.JoinRejected;
+
+        /**
+         * Verifies a JoinRejected message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a JoinRejected message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns JoinRejected
+         */
+        public static fromObject(object: { [k: string]: any }): server.JoinRejected;
+
+        /**
+         * Creates a plain object from a JoinRejected message. Also converts values to other types if specified.
+         * @param message JoinRejected
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.JoinRejected, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this JoinRejected to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for JoinRejected
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
     /** Properties of a NewEntity. */
     interface INewEntity {
 
@@ -773,6 +901,9 @@ export namespace server {
         /** ServerEnvelope deathNotification */
         deathNotification?: (server.IDeathNotification|null);
 
+        /** ServerEnvelope joinRejected */
+        joinRejected?: (server.IJoinRejected|null);
+
         /** ServerEnvelope selfPosition */
         selfPosition?: (server.ISelfPosition|null);
 
@@ -819,6 +950,9 @@ export namespace server {
         /** ServerEnvelope deathNotification. */
         public deathNotification?: (server.IDeathNotification|null);
 
+        /** ServerEnvelope joinRejected. */
+        public joinRejected?: (server.IJoinRejected|null);
+
         /** ServerEnvelope selfPosition. */
         public selfPosition?: (server.ISelfPosition|null);
 
@@ -841,7 +975,7 @@ export namespace server {
         public foodSectorBootstraps: server.IFoodSectorBootstrap[];
 
         /** ServerEnvelope payload. */
-        public payload?: ("startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification");
+        public payload?: ("startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification"|"joinRejected");
 
         /**
          * Creates a new ServerEnvelope instance using the specified properties.

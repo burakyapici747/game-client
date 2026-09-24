@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package server;
+
+// Katilim reddi sebep kodlari. Istemci mantigi METNE degil KODA dayanir;
+// detail alani yalnizca log/UI icin insan okunur bir aciklamadir.
+enum JoinErrorCode {
+  JOIN_ERROR_UNSPECIFIED = 0;
+  // SOCIAL giris yapildi ama oyuncu deposunda gecerli bir equipped_skin yok.
+  SKIN_NOT_SELECTED = 1;
+  // seanakes-io-server-api'ye ulasilamadi: baglanti hatasi, zaman asimi
+  // (3000 ms) ya da hata yaniti.
+  SERVER_API_UNAVAILABLE = 2;
+}
+
+// Sunucu katilim istegini reddetti. Bu kare yazilip flush edildikten HEMEN
+// sonra baglanti sunucu tarafindan KAPATILIR (bkz. PlayerJoinDispatcher);
+// istemci kapanisi bu kodla birlikte yorumlar.
+message JoinRejected {
+  JoinErrorCode code = 1;
+  string detail = 2;
+}

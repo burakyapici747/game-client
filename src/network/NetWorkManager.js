@@ -1,6 +1,27 @@
 import { client, server } from './bundle.js';
 import { resolveWsUrl } from './endpoint.js';
 import { PingSampler } from './PingSampler.js';
+import { isAuthenticated, getPlayer, getSessionProfile } from '../auth/SessionManager.js';
+
+// ── KATILIM KİMLİĞİ ──────────────────────────────────────────────────────────
+// Sunucu YALNIZCA SOCIAL isteklerde skin çözümlemesi yapar (proxy → LootLocker
+// Player Storage, 50 ms'lik toplu pencere); GUEST hiç dış servise gitmez ve
+// yapılandırılmış varsayılan skini alır.
+//
+// Google oturumu var ama LootLocker eşleşmesi kurulamadıysa (giriş sırasında
+// proxy 503 verdi) playerId null'dır. O oyuncu GUEST olarak katılır: SOCIAL +
+// boş kimlik sunucuda SKIN_NOT_SELECTED ile reddedilir ve oyuncu hiç
+// oynayamazdı. Takılı skin zaten eşleşme olmadan var olamaz — kayıp yoktur.
+function resolveJoinIdentity() {
+    const playerId = isAuthenticated()
+        ? (getPlayer()?.player?.playerId ?? getSessionProfile()?.playerId ?? null)
+        : null;
+    if (playerId === null || playerId === undefined || playerId === '') {
+        return { authType: client.JoinAuthType.GUEST, socialPlayerId: '' };
+    }
+    // uint64 yerine STRING taşınır (protobufjs Long dönüşümünden kaçınmak için).
+    return { authType: client.JoinAuthType.SOCIAL, socialPlayerId: String(playerId) };
+}
 
 
 export class NetworkManager {
@@ -250,6 +271,13 @@ export class NetworkManager {
             case 'deathNotification':
                 this.scene.events.emit('death_notification', envelope.deathNotification || envelope.death_notification);
                 break;
+            // Katılım reddi: sunucu bu kareden hemen sonra bağlantıyı kapatır.
+            // Sahne kodu sebebi saklar ve 'disconnected' geldiğinde genel
+            // "bağlantı koptu" yerine bu sebebi gösterir (bkz. Game.onJoinRejected).
+            case 'joinRejected':
+            case 'join_rejected':
+                this.scene.events.emit('join_rejected', envelope.joinRejected || envelope.join_rejected);
+                break;
             default:
                 console.warn('Bilinmeyen sunucu mesajı türü:', payloadType);
         }
@@ -429,7 +457,8 @@ export class NetworkManager {
 
     sendJoinRequest(nickname) {
         if (!this.canSend()) return;
-        const joinRequest = client.JoinRequest.create({ nickname });
+        const { authType, socialPlayerId } = resolveJoinIdentity();
+        const joinRequest = client.JoinRequest.create({ nickname, authType, socialPlayerId });
         const envelope = client.ClientEnvelope.create({ joinRequest: joinRequest });
         const buffer = client.ClientEnvelope.encode(envelope).finish();
         this.socket.send(buffer);

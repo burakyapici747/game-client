@@ -5,8 +5,23 @@ package client;
 import "client/client-input.proto";
 import "client/ping.proto";
 
+// Katilim istegindeki kimlik turu.
+//
+// GUEST = 0 KASITLIDIR: proto3'te yazilmayan enum alani 0 okunur, dolayisiyla
+// auth_type gondermeyen ESKI istemciler kendiliginden misafir sayilir — sema
+// degisikligi geriye donuk uyumludur ve misafir yolu dis servise hic gitmez.
+enum JoinAuthType {
+  GUEST = 0;
+  SOCIAL = 1;
+}
+
 message JoinRequest {
   string nickname = 1;
+  JoinAuthType auth_type = 2;
+  // SOCIAL icin: seanakes-io-server-api'nin verdigi LootLocker oyuncu kimligi
+  // (sayisal id). STRING tasinir: uint64 protobufjs tarafinda Long nesnesine
+  // cozulur ve istemcide ek donusum gerektirirdi. GUEST icin bos birakilir.
+  string social_player_id = 3;
 }
 
 message ClientEnvelope {

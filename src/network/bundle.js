@@ -16,6 +16,20 @@ export const client = $root.client = (() => {
      */
     const client = {};
 
+    /**
+     * JoinAuthType enum.
+     * @name client.JoinAuthType
+     * @enum {number}
+     * @property {number} GUEST=0 GUEST value
+     * @property {number} SOCIAL=1 SOCIAL value
+     */
+    client.JoinAuthType = (function() {
+        const valuesById = {}, values = Object.create(valuesById);
+        values[valuesById[0] = "GUEST"] = 0;
+        values[valuesById[1] = "SOCIAL"] = 1;
+        return values;
+    })();
+
     client.JoinRequest = (function() {
 
         /**
@@ -23,6 +37,8 @@ export const client = $root.client = (() => {
          * @memberof client
          * @interface IJoinRequest
          * @property {string|null} [nickname] JoinRequest nickname
+         * @property {client.JoinAuthType|null} [authType] JoinRequest authType
+         * @property {string|null} [socialPlayerId] JoinRequest socialPlayerId
          */
 
         /**
@@ -47,6 +63,22 @@ export const client = $root.client = (() => {
          * @instance
          */
         JoinRequest.prototype.nickname = "";
+
+        /**
+         * JoinRequest authType.
+         * @member {client.JoinAuthType} authType
+         * @memberof client.JoinRequest
+         * @instance
+         */
+        JoinRequest.prototype.authType = 0;
+
+        /**
+         * JoinRequest socialPlayerId.
+         * @member {string} socialPlayerId
+         * @memberof client.JoinRequest
+         * @instance
+         */
+        JoinRequest.prototype.socialPlayerId = "";
 
         /**
          * Creates a new JoinRequest instance using the specified properties.
@@ -74,6 +106,10 @@ export const client = $root.client = (() => {
                 writer = $Writer.create();
             if (message.nickname != null && Object.hasOwnProperty.call(message, "nickname"))
                 writer.uint32(/* id 1, wireType 2 =*/10).string(message.nickname);
+            if (message.authType != null && Object.hasOwnProperty.call(message, "authType"))
+                writer.uint32(/* id 2, wireType 0 =*/16).int32(message.authType);
+            if (message.socialPlayerId != null && Object.hasOwnProperty.call(message, "socialPlayerId"))
+                writer.uint32(/* id 3, wireType 2 =*/26).string(message.socialPlayerId);
             return writer;
         };
 
@@ -114,6 +150,14 @@ export const client = $root.client = (() => {
                         message.nickname = reader.string();
                         break;
                     }
+                case 2: {
+                        message.authType = reader.int32();
+                        break;
+                    }
+                case 3: {
+                        message.socialPlayerId = reader.string();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -152,6 +196,17 @@ export const client = $root.client = (() => {
             if (message.nickname != null && message.hasOwnProperty("nickname"))
                 if (!$util.isString(message.nickname))
                     return "nickname: string expected";
+            if (message.authType != null && message.hasOwnProperty("authType"))
+                switch (message.authType) {
+                default:
+                    return "authType: enum value expected";
+                case 0:
+                case 1:
+                    break;
+                }
+            if (message.socialPlayerId != null && message.hasOwnProperty("socialPlayerId"))
+                if (!$util.isString(message.socialPlayerId))
+                    return "socialPlayerId: string expected";
             return null;
         };
 
@@ -169,6 +224,24 @@ export const client = $root.client = (() => {
             let message = new $root.client.JoinRequest();
             if (object.nickname != null)
                 message.nickname = String(object.nickname);
+            switch (object.authType) {
+            default:
+                if (typeof object.authType === "number") {
+                    message.authType = object.authType;
+                    break;
+                }
+                break;
+            case "GUEST":
+            case 0:
+                message.authType = 0;
+                break;
+            case "SOCIAL":
+            case 1:
+                message.authType = 1;
+                break;
+            }
+            if (object.socialPlayerId != null)
+                message.socialPlayerId = String(object.socialPlayerId);
             return message;
         };
 
@@ -185,10 +258,17 @@ export const client = $root.client = (() => {
             if (!options)
                 options = {};
             let object = {};
-            if (options.defaults)
+            if (options.defaults) {
                 object.nickname = "";
+                object.authType = options.enums === String ? "GUEST" : 0;
+                object.socialPlayerId = "";
+            }
             if (message.nickname != null && message.hasOwnProperty("nickname"))
                 object.nickname = message.nickname;
+            if (message.authType != null && message.hasOwnProperty("authType"))
+                object.authType = options.enums === String ? $root.client.JoinAuthType[message.authType] === undefined ? message.authType : $root.client.JoinAuthType[message.authType] : message.authType;
+            if (message.socialPlayerId != null && message.hasOwnProperty("socialPlayerId"))
+                object.socialPlayerId = message.socialPlayerId;
             return object;
         };
 
@@ -1003,6 +1083,275 @@ export const server = $root.server = (() => {
      * @namespace
      */
     const server = {};
+
+    /**
+     * JoinErrorCode enum.
+     * @name server.JoinErrorCode
+     * @enum {number}
+     * @property {number} JOIN_ERROR_UNSPECIFIED=0 JOIN_ERROR_UNSPECIFIED value
+     * @property {number} SKIN_NOT_SELECTED=1 SKIN_NOT_SELECTED value
+     * @property {number} SERVER_API_UNAVAILABLE=2 SERVER_API_UNAVAILABLE value
+     */
+    server.JoinErrorCode = (function() {
+        const valuesById = {}, values = Object.create(valuesById);
+        values[valuesById[0] = "JOIN_ERROR_UNSPECIFIED"] = 0;
+        values[valuesById[1] = "SKIN_NOT_SELECTED"] = 1;
+        values[valuesById[2] = "SERVER_API_UNAVAILABLE"] = 2;
+        return values;
+    })();
+
+    server.JoinRejected = (function() {
+
+        /**
+         * Properties of a JoinRejected.
+         * @memberof server
+         * @interface IJoinRejected
+         * @property {server.JoinErrorCode|null} [code] JoinRejected code
+         * @property {string|null} [detail] JoinRejected detail
+         */
+
+        /**
+         * Constructs a new JoinRejected.
+         * @memberof server
+         * @classdesc Represents a JoinRejected.
+         * @implements IJoinRejected
+         * @constructor
+         * @param {server.IJoinRejected=} [properties] Properties to set
+         */
+        function JoinRejected(properties) {
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * JoinRejected code.
+         * @member {server.JoinErrorCode} code
+         * @memberof server.JoinRejected
+         * @instance
+         */
+        JoinRejected.prototype.code = 0;
+
+        /**
+         * JoinRejected detail.
+         * @member {string} detail
+         * @memberof server.JoinRejected
+         * @instance
+         */
+        JoinRejected.prototype.detail = "";
+
+        /**
+         * Creates a new JoinRejected instance using the specified properties.
+         * @function create
+         * @memberof server.JoinRejected
+         * @static
+         * @param {server.IJoinRejected=} [properties] Properties to set
+         * @returns {server.JoinRejected} JoinRejected instance
+         */
+        JoinRejected.create = function create(properties) {
+            return new JoinRejected(properties);
+        };
+
+        /**
+         * Encodes the specified JoinRejected message. Does not implicitly {@link server.JoinRejected.verify|verify} messages.
+         * @function encode
+         * @memberof server.JoinRejected
+         * @static
+         * @param {server.IJoinRejected} message JoinRejected message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        JoinRejected.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.code != null && Object.hasOwnProperty.call(message, "code"))
+                writer.uint32(/* id 1, wireType 0 =*/8).int32(message.code);
+            if (message.detail != null && Object.hasOwnProperty.call(message, "detail"))
+                writer.uint32(/* id 2, wireType 2 =*/18).string(message.detail);
+            return writer;
+        };
+
+        /**
+         * Encodes the specified JoinRejected message, length delimited. Does not implicitly {@link server.JoinRejected.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.JoinRejected
+         * @static
+         * @param {server.IJoinRejected} message JoinRejected message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        JoinRejected.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a JoinRejected message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.JoinRejected
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.JoinRejected} JoinRejected
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        JoinRejected.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.JoinRejected();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.code = reader.int32();
+                        break;
+                    }
+                case 2: {
+                        message.detail = reader.string();
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a JoinRejected message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.JoinRejected
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.JoinRejected} JoinRejected
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        JoinRejected.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a JoinRejected message.
+         * @function verify
+         * @memberof server.JoinRejected
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        JoinRejected.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.code != null && message.hasOwnProperty("code"))
+                switch (message.code) {
+                default:
+                    return "code: enum value expected";
+                case 0:
+                case 1:
+                case 2:
+                    break;
+                }
+            if (message.detail != null && message.hasOwnProperty("detail"))
+                if (!$util.isString(message.detail))
+                    return "detail: string expected";
+            return null;
+        };
+
+        /**
+         * Creates a JoinRejected message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.JoinRejected
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.JoinRejected} JoinRejected
+         */
+        JoinRejected.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.JoinRejected)
+                return object;
+            let message = new $root.server.JoinRejected();
+            switch (object.code) {
+            default:
+                if (typeof object.code === "number") {
+                    message.code = object.code;
+                    break;
+                }
+                break;
+            case "JOIN_ERROR_UNSPECIFIED":
+            case 0:
+                message.code = 0;
+                break;
+            case "SKIN_NOT_SELECTED":
+            case 1:
+                message.code = 1;
+                break;
+            case "SERVER_API_UNAVAILABLE":
+            case 2:
+                message.code = 2;
+                break;
+            }
+            if (object.detail != null)
+                message.detail = String(object.detail);
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a JoinRejected message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.JoinRejected
+         * @static
+         * @param {server.JoinRejected} message JoinRejected
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        JoinRejected.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.defaults) {
+                object.code = options.enums === String ? "JOIN_ERROR_UNSPECIFIED" : 0;
+                object.detail = "";
+            }
+            if (message.code != null && message.hasOwnProperty("code"))
+                object.code = options.enums === String ? $root.server.JoinErrorCode[message.code] === undefined ? message.code : $root.server.JoinErrorCode[message.code] : message.code;
+            if (message.detail != null && message.hasOwnProperty("detail"))
+                object.detail = message.detail;
+            return object;
+        };
+
+        /**
+         * Converts this JoinRejected to JSON.
+         * @function toJSON
+         * @memberof server.JoinRejected
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        JoinRejected.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for JoinRejected
+         * @function getTypeUrl
+         * @memberof server.JoinRejected
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        JoinRejected.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.JoinRejected";
+        };
+
+        return JoinRejected;
+    })();
 
     server.NewEntity = (function() {
 
@@ -1821,6 +2170,7 @@ export const server = $root.server = (() => {
          * @property {server.IRemoveEntity|null} [removeEntity] ServerEnvelope removeEntity
          * @property {server.IPong|null} [pong] ServerEnvelope pong
          * @property {server.IDeathNotification|null} [deathNotification] ServerEnvelope deathNotification
+         * @property {server.IJoinRejected|null} [joinRejected] ServerEnvelope joinRejected
          * @property {server.ISelfPosition|null} [selfPosition] ServerEnvelope selfPosition
          * @property {server.ISegmentMutationCollection|null} [segmentMutationCollection] ServerEnvelope segmentMutationCollection
          * @property {server.IFoodCollection|null} [foodCollection] ServerEnvelope foodCollection
@@ -1887,6 +2237,14 @@ export const server = $root.server = (() => {
         ServerEnvelope.prototype.deathNotification = null;
 
         /**
+         * ServerEnvelope joinRejected.
+         * @member {server.IJoinRejected|null|undefined} joinRejected
+         * @memberof server.ServerEnvelope
+         * @instance
+         */
+        ServerEnvelope.prototype.joinRejected = null;
+
+        /**
          * ServerEnvelope selfPosition.
          * @member {server.ISelfPosition|null|undefined} selfPosition
          * @memberof server.ServerEnvelope
@@ -1947,12 +2305,12 @@ export const server = $root.server = (() => {
 
         /**
          * ServerEnvelope payload.
-         * @member {"startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification"|undefined} payload
+         * @member {"startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification"|"joinRejected"|undefined} payload
          * @memberof server.ServerEnvelope
          * @instance
          */
         Object.defineProperty(ServerEnvelope.prototype, "payload", {
-            get: $util.oneOfGetter($oneOfFields = ["startInformation", "entityCollection", "removeEntity", "pong", "deathNotification"]),
+            get: $util.oneOfGetter($oneOfFields = ["startInformation", "entityCollection", "removeEntity", "pong", "deathNotification", "joinRejected"]),
             set: $util.oneOfSetter($oneOfFields)
         });
 
@@ -1990,6 +2348,8 @@ export const server = $root.server = (() => {
                 $root.server.Pong.encode(message.pong, writer.uint32(/* id 4, wireType 2 =*/34).fork()).ldelim();
             if (message.deathNotification != null && Object.hasOwnProperty.call(message, "deathNotification"))
                 $root.server.DeathNotification.encode(message.deathNotification, writer.uint32(/* id 5, wireType 2 =*/42).fork()).ldelim();
+            if (message.joinRejected != null && Object.hasOwnProperty.call(message, "joinRejected"))
+                $root.server.JoinRejected.encode(message.joinRejected, writer.uint32(/* id 6, wireType 2 =*/50).fork()).ldelim();
             if (message.selfPosition != null && Object.hasOwnProperty.call(message, "selfPosition"))
                 $root.server.SelfPosition.encode(message.selfPosition, writer.uint32(/* id 10, wireType 2 =*/82).fork()).ldelim();
             if (message.segmentMutationCollection != null && Object.hasOwnProperty.call(message, "segmentMutationCollection"))
@@ -2059,6 +2419,10 @@ export const server = $root.server = (() => {
                     }
                 case 5: {
                         message.deathNotification = $root.server.DeathNotification.decode(reader, reader.uint32());
+                        break;
+                    }
+                case 6: {
+                        message.joinRejected = $root.server.JoinRejected.decode(reader, reader.uint32());
                         break;
                     }
                 case 10: {
@@ -2175,6 +2539,16 @@ export const server = $root.server = (() => {
                         return "deathNotification." + error;
                 }
             }
+            if (message.joinRejected != null && message.hasOwnProperty("joinRejected")) {
+                if (properties.payload === 1)
+                    return "payload: multiple values";
+                properties.payload = 1;
+                {
+                    let error = $root.server.JoinRejected.verify(message.joinRejected);
+                    if (error)
+                        return "joinRejected." + error;
+                }
+            }
             if (message.selfPosition != null && message.hasOwnProperty("selfPosition")) {
                 let error = $root.server.SelfPosition.verify(message.selfPosition);
                 if (error)
@@ -2253,6 +2627,11 @@ export const server = $root.server = (() => {
                 if (typeof object.deathNotification !== "object")
                     throw TypeError(".server.ServerEnvelope.deathNotification: object expected");
                 message.deathNotification = $root.server.DeathNotification.fromObject(object.deathNotification);
+            }
+            if (object.joinRejected != null) {
+                if (typeof object.joinRejected !== "object")
+                    throw TypeError(".server.ServerEnvelope.joinRejected: object expected");
+                message.joinRejected = $root.server.JoinRejected.fromObject(object.joinRejected);
             }
             if (object.selfPosition != null) {
                 if (typeof object.selfPosition !== "object")
@@ -2344,6 +2723,11 @@ export const server = $root.server = (() => {
                 object.deathNotification = $root.server.DeathNotification.toObject(message.deathNotification, options);
                 if (options.oneofs)
                     object.payload = "deathNotification";
+            }
+            if (message.joinRejected != null && message.hasOwnProperty("joinRejected")) {
+                object.joinRejected = $root.server.JoinRejected.toObject(message.joinRejected, options);
+                if (options.oneofs)
+                    object.payload = "joinRejected";
             }
             if (message.selfPosition != null && message.hasOwnProperty("selfPosition"))
                 object.selfPosition = $root.server.SelfPosition.toObject(message.selfPosition, options);
