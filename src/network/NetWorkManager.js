@@ -278,6 +278,11 @@ export class NetworkManager {
             case 'join_rejected':
                 this.scene.events.emit('join_rejected', envelope.joinRejected || envelope.join_rejected);
                 break;
+            // Katılım kabulü + OTORİTER skin id (GUEST: varsayılan, SOCIAL: LootLocker).
+            case 'joinAccepted':
+            case 'join_accepted':
+                this.scene.events.emit('join_accepted', envelope.joinAccepted || envelope.join_accepted);
+                break;
             default:
                 console.warn('Bilinmeyen sunucu mesajı türü:', payloadType);
         }

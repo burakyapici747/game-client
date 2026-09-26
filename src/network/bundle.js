@@ -1084,6 +1084,235 @@ export const server = $root.server = (() => {
      */
     const server = {};
 
+    server.JoinAccepted = (function() {
+
+        /**
+         * Properties of a JoinAccepted.
+         * @memberof server
+         * @interface IJoinAccepted
+         * @property {number|null} [entityId] JoinAccepted entityId
+         * @property {number|null} [skinId] JoinAccepted skinId
+         */
+
+        /**
+         * Constructs a new JoinAccepted.
+         * @memberof server
+         * @classdesc Represents a JoinAccepted.
+         * @implements IJoinAccepted
+         * @constructor
+         * @param {server.IJoinAccepted=} [properties] Properties to set
+         */
+        function JoinAccepted(properties) {
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * JoinAccepted entityId.
+         * @member {number} entityId
+         * @memberof server.JoinAccepted
+         * @instance
+         */
+        JoinAccepted.prototype.entityId = 0;
+
+        /**
+         * JoinAccepted skinId.
+         * @member {number} skinId
+         * @memberof server.JoinAccepted
+         * @instance
+         */
+        JoinAccepted.prototype.skinId = 0;
+
+        /**
+         * Creates a new JoinAccepted instance using the specified properties.
+         * @function create
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {server.IJoinAccepted=} [properties] Properties to set
+         * @returns {server.JoinAccepted} JoinAccepted instance
+         */
+        JoinAccepted.create = function create(properties) {
+            return new JoinAccepted(properties);
+        };
+
+        /**
+         * Encodes the specified JoinAccepted message. Does not implicitly {@link server.JoinAccepted.verify|verify} messages.
+         * @function encode
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {server.IJoinAccepted} message JoinAccepted message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        JoinAccepted.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.entityId != null && Object.hasOwnProperty.call(message, "entityId"))
+                writer.uint32(/* id 1, wireType 0 =*/8).uint32(message.entityId);
+            if (message.skinId != null && Object.hasOwnProperty.call(message, "skinId"))
+                writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.skinId);
+            return writer;
+        };
+
+        /**
+         * Encodes the specified JoinAccepted message, length delimited. Does not implicitly {@link server.JoinAccepted.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {server.IJoinAccepted} message JoinAccepted message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        JoinAccepted.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a JoinAccepted message from the specified reader or buffer.
+         * @function decode
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {server.JoinAccepted} JoinAccepted
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        JoinAccepted.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.server.JoinAccepted();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.entityId = reader.uint32();
+                        break;
+                    }
+                case 2: {
+                        message.skinId = reader.uint32();
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a JoinAccepted message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {server.JoinAccepted} JoinAccepted
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        JoinAccepted.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a JoinAccepted message.
+         * @function verify
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        JoinAccepted.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.entityId != null && message.hasOwnProperty("entityId"))
+                if (!$util.isInteger(message.entityId))
+                    return "entityId: integer expected";
+            if (message.skinId != null && message.hasOwnProperty("skinId"))
+                if (!$util.isInteger(message.skinId))
+                    return "skinId: integer expected";
+            return null;
+        };
+
+        /**
+         * Creates a JoinAccepted message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {server.JoinAccepted} JoinAccepted
+         */
+        JoinAccepted.fromObject = function fromObject(object) {
+            if (object instanceof $root.server.JoinAccepted)
+                return object;
+            let message = new $root.server.JoinAccepted();
+            if (object.entityId != null)
+                message.entityId = object.entityId >>> 0;
+            if (object.skinId != null)
+                message.skinId = object.skinId >>> 0;
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a JoinAccepted message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {server.JoinAccepted} message JoinAccepted
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        JoinAccepted.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.defaults) {
+                object.entityId = 0;
+                object.skinId = 0;
+            }
+            if (message.entityId != null && message.hasOwnProperty("entityId"))
+                object.entityId = message.entityId;
+            if (message.skinId != null && message.hasOwnProperty("skinId"))
+                object.skinId = message.skinId;
+            return object;
+        };
+
+        /**
+         * Converts this JoinAccepted to JSON.
+         * @function toJSON
+         * @memberof server.JoinAccepted
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        JoinAccepted.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for JoinAccepted
+         * @function getTypeUrl
+         * @memberof server.JoinAccepted
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        JoinAccepted.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/server.JoinAccepted";
+        };
+
+        return JoinAccepted;
+    })();
+
     /**
      * JoinErrorCode enum.
      * @name server.JoinErrorCode
@@ -2171,6 +2400,7 @@ export const server = $root.server = (() => {
          * @property {server.IPong|null} [pong] ServerEnvelope pong
          * @property {server.IDeathNotification|null} [deathNotification] ServerEnvelope deathNotification
          * @property {server.IJoinRejected|null} [joinRejected] ServerEnvelope joinRejected
+         * @property {server.IJoinAccepted|null} [joinAccepted] ServerEnvelope joinAccepted
          * @property {server.ISelfPosition|null} [selfPosition] ServerEnvelope selfPosition
          * @property {server.ISegmentMutationCollection|null} [segmentMutationCollection] ServerEnvelope segmentMutationCollection
          * @property {server.IFoodCollection|null} [foodCollection] ServerEnvelope foodCollection
@@ -2245,6 +2475,14 @@ export const server = $root.server = (() => {
         ServerEnvelope.prototype.joinRejected = null;
 
         /**
+         * ServerEnvelope joinAccepted.
+         * @member {server.IJoinAccepted|null|undefined} joinAccepted
+         * @memberof server.ServerEnvelope
+         * @instance
+         */
+        ServerEnvelope.prototype.joinAccepted = null;
+
+        /**
          * ServerEnvelope selfPosition.
          * @member {server.ISelfPosition|null|undefined} selfPosition
          * @memberof server.ServerEnvelope
@@ -2305,12 +2543,12 @@ export const server = $root.server = (() => {
 
         /**
          * ServerEnvelope payload.
-         * @member {"startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification"|"joinRejected"|undefined} payload
+         * @member {"startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification"|"joinRejected"|"joinAccepted"|undefined} payload
          * @memberof server.ServerEnvelope
          * @instance
          */
         Object.defineProperty(ServerEnvelope.prototype, "payload", {
-            get: $util.oneOfGetter($oneOfFields = ["startInformation", "entityCollection", "removeEntity", "pong", "deathNotification", "joinRejected"]),
+            get: $util.oneOfGetter($oneOfFields = ["startInformation", "entityCollection", "removeEntity", "pong", "deathNotification", "joinRejected", "joinAccepted"]),
             set: $util.oneOfSetter($oneOfFields)
         });
 
@@ -2350,6 +2588,8 @@ export const server = $root.server = (() => {
                 $root.server.DeathNotification.encode(message.deathNotification, writer.uint32(/* id 5, wireType 2 =*/42).fork()).ldelim();
             if (message.joinRejected != null && Object.hasOwnProperty.call(message, "joinRejected"))
                 $root.server.JoinRejected.encode(message.joinRejected, writer.uint32(/* id 6, wireType 2 =*/50).fork()).ldelim();
+            if (message.joinAccepted != null && Object.hasOwnProperty.call(message, "joinAccepted"))
+                $root.server.JoinAccepted.encode(message.joinAccepted, writer.uint32(/* id 7, wireType 2 =*/58).fork()).ldelim();
             if (message.selfPosition != null && Object.hasOwnProperty.call(message, "selfPosition"))
                 $root.server.SelfPosition.encode(message.selfPosition, writer.uint32(/* id 10, wireType 2 =*/82).fork()).ldelim();
             if (message.segmentMutationCollection != null && Object.hasOwnProperty.call(message, "segmentMutationCollection"))
@@ -2423,6 +2663,10 @@ export const server = $root.server = (() => {
                     }
                 case 6: {
                         message.joinRejected = $root.server.JoinRejected.decode(reader, reader.uint32());
+                        break;
+                    }
+                case 7: {
+                        message.joinAccepted = $root.server.JoinAccepted.decode(reader, reader.uint32());
                         break;
                     }
                 case 10: {
@@ -2549,6 +2793,16 @@ export const server = $root.server = (() => {
                         return "joinRejected." + error;
                 }
             }
+            if (message.joinAccepted != null && message.hasOwnProperty("joinAccepted")) {
+                if (properties.payload === 1)
+                    return "payload: multiple values";
+                properties.payload = 1;
+                {
+                    let error = $root.server.JoinAccepted.verify(message.joinAccepted);
+                    if (error)
+                        return "joinAccepted." + error;
+                }
+            }
             if (message.selfPosition != null && message.hasOwnProperty("selfPosition")) {
                 let error = $root.server.SelfPosition.verify(message.selfPosition);
                 if (error)
@@ -2632,6 +2886,11 @@ export const server = $root.server = (() => {
                 if (typeof object.joinRejected !== "object")
                     throw TypeError(".server.ServerEnvelope.joinRejected: object expected");
                 message.joinRejected = $root.server.JoinRejected.fromObject(object.joinRejected);
+            }
+            if (object.joinAccepted != null) {
+                if (typeof object.joinAccepted !== "object")
+                    throw TypeError(".server.ServerEnvelope.joinAccepted: object expected");
+                message.joinAccepted = $root.server.JoinAccepted.fromObject(object.joinAccepted);
             }
             if (object.selfPosition != null) {
                 if (typeof object.selfPosition !== "object")
@@ -2729,6 +2988,11 @@ export const server = $root.server = (() => {
                 if (options.oneofs)
                     object.payload = "joinRejected";
             }
+            if (message.joinAccepted != null && message.hasOwnProperty("joinAccepted")) {
+                object.joinAccepted = $root.server.JoinAccepted.toObject(message.joinAccepted, options);
+                if (options.oneofs)
+                    object.payload = "joinAccepted";
+            }
             if (message.selfPosition != null && message.hasOwnProperty("selfPosition"))
                 object.selfPosition = $root.server.SelfPosition.toObject(message.selfPosition, options);
             if (message.segmentMutationCollection != null && message.hasOwnProperty("segmentMutationCollection"))
@@ -2792,6 +3056,7 @@ export const server = $root.server = (() => {
          * @property {number|null} [scale] StartInformation scale
          * @property {number|null} [worldRadius] StartInformation worldRadius
          * @property {number|null} [invulnerableSeconds] StartInformation invulnerableSeconds
+         * @property {number|null} [skinId] StartInformation skinId
          */
 
         /**
@@ -2874,6 +3139,14 @@ export const server = $root.server = (() => {
         StartInformation.prototype.invulnerableSeconds = 0;
 
         /**
+         * StartInformation skinId.
+         * @member {number} skinId
+         * @memberof server.StartInformation
+         * @instance
+         */
+        StartInformation.prototype.skinId = 0;
+
+        /**
          * Creates a new StartInformation instance using the specified properties.
          * @function create
          * @memberof server.StartInformation
@@ -2913,6 +3186,8 @@ export const server = $root.server = (() => {
                 writer.uint32(/* id 7, wireType 5 =*/61).float(message.worldRadius);
             if (message.invulnerableSeconds != null && Object.hasOwnProperty.call(message, "invulnerableSeconds"))
                 writer.uint32(/* id 8, wireType 5 =*/69).float(message.invulnerableSeconds);
+            if (message.skinId != null && Object.hasOwnProperty.call(message, "skinId"))
+                writer.uint32(/* id 9, wireType 0 =*/72).uint32(message.skinId);
             return writer;
         };
 
@@ -2981,6 +3256,10 @@ export const server = $root.server = (() => {
                         message.invulnerableSeconds = reader.float();
                         break;
                     }
+                case 9: {
+                        message.skinId = reader.uint32();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -3040,6 +3319,9 @@ export const server = $root.server = (() => {
             if (message.invulnerableSeconds != null && message.hasOwnProperty("invulnerableSeconds"))
                 if (typeof message.invulnerableSeconds !== "number")
                     return "invulnerableSeconds: number expected";
+            if (message.skinId != null && message.hasOwnProperty("skinId"))
+                if (!$util.isInteger(message.skinId))
+                    return "skinId: integer expected";
             return null;
         };
 
@@ -3071,6 +3353,8 @@ export const server = $root.server = (() => {
                 message.worldRadius = Number(object.worldRadius);
             if (object.invulnerableSeconds != null)
                 message.invulnerableSeconds = Number(object.invulnerableSeconds);
+            if (object.skinId != null)
+                message.skinId = object.skinId >>> 0;
             return message;
         };
 
@@ -3096,6 +3380,7 @@ export const server = $root.server = (() => {
                 object.scale = 0;
                 object.worldRadius = 0;
                 object.invulnerableSeconds = 0;
+                object.skinId = 0;
             }
             if (message.clientId != null && message.hasOwnProperty("clientId"))
                 object.clientId = message.clientId;
@@ -3113,6 +3398,8 @@ export const server = $root.server = (() => {
                 object.worldRadius = options.json && !isFinite(message.worldRadius) ? String(message.worldRadius) : message.worldRadius;
             if (message.invulnerableSeconds != null && message.hasOwnProperty("invulnerableSeconds"))
                 object.invulnerableSeconds = options.json && !isFinite(message.invulnerableSeconds) ? String(message.invulnerableSeconds) : message.invulnerableSeconds;
+            if (message.skinId != null && message.hasOwnProperty("skinId"))
+                object.skinId = message.skinId;
             return object;
         };
 
@@ -3736,6 +4023,7 @@ export const server = $root.server = (() => {
          * @property {Array.<string>|null} [fullyDataNicknames] EntityCollection fullyDataNicknames
          * @property {Array.<number>|null} [invulnerableEntityIds] EntityCollection invulnerableEntityIds
          * @property {server.IScaleUpdates|null} [scaleUpdates] EntityCollection scaleUpdates
+         * @property {Array.<number>|null} [fullyDataSkinIds] EntityCollection fullyDataSkinIds
          */
 
         /**
@@ -3756,6 +4044,7 @@ export const server = $root.server = (() => {
             this.scales = [];
             this.fullyDataNicknames = [];
             this.invulnerableEntityIds = [];
+            this.fullyDataSkinIds = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -3843,6 +4132,14 @@ export const server = $root.server = (() => {
         EntityCollection.prototype.scaleUpdates = null;
 
         /**
+         * EntityCollection fullyDataSkinIds.
+         * @member {Array.<number>} fullyDataSkinIds
+         * @memberof server.EntityCollection
+         * @instance
+         */
+        EntityCollection.prototype.fullyDataSkinIds = $util.emptyArray;
+
+        /**
          * Creates a new EntityCollection instance using the specified properties.
          * @function create
          * @memberof server.EntityCollection
@@ -3919,6 +4216,12 @@ export const server = $root.server = (() => {
             }
             if (message.scaleUpdates != null && Object.hasOwnProperty.call(message, "scaleUpdates"))
                 $root.server.ScaleUpdates.encode(message.scaleUpdates, writer.uint32(/* id 10, wireType 2 =*/82).fork()).ldelim();
+            if (message.fullyDataSkinIds != null && message.fullyDataSkinIds.length) {
+                writer.uint32(/* id 11, wireType 2 =*/90).fork();
+                for (let i = 0; i < message.fullyDataSkinIds.length; ++i)
+                    writer.uint32(message.fullyDataSkinIds[i]);
+                writer.ldelim();
+            }
             return writer;
         };
 
@@ -4053,6 +4356,17 @@ export const server = $root.server = (() => {
                         message.scaleUpdates = $root.server.ScaleUpdates.decode(reader, reader.uint32());
                         break;
                     }
+                case 11: {
+                        if (!(message.fullyDataSkinIds && message.fullyDataSkinIds.length))
+                            message.fullyDataSkinIds = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.fullyDataSkinIds.push(reader.uint32());
+                        } else
+                            message.fullyDataSkinIds.push(reader.uint32());
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -4156,6 +4470,13 @@ export const server = $root.server = (() => {
                 if (error)
                     return "scaleUpdates." + error;
             }
+            if (message.fullyDataSkinIds != null && message.hasOwnProperty("fullyDataSkinIds")) {
+                if (!Array.isArray(message.fullyDataSkinIds))
+                    return "fullyDataSkinIds: array expected";
+                for (let i = 0; i < message.fullyDataSkinIds.length; ++i)
+                    if (!$util.isInteger(message.fullyDataSkinIds[i]))
+                        return "fullyDataSkinIds: integer[] expected";
+            }
             return null;
         };
 
@@ -4239,6 +4560,13 @@ export const server = $root.server = (() => {
                     throw TypeError(".server.EntityCollection.scaleUpdates: object expected");
                 message.scaleUpdates = $root.server.ScaleUpdates.fromObject(object.scaleUpdates);
             }
+            if (object.fullyDataSkinIds) {
+                if (!Array.isArray(object.fullyDataSkinIds))
+                    throw TypeError(".server.EntityCollection.fullyDataSkinIds: array expected");
+                message.fullyDataSkinIds = [];
+                for (let i = 0; i < object.fullyDataSkinIds.length; ++i)
+                    message.fullyDataSkinIds[i] = object.fullyDataSkinIds[i] >>> 0;
+            }
             return message;
         };
 
@@ -4265,6 +4593,7 @@ export const server = $root.server = (() => {
                 object.scales = [];
                 object.fullyDataNicknames = [];
                 object.invulnerableEntityIds = [];
+                object.fullyDataSkinIds = [];
             }
             if (options.defaults)
                 object.scaleUpdates = null;
@@ -4315,6 +4644,11 @@ export const server = $root.server = (() => {
             }
             if (message.scaleUpdates != null && message.hasOwnProperty("scaleUpdates"))
                 object.scaleUpdates = $root.server.ScaleUpdates.toObject(message.scaleUpdates, options);
+            if (message.fullyDataSkinIds && message.fullyDataSkinIds.length) {
+                object.fullyDataSkinIds = [];
+                for (let j = 0; j < message.fullyDataSkinIds.length; ++j)
+                    object.fullyDataSkinIds[j] = message.fullyDataSkinIds[j];
+            }
             return object;
         };
 

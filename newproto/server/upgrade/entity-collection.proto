@@ -61,4 +61,11 @@ message EntityCollection {
   // kurulmus bir entity eksik replikasyon tabanidir; istemci sessizce 1.0
   // varsaymaz (bkz. Game.js applyAuthoritativeScale).
   ScaleUpdates scale_updates = 10;
+
+  // KONUMSAL: fully_data_entity_ids[i] <-> fully_data_skin_ids[i]. Yalnizca
+  // ilk gorunurlukte (FULLY_DATA) gonderilir; skin oyun boyunca degismez.
+  // Deger LootLocker varlik id'sidir (orn. 843309), istemci dokulari
+  // assets/snake/<id>/ altindan yukler.
+  repeated uint32 fully_data_skin_ids = 11 [packed=true];
 }
+

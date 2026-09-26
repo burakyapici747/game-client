@@ -181,7 +181,7 @@ const SnakeConfig = {
     //   • kuyruk ucu görünür: tailLen·(1 − TAIL_TUCK) > (1+H)·renderSpacing
     //     (MAX=0.4 → ≤0.46·48·scale; en kısa kuyruk ~52·scale → sağlanır)
     //
-    // Kalibrasyon: character-1'de sonuçlar sabit oranlı eski sürümle aynıdır
+    // Kalibrasyon: 842235'de sonuçlar sabit oranlı eski sürümle aynıdır
     // (bodyExtent 48 → 0.25·48=12 … 0.4·48=19.2 = eski 0.5R … 0.8R; kuyruk
     // ofseti scale=1'de ≈ eski 0.75R).
     //
@@ -656,7 +656,9 @@ export class Snake {
     // Yükleme başarısızsa mevcut karakterde kalınır.
     setSkin(skinId) {
         const id = Number(skinId);
-        if (!Number.isInteger(id) || !SnakeSkin.SKIN_IDS.includes(id)) return false;
+        // Kayitli liste yok: sunucudan gelen her varlik id'si denenir; yukleme
+        // basarisizsa ensureSkin false doner ve mevcut (varsayilan) karakter kalir.
+        if (!SnakeSkin.isValidSkinId(id)) return false;
         this._requestedSkinId = id;
         if (id === this.skinId) return true;
         SnakeSkin.ensureSkin(this.scene, id).then((ok) => {
@@ -1209,7 +1211,7 @@ export class Snake {
         this.scene.registerWorld(this.trail);
         // ── PROSEDUREL GOZLER: SPRITE KAFADA GEREKSIZ ───────────────────────
         // Daire dokusu ozelliksiz oldugu icin gozler ayri sprite'lar olarak
-        // ciziliyordu. 1x1.png'nin KENDI gozleri var; ustune ikinci bir
+        // ciziliyordu. 1.png'nin KENDI gozleri var; ustune ikinci bir
         // goz cifti bindirmek ejderha yuzunu bozar. Sprite hazirsa gozler
         // yaratilmaz — yaratilmayan nesne gizlenmeye, guncellenmeye ve yok
         // edilmeye de ihtiyac duymaz (_updateEyes zaten null-guard'li).

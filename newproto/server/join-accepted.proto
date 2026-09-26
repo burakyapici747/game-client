@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package server;
+
+// Katilim (JoinRequest) KABUL edildi ve oyuncu simulasyona alindi. Kimlik
+// turune gore cozumlenen skin burada OTORITER olarak bildirilir:
+//   GUEST  -> game.default-guest-skin-id
+//   SOCIAL -> LootLocker equipped_skin (varlik id'si)
+// Diger gozlemciler ayni degeri EntityCollection.fully_data_skin_ids ile alir.
+message JoinAccepted {
+  uint32 entity_id = 1;
+  uint32 skin_id = 2;
+}

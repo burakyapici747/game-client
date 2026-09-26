@@ -440,6 +440,109 @@ export namespace client {
 /** Namespace server. */
 export namespace server {
 
+    /** Properties of a JoinAccepted. */
+    interface IJoinAccepted {
+
+        /** JoinAccepted entityId */
+        entityId?: (number|null);
+
+        /** JoinAccepted skinId */
+        skinId?: (number|null);
+    }
+
+    /** Represents a JoinAccepted. */
+    class JoinAccepted implements IJoinAccepted {
+
+        /**
+         * Constructs a new JoinAccepted.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: server.IJoinAccepted);
+
+        /** JoinAccepted entityId. */
+        public entityId: number;
+
+        /** JoinAccepted skinId. */
+        public skinId: number;
+
+        /**
+         * Creates a new JoinAccepted instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns JoinAccepted instance
+         */
+        public static create(properties?: server.IJoinAccepted): server.JoinAccepted;
+
+        /**
+         * Encodes the specified JoinAccepted message. Does not implicitly {@link server.JoinAccepted.verify|verify} messages.
+         * @param message JoinAccepted message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: server.IJoinAccepted, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified JoinAccepted message, length delimited. Does not implicitly {@link server.JoinAccepted.verify|verify} messages.
+         * @param message JoinAccepted message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: server.IJoinAccepted, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a JoinAccepted message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns JoinAccepted
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): server.JoinAccepted;
+
+        /**
+         * Decodes a JoinAccepted message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns JoinAccepted
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): server.JoinAccepted;
+
+        /**
+         * Verifies a JoinAccepted message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a JoinAccepted message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns JoinAccepted
+         */
+        public static fromObject(object: { [k: string]: any }): server.JoinAccepted;
+
+        /**
+         * Creates a plain object from a JoinAccepted message. Also converts values to other types if specified.
+         * @param message JoinAccepted
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: server.JoinAccepted, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this JoinAccepted to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for JoinAccepted
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
     /** JoinErrorCode enum. */
     enum JoinErrorCode {
         JOIN_ERROR_UNSPECIFIED = 0,
@@ -904,6 +1007,9 @@ export namespace server {
         /** ServerEnvelope joinRejected */
         joinRejected?: (server.IJoinRejected|null);
 
+        /** ServerEnvelope joinAccepted */
+        joinAccepted?: (server.IJoinAccepted|null);
+
         /** ServerEnvelope selfPosition */
         selfPosition?: (server.ISelfPosition|null);
 
@@ -953,6 +1059,9 @@ export namespace server {
         /** ServerEnvelope joinRejected. */
         public joinRejected?: (server.IJoinRejected|null);
 
+        /** ServerEnvelope joinAccepted. */
+        public joinAccepted?: (server.IJoinAccepted|null);
+
         /** ServerEnvelope selfPosition. */
         public selfPosition?: (server.ISelfPosition|null);
 
@@ -975,7 +1084,7 @@ export namespace server {
         public foodSectorBootstraps: server.IFoodSectorBootstrap[];
 
         /** ServerEnvelope payload. */
-        public payload?: ("startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification"|"joinRejected");
+        public payload?: ("startInformation"|"entityCollection"|"removeEntity"|"pong"|"deathNotification"|"joinRejected"|"joinAccepted");
 
         /**
          * Creates a new ServerEnvelope instance using the specified properties.
@@ -1081,6 +1190,9 @@ export namespace server {
 
         /** StartInformation invulnerableSeconds */
         invulnerableSeconds?: (number|null);
+
+        /** StartInformation skinId */
+        skinId?: (number|null);
     }
 
     /** Represents a StartInformation. */
@@ -1115,6 +1227,9 @@ export namespace server {
 
         /** StartInformation invulnerableSeconds. */
         public invulnerableSeconds: number;
+
+        /** StartInformation skinId. */
+        public skinId: number;
 
         /**
          * Creates a new StartInformation instance using the specified properties.
@@ -1450,6 +1565,9 @@ export namespace server {
 
         /** EntityCollection scaleUpdates */
         scaleUpdates?: (server.IScaleUpdates|null);
+
+        /** EntityCollection fullyDataSkinIds */
+        fullyDataSkinIds?: (number[]|null);
     }
 
     /** Represents an EntityCollection. */
@@ -1490,6 +1608,9 @@ export namespace server {
 
         /** EntityCollection scaleUpdates. */
         public scaleUpdates?: (server.IScaleUpdates|null);
+
+        /** EntityCollection fullyDataSkinIds. */
+        public fullyDataSkinIds: number[];
 
         /**
          * Creates a new EntityCollection instance using the specified properties.

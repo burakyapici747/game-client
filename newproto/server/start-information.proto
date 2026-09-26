@@ -10,9 +10,10 @@ message StartInformation {
   uint32 start_direction = 5;
   float scale = 6;
   float world_radius = 7;
-
-  // Oyuncunun KENDI dogum dokunulmazliginin suresi (saniye).
-  // Istemci gorsel efekti bu sureye gore calistirir; sure SUNUCUDA islenir,
-  // istemci uzatamaz (bkz. InvulnerabilitySystem).
   float invulnerable_seconds = 8;
+
+  // Baglanti anindaki skin (LootLocker varlik id'si). Misafir icin kesin
+  // degerdir; SOCIAL oyuncuda yalnizca BASLANGIC gorseli olup katilim
+  // cozumlenince JoinAccepted.skin_id ile ezilir (bkz. join-accepted.proto).
+  uint32 skin_id = 9;
 }

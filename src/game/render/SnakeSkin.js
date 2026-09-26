@@ -56,7 +56,7 @@ import Phaser from 'phaser';
  * <p>Temel donus +90°'dir: sanat YUKARI bakar, Phaser'da rotation=0 SAGA bakar.
  *
  * <p>KAFA ICIN EK 180°: sanat seti kendi icinde TUTARLI DEGIL. Govde pullari ve
- * kuyrugun genis ucu yukari bakiyor, ama 1x1.png onden gorunen bir
+ * kuyrugun genis ucu yukari bakiyor, ama 1.png onden gorunen bir
  * ejderha yuzudur ve ILERI yonu BURUN'dur — burun ise goruntunun ALTINDA.
  * Yani kafanin ileri yonu asagi, govde/kuyrugunki yukari. Bu yuzden kafa
  * 90+180=270° dondurulur; aksi halde yilan tam ters yone bakar.
@@ -78,36 +78,41 @@ const BAKE_ROTATION = {
 // ── KARAKTER (SKIN) KAYITLARI ─────────────────────────────────────────────────
 //
 // Her karakter uc parcadan olusur: kafa, govde, kuyruk. Tum setler AYNI sanat
-// yonelim kuralini izler (character-1 ile dogrulandi, bkz. BAKE_ROTATION):
+// yonelim kuralini izler (842235 ile dogrulandi, bkz. BAKE_ROTATION):
 // kafanin burnu, govdenin ve kuyrugun sapi goruntunun ALTINDADIR.
 //
 // Yalnizca varsayilan karakter Preloader'da yuklenir; digerleri ilk
 // kullanildiklarinda (ensureSkin) tembel yuklenir — acilis maliyeti degismez.
-export const DEFAULT_SKIN_ID = 6;
+//
+// KIMLIK = LOOTLOCKER VARLIK ID'SI. Sunucu her yilanin skinini varlik id'si
+// olarak yayinlar (StartInformation.skin_id, JoinAccepted.skin_id,
+// EntityCollection.fully_data_skin_ids); istemcide ayri bir "karakter
+// indeksi" YOKTUR. Varsayilan, sunucudaki game.default-guest-skin-id ile
+// AYNI olmalidir: misafirler ve botlar bu id ile gelir.
+export const DEFAULT_SKIN_ID = 843309;
 
-/** Kayitli karakter sayisi (public/assets/snake/character-1..N). */
-const SKIN_COUNT = 16;
+/** Kaynak dosyalarin kok dizini (public/ altinda; Vite aynen kopyalar). */
+const SKIN_ROOT = 'assets/snake';
 
 /**
- * Kaynak dosyalar public/assets/snake/ altinda; Vite bunlari aynen kopyalar.
- *
- * <p>Adlandirma TUM karakterlerde ayni: `character-N/Nx1..3.png` →
- * 1 = kafa, 2 = govde, 3 = kuyruk. Istisna/ozel durum YOKTUR.
+ * Bir varlik id'sinin dosya yollari. Adlandirma TUM karakterlerde ayni:
+ * `<assetId>/1.png` kafa, `2.png` govde, `3.png` kuyruk. Kayitli liste
+ * YOKTUR — sunucudan gelen her pozitif tamsayi denenir; dosya yoksa
+ * ensureSkin false doner ve yilan varsayilan karakterde kalir.
  */
-const SKINS = (() => {
-    const out = {};
-    for (let id = 1; id <= SKIN_COUNT; id++) {
-        out[id] = {
-            head: `assets/snake/character-${id}/${id}x1.png`,
-            body: `assets/snake/character-${id}/${id}x2.png`,
-            tail: `assets/snake/character-${id}/${id}x3.png`,
-        };
-    }
-    return out;
-})();
+function skinFiles(skinId) {
+    return {
+        [SnakeTexture.HEAD]: `${SKIN_ROOT}/${skinId}/1.png`,
+        [SnakeTexture.BODY]: `${SKIN_ROOT}/${skinId}/2.png`,
+        [SnakeTexture.TAIL]: `${SKIN_ROOT}/${skinId}/3.png`,
+    };
+}
 
-/** Kayitli karakter id'leri (artan). */
-export const SKIN_IDS = Object.keys(SKINS).map(Number).sort((a, b) => a - b);
+/** Sunucudan gelen deger kullanilabilir bir varlik id'si mi (pozitif tamsayi). */
+export function isValidSkinId(skinId) {
+    const id = Number(skinId);
+    return Number.isInteger(id) && id > 0;
+}
 
 /**
  * MANTIKSAL parca kimlikleri. Sprite uzerinde {@code _texKey} olarak saklanir;
@@ -136,7 +141,7 @@ const FALLBACK = {
  * (Game.js: base / (1 + 0.12·(s-1))) masaustu Retina'da en kotu durum ~404 px.
  *   - kafa  512² : kesit 512'ye kadar.
  *   - govde 512x256: ileri eksen 512, kesit 256. Kare 256 tuvalde UZUN
- *                  govdeler (ornegin character-7: 404x560) kesitte ~185
+ *                  govdeler (ornegin 843303: 404x560) kesitte ~185
  *                  texel'e dusup detay kaybederdi.
  *   - kuyruk 512².
  *
@@ -196,8 +201,7 @@ function bakedKey(skinId, part) {
 }
 
 function normalizeSkinId(skinId) {
-    const id = Number(skinId);
-    return Number.isInteger(id) && SKINS[id] ? id : DEFAULT_SKIN_ID;
+    return isValidSkinId(skinId) ? Number(skinId) : DEFAULT_SKIN_ID;
 }
 
 /**
@@ -211,7 +215,7 @@ export function preload(scene) {
 }
 
 function queueSkinFiles(scene, skinId) {
-    const def = SKINS[skinId];
+    const def = skinFiles(skinId);
     for (const part of Object.values(SnakeTexture)) {
         const key = sourceKey(skinId, part);
         if (!scene.textures.exists(key)) scene.load.image(key, def[part]);
@@ -229,9 +233,10 @@ export function build(scene) {
 
 function bakeSkin(scene, skinId) {
     const parts = Object.values(SnakeTexture);
+    const files = skinFiles(skinId);
     const missing = parts
         .filter(part => !scene.textures.exists(sourceKey(skinId, part)))
-        .map(part => SKINS[skinId][part]);
+        .map(part => files[part]);
 
     if (missing.length > 0) {
         console.warn(`[SnakeSkin] karakter ${skinId} dokulari yuklenemedi`

@@ -370,6 +370,10 @@ export class Game extends Phaser.Scene {
         // burada (create) sıfırlanır.
         this._joinRejection = null;
         this.events.on('join_rejected', this.onJoinRejected, this);
+        // Kendi skin'imiz: StartInformation başlangıç değerini, JoinAccepted
+        // otoriter değeri verir. Tur başında sıfırlanır (scene.restart).
+        this._selfSkinId = null;
+        this.events.on('join_accepted', this.onJoinAccepted, this);
         this.events.on('leaderboard_update', this.onLeaderboardUpdate, this);
 
         // NetworkManager'ın pong başına yaydığı yumuşatılmış (EMA) RTT değeri.
@@ -417,6 +421,7 @@ export class Game extends Phaser.Scene {
             this.events.off('disconnected', this.onDisconnected, this);
             this.events.off('death_notification', this.onDeathNotification, this);
             this.events.off('join_rejected', this.onJoinRejected, this);
+            this.events.off('join_accepted', this.onJoinAccepted, this);
             this.events.off('leaderboard_update', this.onLeaderboardUpdate, this);
             this.events.off('ping_update', this._onPingUpdate, this);
             this.events.off('socket_open', this._onSocketOpen, this);
@@ -715,6 +720,12 @@ export class Game extends Phaser.Scene {
         const startScale = Number(startInfo?.scale ?? 1.0);
         const worldRadius = Number(startInfo?.worldRadius ?? startInfo?.world_radius);
         const startDirection = Number(startInfo?.startDirection ?? startInfo?.start_direction ?? 0);
+        // Bağlantı anındaki skin (misafir/varsayılan). JoinAccepted daha önce
+        // geldiyse (yeniden gönderilen StartInformation) otoriter değer korunur.
+        const startSkinId = Number(startInfo?.skinId ?? startInfo?.skin_id);
+        if (this._selfSkinId === null && Number.isInteger(startSkinId) && startSkinId > 0) {
+            this._selfSkinId = startSkinId;
+        }
 
         // ── GİRDİ KATMANINI SUNUCUNUN SPAWN YÖNÜNE TOHUMLA ──────────────────
         // Sunucu yılanı rastgele bir yöne bakar halde yaratır (bkz. server
@@ -895,14 +906,20 @@ export class Game extends Phaser.Scene {
         const fullyDataIds = entityCollection?.fullyDataEntityIds ?? [];
         const fullyDataCounts = entityCollection?.fullyDataSegmentCounts ?? [];
         const fullyDataNicknames = entityCollection?.fullyDataNicknames ?? [];
+        // fully_data_entity_ids ile KONUMSAL hizalı; ilk görünürlükte bir kez gelir.
+        const fullyDataSkinIds = entityCollection?.fullyDataSkinIds ?? entityCollection?.fully_data_skin_ids ?? [];
 
         const fullyDataMap = new Map();
         const fullyDataNicknameMap = new Map();
+        const fullyDataSkinMap = new Map();
         for (let i = 0; i < fullyDataIds.length; i++) {
             const fid = Number(fullyDataIds[i]);
             fullyDataMap.set(fid, fullyDataCounts[i]);
             if (fullyDataNicknames && fullyDataNicknames.length > i) {
                 fullyDataNicknameMap.set(fid, fullyDataNicknames[i]);
+            }
+            if (fullyDataSkinIds.length > i) {
+                fullyDataSkinMap.set(fid, Number(fullyDataSkinIds[i]));
             }
         }
 
@@ -1004,6 +1021,11 @@ export class Game extends Phaser.Scene {
 
             if (fullyDataNicknameMap.has(lookupId)) {
                 snake.setNickname(fullyDataNicknameMap.get(lookupId));
+            }
+            // Rakibin skin'i: sunucunun yayınladığı varlık id'si. Dosya yoksa
+            // setSkin/ensureSkin varsayılan karakterde bırakır (sessiz geri düşüş).
+            if (fullyDataSkinMap.has(lookupId)) {
+                snake.setSkin(fullyDataSkinMap.get(lookupId));
             }
 
             // M01: olcek TOPOLOJIDEN SONRA, path tohumundan ONCE uygulanir —
@@ -1503,6 +1525,9 @@ export class Game extends Phaser.Scene {
             if (!existingSnake.nickname) {
                 existingSnake.setNickname(nickname);
             }
+            if (this._selfSkinId !== null && existingSnake.skinId !== this._selfSkinId) {
+                existingSnake.setSkin(this._selfSkinId);
+            }
             return existingSnake;
         }
 
@@ -1512,6 +1537,7 @@ export class Game extends Phaser.Scene {
         }
 
         const playerSnake = new Snake(this, true, x, y, segmentCount, angleRaw, nickname);
+        if (this._selfSkinId !== null) playerSnake.setSkin(this._selfSkinId);
         // Açı bu yolda GEÇİLDİYSE yılan zaten sunucu yönüyle kurulmuştur; yönü
         // "uygulanmış" işaretle ki sonradan gelen bir StartInformation tekrarı
         // (applyServerHeading) oyuncunun o ana kadarki dönüşünü geri almasın.
@@ -2009,6 +2035,18 @@ export class Game extends Phaser.Scene {
     onJoinRejected(rejection) {
         this._joinRejection = rejection ?? null;
         console.warn('Katılım reddedildi:', rejection?.code, rejection?.detail);
+    }
+
+    /**
+     * Sunucu katılımı kabul etti ve skin'i OTORİTER olarak bildirdi.
+     * Yılan henüz kurulmadıysa değer saklanır; ensurePlayerSnake uygular.
+     */
+    onJoinAccepted(accepted) {
+        const skinId = Number(accepted?.skinId ?? accepted?.skin_id);
+        if (!Number.isInteger(skinId) || skinId <= 0) return;
+        this._selfSkinId = skinId;
+        const mine = this.myId !== null ? this.snakes.get(this.myId) : null;
+        if (mine?.isPlayerControlled) mine.setSkin(skinId);
     }
 
     onDisconnected() {

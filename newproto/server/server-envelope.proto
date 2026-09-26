@@ -16,6 +16,7 @@ import "server/upgrade/death-notification.proto";
 import "server/upgrade/leaderboard.proto";
 import "server/upgrade/path-seed.proto";
 import "server/join-rejected.proto";
+import "server/join-accepted.proto";
 
 message ServerEnvelope {
   oneof payload {
@@ -27,6 +28,8 @@ message ServerEnvelope {
     // Katilim reddi (SKIN_NOT_SELECTED / SERVER_API_UNAVAILABLE). Bu kareden
     // sonra sunucu baglantiyi kapatir; bkz. join-rejected.proto.
     JoinRejected join_rejected = 6;
+    // Katilim kabulu + otoriter skin id (bkz. join-accepted.proto).
+    JoinAccepted join_accepted = 7;
   }
   SelfPosition self_position = 10;
   SegmentMutationCollection segment_mutation_collection = 11;
