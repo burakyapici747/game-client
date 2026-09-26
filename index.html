@@ -12,6 +12,122 @@
     <!-- Baloo 2 is self-hosted (public/assets/font/baloo2); preload the weight the
          title and PLAY button render with so they don't flash a fallback. -->
     <link rel="preload" href="/assets/font/baloo2/Baloo2-ExtraBold.ttf" as="font" type="font/ttf" crossorigin>
+    <!-- ══════════════════════════════════════════════════════════════
+         KRITIK (INLINE) ACILIS EKRANI STILI — ilk boyama garantisi.
+         style.css dis bir dosyadir ve uretimde (dist/) JS/CSS paketlerinden
+         once gelmeyebilir; o pencerede <img width=1376> kendi ozgun boyutunda
+         ciziliyor ve "dev logo" olarak gorunuyordu. Bu blok paketlenmez,
+         minify edilmez ve HTML ile birlikte gelir: splash daha ILK karede
+         sabit olculerle cizilir. style.css sonra gelip markayi (gradyan,
+         font, animasyon) ustune giydirir; buradaki !important'lar yalnizca
+         BOYUT sinirlarini korur. Sinif adlari: hem projenin (.splash-*) hem
+         de genel (.splash-overlay/.splash-progress-container/...) takma
+         adlar ayni elemanlarda durur.
+         ══════════════════════════════════════════════════════════════ -->
+    <style>
+        /* Critical un-bundled splash screen first-paint guarantee */
+        #splash-screen,
+        .splash-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #083367;   /* --menu-surface (sea-dark): renk flasi yok */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 999999;
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            color: #ffffff;
+            font-family: 'Baloo 2', 'Quicksand', system-ui, sans-serif;
+        }
+
+        #splash-screen.is-leaving,
+        .splash-overlay.is-leaving {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.55s ease;
+        }
+
+        .splash-inner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 420px;
+            padding: 0 16px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        /* Logo: hem sarmalayici hem img sinirlanir — ozgun 1376 px ASLA cizilmez. */
+        .splash-logo {
+            max-width: 280px !important;
+            width: 70% !important;
+            height: auto !important;
+            margin: 0 auto 24px;
+            display: block;
+            object-fit: contain;
+        }
+
+        .splash-logo img {
+            display: block;
+            width: 100% !important;
+            max-width: 280px !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .splash-brand {
+            margin: 0 0 20px;
+            font-size: clamp(2rem, 8vw, 3rem);
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            line-height: 1;
+        }
+
+        .splash-progress,
+        .splash-progress-container {
+            width: 280px;
+            max-width: 80%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .splash-progress-fill,
+        .splash-progress-bar {
+            width: 0%;
+            height: 100%;
+            background: #4caf50;
+            transition: width 0.2s ease-out;
+        }
+
+        .splash-status-row,
+        .splash-status-text {
+            display: flex;
+            justify-content: space-between;
+            width: 280px;
+            max-width: 80%;
+            margin-top: 12px;
+            color: #a0aec0;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .splash-file {
+            margin-top: 4px;
+            min-height: 1.2em;
+            font-size: 12px;
+            color: #a0aec0;
+            opacity: 0.85;
+        }
+    </style>
     <link rel="stylesheet" href="/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Inter:wght@400;500;600&family=Quicksand:wght@500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet">
@@ -29,17 +145,17 @@
          src/assets/AssetPreloader.js manifestteki her varligi yukler ve bitince
          fade-out ile kaldirilir. Ana menu bunun ALTINDA hazirlanir: pop-in yok.
          ══════════════════════════════════════════════════════════════ -->
-    <div id="splash-screen" class="splash-screen" role="status" aria-live="polite" aria-label="Loading">
+    <div id="splash-screen" class="splash-screen splash-overlay" role="status" aria-live="polite" aria-label="Loading">
         <div class="splash-inner">
             <div class="splash-logo" aria-hidden="true">
                 <img src="/assets/logo/logo-circle-final.png" alt="" width="1376" height="768" />
             </div>
             <h1 class="splash-brand">SEANAKES<span class="splash-brand-tld">.IO</span></h1>
-            <div id="splash-progress" class="splash-progress" role="progressbar"
+            <div id="splash-progress" class="splash-progress splash-progress-container" role="progressbar"
                  aria-label="Loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                <div id="splash-progress-fill" class="splash-progress-fill"></div>
+                <div id="splash-progress-fill" class="splash-progress-fill splash-progress-bar"></div>
             </div>
-            <div class="splash-status-row">
+            <div class="splash-status-row splash-status-text">
                 <span id="splash-status" class="splash-status">Loading…</span>
                 <span id="splash-percent" class="splash-percent">0%</span>
             </div>

@@ -4363,9 +4363,10 @@ body.splash-active {
     text-align: center;
 }
 
-.splash-logo {
-    width: min(260px, 70vw);
-    margin-bottom: 8px;
+#splash-screen .splash-logo {
+    width: min(260px, 70vw) !important;
+    max-width: 260px !important;
+    margin: 0 0 8px;
     animation: splash-float 3.2s ease-in-out infinite;
 }
 
@@ -4395,7 +4396,7 @@ body.splash-active {
     color: var(--menu-accent, #a2ee38);
 }
 
-.splash-progress {
+#splash-screen .splash-progress {
     width: 100%;
     height: 18px;
     background: rgba(4, 26, 54, 0.75);
@@ -4405,7 +4406,7 @@ body.splash-active {
     overflow: hidden;
 }
 
-.splash-progress-fill {
+#splash-screen .splash-progress-fill {
     width: 0%;
     height: 100%;
     border-radius: 999px;
@@ -4415,7 +4416,7 @@ body.splash-active {
     transition: width 0.18s linear;
 }
 
-.splash-status-row {
+#splash-screen .splash-status-row {
     display: flex;
     justify-content: space-between;
     width: 100%;
