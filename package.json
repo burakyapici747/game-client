@@ -15,11 +15,12 @@
     },
     "homepage": "https://github.com/phaserjs/template-rapier#readme",
     "scripts": {
-        "dev": "node log.js dev & vite --config vite/config.dev.mjs",
-        "build": "node log.js build & vite build --config vite/config.prod.mjs",
-        "dev-nolog": "vite --config vite/config.dev.mjs",
-        "build-nolog": "vite build --config vite/config.prod.mjs",
-        "build-proto": "pbjs -t static-module -w es6 -p newproto -o src/network/bundle.js newproto/**/*.proto && pbts -o src/network/bundle.d.ts src/network/bundle.js"
+        "dev": "node scripts/gen-asset-manifest.mjs && node log.js dev & vite --config vite/config.dev.mjs",
+        "build": "node scripts/gen-asset-manifest.mjs && node log.js build & vite build --config vite/config.prod.mjs",
+        "dev-nolog": "node scripts/gen-asset-manifest.mjs && vite --config vite/config.dev.mjs",
+        "build-nolog": "node scripts/gen-asset-manifest.mjs && vite build --config vite/config.prod.mjs",
+        "build-proto": "pbjs -t static-module -w es6 -p newproto -o src/network/bundle.js newproto/**/*.proto && pbts -o src/network/bundle.d.ts src/network/bundle.js",
+        "build-manifest": "node scripts/gen-asset-manifest.mjs"
     },
     "devDependencies": {
         "protobufjs-cli": "^1.1.3",

@@ -11,6 +11,8 @@ import { initLoginTabs, setActiveTab, showSocialError, clearSocialError } from '
 import { initSidePanel, hideSidePanel, showSidePanelIfSignedIn } from './ui/SidePanel.js';
 import { serverProbe, latencyTier } from './network/ServerProbe.js';
 import { fallbackServerEntry } from './network/endpoint.js';
+import { preloadAssets } from './assets/AssetPreloader.js';
+import { setSplashProgress, setSplashStatus, hideSplashScreen } from './ui/SplashScreen.js';
 
 // ─── Mobile input state (read by Game.js every frame) ───────────────────────
 window.mobileInput = {
@@ -25,6 +27,23 @@ window.mobileInput = {
 // Connecting ekranı ilk göstergeyi window.gameSettings.menuPingMs üzerinden alır.
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // ── AÇILIŞ EKRANI + VARLIK ÖN YÜKLEMESİ ─────────────────────────────────
+    // Splash index.html'de zaten görünür; burada yalnızca yükleme başlatılır.
+    // Menü kurulumu (oturum, config, ping) BUNUNLA PARALEL sürer — splash
+    // kapanana kadar menü opak katmanın altında hazırlanır. Kapanış, hem
+    // varlıklar hem config hazır olunca (aşağıda, menü kurulduktan sonra).
+    setSplashStatus('Loading skins…', '');
+    const assetsReady = preloadAssets({
+        onProgress: ({ fraction, label, file }) => {
+            setSplashProgress(fraction);
+            setSplashStatus(label, file);
+        },
+    }).catch((err) => {
+        // Yükleyici asla fırlatmamalı; fırlatsa bile açılış kilitlenmez.
+        console.error('[preload] beklenmeyen hata, menüye geçiliyor:', err);
+        return null;
+    });
+
     const uiLayer          = document.getElementById('ui-layer');
     const playBtn          = document.getElementById('play-btn');
     const serversBtn       = document.getElementById('servers-btn');
@@ -94,6 +113,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateServerIndicator();
     refreshServerPings(); // sayfa açılır açılmaz arka planda ilk ölçüm
     watchSelectedServer(); // ve seçili sunucu için canlı nabız
+
+    // Menü hazır; varlıkların bitmesini bekle ve splash'i fade ile kaldır.
+    // Yükleme menüden önce bittiyse (tipik: önbellekli ikinci açılış) bekleme
+    // sıfırdır; tersi durumda çubuk menü hazırken de akmaya devam eder.
+    await assetsReady;
+    await hideSplashScreen();
 
     // Sunucu kartları (referans: server_list.html) — globe ikonu + bölge adı +
     // durum alt yazısı solda; latency-tier renkli ping + sinyal ikonu sağda.

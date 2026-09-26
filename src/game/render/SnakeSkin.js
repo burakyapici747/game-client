@@ -114,6 +114,38 @@ export function isValidSkinId(skinId) {
     return Number.isInteger(id) && id > 0;
 }
 
+// ── KAYIT DEFTERI (manifest) ────────────────────────────────────────────────
+// public/assets/manifest.json (scripts/gen-asset-manifest.mjs uretir) acilista
+// AssetPreloader tarafindan okunur ve buraya kaydedilir:
+//   knownSkinIds     — dizini var olan skinler; Phaser Preloader bunlarin HAM
+//                      dosyalarini onceden yukler (onbellekten, aninda).
+//   unavailableSkins — acilis yuklemesinde parcasi eksik cikan skinler; bu
+//                      id'ler DAHA DENENMEDEN varsayilana duser (404 tekrar yok).
+const knownSkinIds = new Set([DEFAULT_SKIN_ID]);
+const unavailableSkins = new Set();
+
+/** AssetPreloader → manifest icerigini kaydeder. */
+export function registerSkinManifest(manifest) {
+    for (const id of manifest?.skins ?? []) {
+        if (isValidSkinId(id)) knownSkinIds.add(Number(id));
+    }
+}
+
+/** Yuklenemeyen skin: bundan sonra her yerde varsayilan skin kullanilir. */
+export function markSkinUnavailable(skinId) {
+    const id = Number(skinId);
+    if (isValidSkinId(id) && id !== DEFAULT_SKIN_ID) unavailableSkins.add(id);
+}
+
+export function isSkinUnavailable(skinId) {
+    return unavailableSkins.has(Number(skinId));
+}
+
+/** Manifestten bilinen (ve kullanilabilir) skin id'leri. */
+export function getKnownSkinIds() {
+    return [...knownSkinIds].filter((id) => !unavailableSkins.has(id));
+}
+
 /**
  * MANTIKSAL parca kimlikleri. Sprite uzerinde {@code _texKey} olarak saklanir;
  * gercek doku anahtari karakter id'si ile birlikte {@link textureKey} ile cozulur.
@@ -201,7 +233,8 @@ function bakedKey(skinId, part) {
 }
 
 function normalizeSkinId(skinId) {
-    return isValidSkinId(skinId) ? Number(skinId) : DEFAULT_SKIN_ID;
+    const id = Number(skinId);
+    return isValidSkinId(id) && !unavailableSkins.has(id) ? id : DEFAULT_SKIN_ID;
 }
 
 /**
@@ -212,6 +245,23 @@ function normalizeSkinId(skinId) {
  */
 export function preload(scene) {
     queueSkinFiles(scene, DEFAULT_SKIN_ID);
+}
+
+/**
+ * Manifestteki TUM kullanilabilir skinlerin ham dosyalarini Phaser doku
+ * onbellegine alir (Preloader.preload icinden). Dosyalar acilis ekraninda
+ * tarayici onbellegine coktan indigi icin bu adim ag beklemez; sonucta
+ * ensureSkin(id) ilk cagrida SENKRON pisirir (yukleme kuyrugu bos) ve rakip
+ * bir yilan ekrana gelir gelmez dogru karakterle cizilir.
+ *
+ * Yalnizca varsayilan skin build()'de pisirilir: 15 skin x 3 POT tuvali
+ * pesinen pisirmek mobilde onlarca MB VRAM demek; pisirme ihtiyac aninda,
+ * ucuz ve senkron kalir.
+ */
+export function preloadKnown(scene) {
+    for (const id of getKnownSkinIds()) {
+        queueSkinFiles(scene, id);
+    }
 }
 
 function queueSkinFiles(scene, skinId) {
@@ -240,8 +290,10 @@ function bakeSkin(scene, skinId) {
 
     if (missing.length > 0) {
         console.warn(`[SnakeSkin] karakter ${skinId} dokulari yuklenemedi`
-            + (skinId === DEFAULT_SKIN_ID ? ', daire dokularina geri dusuluyor:' : ':'),
+            + (skinId === DEFAULT_SKIN_ID ? ', daire dokularina geri dusuluyor:' : ', varsayilana dusuluyor:'),
             missing.join(', '));
+        // Bir daha denenmez: sonraki her istek dogrudan varsayilana gider.
+        markSkinUnavailable(skinId);
         return false;
     }
 

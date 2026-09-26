@@ -22,7 +22,31 @@
     <title>SEANAKES.IO</title>
 </head>
 
-<body>
+<body class="splash-active">
+    <!-- ══════════════════════════════════════════════════════════════
+         SPLASH / PRELOADER — sayfanin ILK goruntusu. JS calismadan once bile
+         gorunur (class'ta hidden YOK); src/ui/SplashScreen.js ilerlemeyi yazar,
+         src/assets/AssetPreloader.js manifestteki her varligi yukler ve bitince
+         fade-out ile kaldirilir. Ana menu bunun ALTINDA hazirlanir: pop-in yok.
+         ══════════════════════════════════════════════════════════════ -->
+    <div id="splash-screen" class="splash-screen" role="status" aria-live="polite" aria-label="Loading">
+        <div class="splash-inner">
+            <div class="splash-logo" aria-hidden="true">
+                <img src="/assets/logo/logo-circle-final.png" alt="" width="1376" height="768" />
+            </div>
+            <h1 class="splash-brand">SEANAKES<span class="splash-brand-tld">.IO</span></h1>
+            <div id="splash-progress" class="splash-progress" role="progressbar"
+                 aria-label="Loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div id="splash-progress-fill" class="splash-progress-fill"></div>
+            </div>
+            <div class="splash-status-row">
+                <span id="splash-status" class="splash-status">Loading…</span>
+                <span id="splash-percent" class="splash-percent">0%</span>
+            </div>
+            <span id="splash-file" class="splash-file"></span>
+        </div>
+    </div>
+
     <div id="app">
 
         <!-- Phaser Game Container (hidden initially or under UI) -->

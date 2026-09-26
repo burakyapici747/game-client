@@ -4322,3 +4322,126 @@ html.pseudo-fullscreen #app {
     .sp-section { padding: 10px 16px; }
     .sp-menu { padding: 8px 16px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SPLASH / PRELOADER (index.html #splash-screen, src/ui/SplashScreen.js)
+   Ana menunun USTUNDE opak bir katman: varliklar inerken menu hic gorunmez.
+   Bitiste .is-leaving ile 0.55 sn fade-out, ardindan elemandan kaldirilir.
+   ══════════════════════════════════════════════════════════════════════════ */
+.splash-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background:
+        radial-gradient(120% 90% at 50% 0%, rgba(48, 134, 206, 0.45) 0%, rgba(8, 51, 103, 0) 60%),
+        linear-gradient(180deg, #0b3b73 0%, var(--menu-surface, #083367) 55%, #041a36 100%);
+    color: var(--menu-text, #fff);
+    font-family: var(--font-menu, 'Baloo 2', system-ui, sans-serif);
+    opacity: 1;
+    transition: opacity 0.55s ease;
+}
+
+.splash-screen.is-leaving {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Splash acikken altta kalan menu KAYDIRILAMAZ ve odak alamaz. */
+body.splash-active {
+    overflow: hidden;
+}
+
+.splash-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: min(420px, 100%);
+    text-align: center;
+}
+
+.splash-logo {
+    width: min(260px, 70vw);
+    margin-bottom: 8px;
+    animation: splash-float 3.2s ease-in-out infinite;
+}
+
+.splash-logo img {
+    display: block;
+    width: 100%;
+    height: auto;
+    filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.35));
+}
+
+@keyframes splash-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+.splash-brand {
+    margin: 0 0 22px;
+    font-size: clamp(2rem, 8vw, 3rem);
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    color: var(--menu-text, #fff);
+    text-shadow: 0 3px 0 rgba(0, 0, 0, 0.25), 0 0 24px rgba(40, 185, 230, 0.35);
+}
+
+.splash-brand-tld {
+    color: var(--menu-accent, #a2ee38);
+}
+
+.splash-progress {
+    width: 100%;
+    height: 18px;
+    background: rgba(4, 26, 54, 0.75);
+    border: 2px solid rgba(135, 206, 250, 0.35);
+    border-radius: 999px;
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+
+.splash-progress-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--play-top, #b2f63f) 0%, var(--play-mid, #76db17) 60%, var(--play-bottom, #62bd10) 100%);
+    box-shadow: 0 0 14px rgba(162, 238, 56, 0.55);
+    /* rAF easing'e ek: cok kucuk adimlar da yumusak aksin. */
+    transition: width 0.18s linear;
+}
+
+.splash-status-row {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    margin-top: 10px;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--menu-text-soft, #e0f2fe);
+}
+
+.splash-percent {
+    font-variant-numeric: tabular-nums;
+    color: var(--menu-accent, #a2ee38);
+}
+
+.splash-file {
+    margin-top: 4px;
+    min-height: 1.2em;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--menu-text-muted, #bae6fd);
+    opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .splash-logo { animation: none; }
+    .splash-screen { transition: none; }
+    .splash-progress-fill { transition: none; }
+}

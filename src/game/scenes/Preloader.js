@@ -25,6 +25,11 @@ export class Preloader extends Phaser.Scene {
     // kuyruga alinir; dondurme + olcek normalizasyonu dosyalar indikten sonra
     // create() icinde yapilir (bkz. SnakeSkin.build).
     SnakeSkin.preload(this);
+    // Manifestteki diger skinlerin ham dosyalari da doku onbellegine alinir
+    // (acilis ekrani onlari HTTP onbellegine coktan indirdi; bkz.
+    // src/assets/AssetPreloader.js). Boylece rakip skinleri ilk gorunurlukte
+    // beklemeden cizilir.
+    SnakeSkin.preloadKnown(this);
 
     // Zemin: public/assets/terrain/terrain.png — tek, 2048x2048, kenarlari
     // sarilan desen. Dosya yolunun TEK sahibi render/Terrain.js'tir.

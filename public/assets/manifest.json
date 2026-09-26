@@ -1,0 +1,82 @@
+{
+  "version": 2,
+  "generatedAt": "2026-09-26T14:41:13.061Z",
+  "defaultSkinId": 843309,
+  "skins": [
+    842235,
+    843293,
+    843295,
+    843297,
+    843299,
+    843301,
+    843303,
+    843305,
+    843307,
+    843309,
+    843311,
+    843313,
+    843315,
+    843317,
+    843319
+  ],
+  "images": [
+    "/assets/background/main-menu-background.png",
+    "/assets/leaderboard/score-orb.png",
+    "/assets/leaderboard/victory_cup.png",
+    "/assets/logo/logo-1.png",
+    "/assets/logo/logo-2.png",
+    "/assets/logo/logo-circle-final.png",
+    "/assets/logo_image.jpeg",
+    "/assets/mini-map/mini_map_terrain.png",
+    "/assets/particle/16x16_buble.png",
+    "/assets/terrain/terrain.png",
+    "/assets/terrain/terrain2.png"
+  ],
+  "fonts": [
+    {
+      "family": "Baloo 2",
+      "weight": "700",
+      "italic": false,
+      "url": "/assets/font/baloo2/Baloo2-Bold.ttf"
+    },
+    {
+      "family": "Baloo 2",
+      "weight": "800",
+      "italic": false,
+      "url": "/assets/font/baloo2/Baloo2-ExtraBold.ttf"
+    },
+    {
+      "family": "Baloo 2",
+      "weight": "500",
+      "italic": false,
+      "url": "/assets/font/baloo2/Baloo2-Medium.ttf"
+    },
+    {
+      "family": "Baloo 2",
+      "weight": "400",
+      "italic": false,
+      "url": "/assets/font/baloo2/Baloo2-Regular.ttf"
+    },
+    {
+      "family": "Baloo 2",
+      "weight": "600",
+      "italic": false,
+      "url": "/assets/font/baloo2/Baloo2-SemiBold.ttf"
+    }
+  ],
+  "audio": [],
+  "other": [
+    "/assets/font/baloo2/DESCRIPTION.en_us.html",
+    "/assets/font/baloo2/METADATA.pb",
+    "/assets/font/baloo2/OFL.txt",
+    "/config.json",
+    "/style.css"
+  ],
+  "counts": {
+    "skins": 15,
+    "images": 11,
+    "fonts": 5,
+    "audio": 0,
+    "other": 5
+  }
+}
